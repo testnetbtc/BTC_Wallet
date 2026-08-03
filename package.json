@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "node build.mjs && node assemble.mjs",
-    "test": "node src/selftest.mjs && node src/addrtest.mjs"
+    "test": "node src/selftest.mjs && node src/addrtest.mjs && node src/uitest.mjs"
   },
   "keywords": [],
   "author": "",

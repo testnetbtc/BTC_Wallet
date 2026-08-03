@@ -15,70 +15,93 @@ h1 span{color:#f0a020}
 .card{background:#161b22;border:1px solid #2b333c;border-radius:10px;padding:18px;margin:14px 0}
 label{display:block;font-weight:600;margin:0 0 6px}
 .hint{color:#9aa7b4;font-size:13px;margin:2px 0 10px}
-input,select,textarea{width:100%;padding:9px 11px;background:#0e1116;border:1px solid #2b333c;border-radius:7px;color:#e6edf3;font:inherit}
-#pad{height:120px;border:1px dashed #3a444e;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#7d8794;cursor:crosshair;user-select:none}
+input,select{width:100%;padding:9px 11px;background:#0e1116;border:1px solid #2b333c;border-radius:7px;color:#e6edf3;font:inherit;margin-bottom:8px}
+#pad{height:120px;border:1px dashed #3a444e;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#7d8794;cursor:crosshair;user-select:none;touch-action:none}
 .bar{height:6px;background:#0e1116;border:1px solid #2b333c;border-radius:4px;margin-top:8px;overflow:hidden}
 .bar>div{height:100%;width:0;background:#f0a020;transition:width .1s}
 button{background:#f0a020;color:#111;border:0;border-radius:8px;padding:12px 18px;font-weight:700;font-size:16px;cursor:pointer;width:100%;margin-top:8px}
+button:disabled{background:#5a4a24;color:#998;cursor:not-allowed}
+button.sec{background:#2b333c;color:#e6edf3;font-size:14px;padding:9px}
 #out{display:none}
 #words{font-family:ui-monospace,Menlo,monospace;font-size:16px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:14px;word-spacing:4px;line-height:2}
 #addr{font-family:ui-monospace,monospace;word-break:break-all;color:#7ee2a8}
-.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:8px;padding:14px;font-size:14px}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:8px;padding:14px;font-size:14px;margin:14px 0}
 .warn b{color:#ffd57a}
+.danger{background:#3a1416;border:1px solid #7a2327;color:#ff9ca0;border-radius:8px;padding:10px;font-size:13px;display:none}
 code{background:#0e1116;padding:1px 5px;border-radius:4px}
+.row{display:flex;gap:10px}.row>div{flex:1}
+@media print{
+  body{background:#fff;color:#000}
+  .no-print{display:none!important}
+  #out{display:block!important;background:#fff;border:1px solid #000}
+  #words,#addr,#meta{background:#fff!important;color:#000!important;border-color:#000!important}
+}
 </style></head>
 <body><div class="wrap">
 <h1>Alea<span>.</span></h1>
-<p class="sub">A 2014-style instant wallet — the frictionless idea, rebuilt on entropy you can trust.</p>
-<div><span id="selfcheck" class="badge">checking…</span><span id="offline" class="badge">…</span></div>
+<p class="sub no-print">A 2014-style instant wallet — the frictionless idea, rebuilt on entropy you can trust.</p>
+<div class="no-print"><span id="selfcheck" class="badge">checking…</span><span id="offline" class="badge">…</span></div>
 
-<div class="warn" style="margin-top:14px">
-<b>Read me first.</b> This is a learning tool. It defaults to <b>testnet</b> (free, worthless coins) on purpose.
-Real security requires generating <b>offline</b> (disconnect first) and having the code independently reviewed
-before you trust it with meaningful money. Treat it exactly the way this project taught you to treat any wallet:
-prove it on testnet, and don't fund a mainnet address with more than you'd shrug off losing until it's been audited.
+<div class="warn no-print">
+<b>Read me first.</b> This is a learning tool and it is <b>unaudited</b>. It defaults to <b>testnet</b>
+(free, worthless coins) on purpose. For anything real: download this file, <b>disconnect from the
+internet</b>, and open it offline — and get the code independently reviewed before trusting it with
+money you would miss.
 </div>
 
-<div class="card">
+<div class="card no-print">
 <label>Network</label>
 <select id="net"><option value="testnet" selected>Testnet (recommended for testing)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
 </div>
 
-<div class="card">
+<div class="card no-print">
 <label>1 · Entropy root <span style="color:#7ee2a8;font-weight:400">— automatic</span></label>
-<p class="hint">256 bits are drawn from your operating system's cryptographic RNG (<code>crypto.getRandomValues</code>) the instant you press Generate. This is the real security. Everything below is optional defence-in-depth folded in by hashing — it can only help, never hurt.</p>
+<p class="hint">256 bits are drawn from your operating system's cryptographic RNG (<code>crypto.getRandomValues</code>) the moment you press Generate. <b>This is the real security.</b> Everything below is optional defence-in-depth, folded in by hashing — it can only help, never hurt.</p>
 </div>
 
-<div class="card">
+<div class="card no-print">
 <label>2 · Mouse motion <span style="color:#9aa7b4;font-weight:400">— optional</span></label>
-<p class="hint">Wiggle inside the box to stir in extra entropy (this is theatre + insurance, not the foundation).</p>
+<p class="hint">Wiggle (or drag on touch) inside the box to stir in extra entropy.</p>
 <div id="pad">— wiggle here —</div><div class="bar"><div id="mousebar"></div></div>
 </div>
 
-<div class="card">
+<div class="card no-print">
 <label>3 · Dice rolls <span style="color:#9aa7b4;font-weight:400">— optional</span></label>
-<p class="hint">Type physical dice rolls (e.g. <code>4 2 6 1 3 5 …</code>). Verifiable, offline, unbackdoorable — the paranoid's favourite source. Folded in by hashing.</p>
+<p class="hint">Type physical dice rolls (e.g. <code>4 2 6 1 3 5 …</code>). Verifiable, offline, unbackdoorable.</p>
 <input id="dice" placeholder="4 2 6 1 3 5 2 6 …">
 </div>
 
-<div class="card">
+<div class="card no-print">
 <label>4 · Passphrase <span style="color:#9aa7b4;font-weight:400">— optional (BIP-39 &quot;25th word&quot;)</span></label>
-<p class="hint">A secret applied on top of the 24 words. If set, you need <b>both</b> the words and this passphrase to restore. Lose it and the funds are gone — there is no recovery.</p>
-<input id="pass" type="text" placeholder="leave blank if unsure">
+<p class="hint">A secret applied on top of the 24 words. If set, you need <b>both</b> to restore. <b>Lose it or mistype it and the funds are gone — there is no recovery.</b> Type it twice.</p>
+<div class="row"><div><input id="pass" placeholder="passphrase (blank if unsure)"></div><div><input id="pass2" placeholder="confirm passphrase"></div></div>
+<div id="passwarn" class="danger">Passphrases do not match.</div>
 </div>
 
-<button id="gen">Generate wallet</button>
+<button id="gen" class="no-print">Generate wallet</button>
 
 <div id="out" class="card">
 <label>Your 24-word recovery phrase</label>
-<p class="hint">Write these down <b>on paper</b>, in order. Anyone with these words (and the passphrase, if set) controls the funds. Never type them into a website, photo, or cloud note.</p>
+<p class="hint">Write these down <b>on paper</b>, in order. Anyone with these words (plus the passphrase, if set) controls the funds. Never photograph them, cloud-sync them, or type them into any website.</p>
 <div id="words"></div>
 <label style="margin-top:16px">First receive address</label>
 <div id="addr"></div>
 <p id="meta" class="hint" style="margin-top:8px"></p>
+
+<div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
+<label>Verify your backup</label>
+<p class="hint">From your <b>paper copy</b> (not the screen), type these two words to confirm you recorded them correctly.</p>
+<div class="row">
+<div><p class="hint" id="vq1">word #—</p><input id="va1" autocomplete="off"></div>
+<div><p class="hint" id="vq2">word #—</p><input id="va2" autocomplete="off"></div>
+</div>
+<button id="vcheck" class="sec">Check my backup</button>
+<div style="margin-top:8px"><span id="vresult"></span></div>
+<button id="wipe" class="sec" style="margin-top:14px">Wipe screen</button>
+</div>
 </div>
 
-<p class="sub" style="margin-top:24px;font-size:13px">Built on audited primitives: <code>@scure/bip39</code>, <code>@scure/bip32</code>, <code>@noble/hashes</code>, <code>@noble/curves</code>, <code>@scure/base</code>. Derivation self-verified against the official BIP-84 test vector on load. No network calls — this page works fully offline.</p>
+<p class="sub no-print" style="margin-top:24px;font-size:13px">Built on audited primitives: <code>@scure/bip39</code>, <code>@scure/bip32</code>, <code>@noble/hashes</code>, <code>@noble/curves</code>, <code>@scure/base</code>. Derivation self-verified against the official BIP-84 test vector on load. No network calls, no storage, no URL secrets — works fully offline.</p>
 </div>
 <script>(() => {
   var __defProp = Object.defineProperty;
@@ -5189,33 +5212,98 @@ zoo`.split("\n");
 </script>
 <script>(function(){
   const $ = s => document.querySelector(s);
-  try { const vc = window.Alea._vectorCheck();
-    $('#selfcheck').textContent = vc.ok ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
-                                        : '✗ crypto self-check FAILED — do not use this build';
-    $('#selfcheck').className = vc.ok ? 'badge ok' : 'badge bad';
-  } catch(e){ $('#selfcheck').textContent='self-check error: '+e.message; $('#selfcheck').className='badge bad'; }
 
-  function net(){ const on=navigator.onLine;
-    $('#offline').textContent = on ? '● ONLINE — disconnect from the internet before generating a wallet you will fund'
-                                   : '● offline — good';
-    $('#offline').className = on ? 'badge bad' : 'badge ok'; }
+  // --- crypto self-check against the official BIP-84 vector -----------------
+  try {
+    const vc = window.Alea._vectorCheck();
+    $('#selfcheck').textContent = vc.ok
+      ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
+      : '✗ crypto self-check FAILED — do not use this build';
+    $('#selfcheck').className = vc.ok ? 'badge ok' : 'badge bad';
+    if(!vc.ok) $('#gen').disabled = true;
+  } catch(e){
+    $('#selfcheck').textContent = 'self-check error: '+e.message;
+    $('#selfcheck').className = 'badge bad';
+    $('#gen').disabled = true;
+  }
+
+  // --- online/offline indicator --------------------------------------------
+  function net(){
+    const on = navigator.onLine;
+    $('#offline').textContent = on
+      ? '● ONLINE — disconnect from the internet before generating a wallet you will fund'
+      : '● offline — good';
+    $('#offline').className = on ? 'badge bad' : 'badge ok';
+  }
   net(); addEventListener('online',net); addEventListener('offline',net);
 
+  // --- optional entropy stirring (mouse / touch) ---------------------------
   let mouse=[];
-  $('#pad').addEventListener('mousemove', e=>{
-    if(mouse.length<6000){ mouse.push(e.clientX&255, e.clientY&255, (performance.now()*1000|0)&255); }
+  function stir(x,y){
+    if(mouse.length<6000) mouse.push(x&255, y&255, (performance.now()*1000|0)&255);
     $('#mousebar').style.width = Math.min(100, mouse.length/1800*100).toFixed(0)+'%';
-  });
+  }
+  $('#pad').addEventListener('mousemove', e=>stir(e.clientX,e.clientY));
+  $('#pad').addEventListener('touchmove', e=>{ const t=e.touches[0]; if(t) stir(t.clientX|0,t.clientY|0); }, {passive:true});
 
+  // --- passphrase confirmation (a typo here = funds lost forever) ----------
+  function passOk(){ const a=$('#pass').value, b=$('#pass2').value; return (!a && !b) || a===b; }
+  function updatePass(){
+    const ok = passOk();
+    $('#passwarn').style.display = ok ? 'none' : 'block';
+    $('#gen').disabled = !ok;
+    $('#gen').textContent = ok ? 'Generate wallet' : 'Passphrases do not match';
+  }
+  $('#pass').addEventListener('input',updatePass);
+  $('#pass2').addEventListener('input',updatePass);
+
+  // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
+    if(!passOk()) return;
     const testnet = $('#net').value==='testnet';
-    const w = window.Alea.makeWallet({ mouseBytes:new Uint8Array(mouse),
-      diceString:$('#dice').value.trim(), passphrase:$('#pass').value, testnet });
+    const w = window.Alea.makeWallet({
+      mouseBytes:new Uint8Array(mouse),
+      diceString:$('#dice').value.trim(),
+      passphrase:$('#pass').value,
+      testnet
+    });
     $('#words').textContent = w.mnemonic;
-    $('#addr').textContent = w.address;
-    $('#meta').textContent = `network: ${w.network}  ·  path: ${w.path}  ·  passphrase: ${w.passphraseUsed?'set':'(none)'}`;
+    $('#addr').textContent  = w.address;
+    $('#meta').textContent  = 'network: '+w.network+'  ·  path: '+w.path+
+                              '  ·  passphrase: '+(w.passphraseUsed?'set (you MUST keep it)':'(none)');
+    setupVerify(w.mnemonic);
     $('#out').style.display='block';
     $('#out').scrollIntoView({behavior:'smooth'});
+  });
+
+  // --- backup verification: prove you wrote the words down correctly -------
+  function setupVerify(mn){
+    const words = mn.split(' ');
+    const r = new Uint32Array(2); crypto.getRandomValues(r);
+    const i1 = r[0]%24; let i2 = r[1]%24; if(i2===i1) i2=(i2+1)%24;
+    $('#vq1').textContent = 'word #'+(i1+1);
+    $('#vq2').textContent = 'word #'+(i2+1);
+    $('#va1').value=''; $('#va2').value='';
+    $('#vresult').textContent=''; $('#vresult').className='';
+    $('#vcheck').onclick = ()=>{
+      const ok = $('#va1').value.trim().toLowerCase()===words[i1]
+              && $('#va2').value.trim().toLowerCase()===words[i2];
+      $('#vresult').textContent = ok
+        ? '✓ backup verified — your written copy is correct'
+        : '✗ does not match — re-check what you wrote down';
+      $('#vresult').className = 'badge '+(ok?'ok':'bad');
+    };
+  }
+
+  // --- wipe the screen ------------------------------------------------------
+  $('#wipe').addEventListener('click', ()=>{
+    mouse=[]; $('#mousebar').style.width='0%';
+    ['#words','#addr','#meta','#vresult'].forEach(s=>{ $(s).textContent=''; });
+    $('#vresult').className='';
+    ['#va1','#va2','#pass','#pass2','#dice'].forEach(s=>{ $(s).value=''; });
+    $('#out').style.display='none';
+    updatePass();
+    scrollTo({top:0,behavior:'smooth'});
   });
 })();
 </script>

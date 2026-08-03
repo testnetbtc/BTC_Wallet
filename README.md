@@ -49,6 +49,35 @@ wallet:
 A hosted copy, if published, is for **testnet / demonstration**. For real funds,
 download and run offline.
 
+
+## Verify what you downloaded (reproducible build)
+
+The build is byte-deterministic: rebuilding from source produces an identical
+`index.html`. So you can confirm the file you downloaded is exactly what this
+source tree produces, with nothing inserted.
+
+```
+sha256sum index.html
+# expected: 6b663f4ddea98d7f447af50d6fb3b4395c13f881bb59f65d0f5a80468ebce3e4
+```
+
+Or rebuild it yourself and compare:
+```
+npm install && npm run build && sha256sum index.html
+```
+
+If the hash differs from the committed file, do not use it.
+
+## Tests
+
+`npm test` runs three gates, all of which must pass:
+
+1. **BIP-39 vectors** — official Trezor test vector (mnemonic + seed, passphrase "TREZOR").
+2. **BIP-84 vector** — derives `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu` from the
+   spec's reference mnemonic.
+3. **UI logic (headless)** — passphrase-mismatch blocks generation, backup
+   verification rejects wrong words and accepts right ones, wipe clears secrets.
+
 ## Build
 
 ```
