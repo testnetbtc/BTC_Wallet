@@ -6,7 +6,9 @@ const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
   scrollIntoView(){}, });
 for (const id of ['selfcheck','offline','pad','mousebar','net','dice','pass','pass2',
                   'passwarn','gen','out','words','addr','meta','vq1','vq2','va1','va2',
-                  'vcheck','vresult','wipe']) els['#'+id] = mk();
+                  'vcheck','vresult','wipe','dr','fpass','fpass2','fpwarn','savebk','savedesc',
+                  'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr'])
+  els['#'+id] = mk();
 els['#net'].value = 'testnet';
 
 globalThis.window = globalThis;
@@ -14,6 +16,15 @@ globalThis.document = { querySelector: s => els[s] };
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
 globalThis.performance = { now: () => Date.now() };
 globalThis.addEventListener = () => {};
+// shims for file download / upload
+let lastDownload = null;
+globalThis.Blob = class { constructor(parts){ this.text = parts.join(''); } };
+globalThis.URL = { createObjectURL(b){ lastDownload = b.text; return 'blob:x'; }, revokeObjectURL(){} };
+globalThis.setTimeout = (f)=>{};
+globalThis.document.createElement = () => ({ set href(v){}, set download(v){}, click(){} });
+globalThis.FileReader = class {
+  readAsText(f){ this.result = f._text; this.onload && this.onload(); }
+};
 globalThis.scrollTo = () => {};
 
 await import('../dist/alea.bundle.js');
@@ -59,4 +70,38 @@ console.log('right answer     : accepted ✓ (case/space tolerant)');
 els['#wipe']._h.click();
 if (els['#words'].textContent !== '' || els['#pass'].value !== '') fail('wipe did not clear');
 console.log('wipe clears      : ✓');
+// 6. encrypted backup: mismatched file password blocks the button
+els['#fpass'].value='filepw'; els['#fpass2'].value='nope'; els['#fpass']._h.input();
+if (!els['#savebk'].disabled) fail('mismatched file password did not disable save');
+els['#fpass2'].value='filepw'; els['#fpass2']._h.input();
+if (els['#savebk'].disabled) fail('matching file password left save disabled');
+console.log('file pw guard    : ✓');
+
+// regenerate (wipe cleared state) then save a backup
+els['#pass'].value=''; els['#pass2'].value=''; els['#pass']._h.input();
+els['#gen']._h.click();
+const gen = els['#words'].textContent;
+els['#fpass'].value='filepw'; els['#fpass2'].value='filepw'; els['#fpass']._h.input();
+els['#savebk']._h.click();
+if (!lastDownload) fail('no backup file produced');
+const blob = JSON.parse(lastDownload);
+console.log('backup written   :', blob.format, 'v'+blob.version, '| kdf', blob.kdf.name+' N='+blob.kdf.N);
+if (lastDownload.includes(gen.split(' ')[0])) fail('MNEMONIC LEAKED IN PLAINTEXT');
+console.log('plaintext leak   : none ✓');
+
+// descriptor download
+els['#savedesc']._h.click();
+if (!/^wpkh\(\[/m.test(lastDownload.split('receive: ')[1]||'')) fail('descriptor export malformed');
+console.log('descriptor file  : ✓');
+
+// 7. restore: wrong password rejected, right password restores + verifies
+els['#bkfile']._h.change({ target:{ files:[{ _text: JSON.stringify(blob) }] } });
+els['#rpass'].value='WRONG'; els['#restore']._h.click();
+if (els['#rinfo'].className !== 'badge bad') fail('wrong file password was accepted on restore');
+console.log('restore wrong pw : rejected ✓');
+els['#rpass'].value='filepw'; els['#rbip39'].value=''; els['#restore']._h.click();
+if (els['#rwords'].textContent !== gen) fail('restored mnemonic does not match');
+if (els['#rinfo'].className !== 'badge ok') fail('restore did not verify address');
+console.log('restore correct  : words match + address verified ✓');
+
 console.log(process.exitCode ? '\nUI TEST FAILED' : '\nUI TEST PASS');

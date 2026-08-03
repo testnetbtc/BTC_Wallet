@@ -6,6 +6,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
 import { bech32 } from '@scure/base';
+import { encryptBackup, decryptBackup, withChecksum } from './backup.js';
 
 const hash160 = (b) => ripemd160(sha256(b));
 
@@ -32,26 +33,40 @@ export function buildEntropy({ mouseBytes, diceString }) {
   return sha256(concatBytes(...parts));           // 32 bytes = 256 bits
 }
 
+export function deriveFrom(mnemonic, passphrase, testnet) {
+  const seed = mnemonicToSeedSync(mnemonic, passphrase || '');
+  const root = HDKey.fromMasterSeed(seed);
+  const coin = testnet ? 1 : 0;
+  const path = `m/84'/${coin}'/0'/0/0`;
+  return { address: p2wpkh(root.derive(path).publicKey, testnet), path };
+}
+
 export function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
   const entropy = buildEntropy({ mouseBytes, diceString });
   const mnemonic = entropyToMnemonic(entropy, wordlist);       // 24 words
   const seed = mnemonicToSeedSync(mnemonic, passphrase || ''); // passphrase = BIP-39 25th word
   const root = HDKey.fromMasterSeed(seed);
   const coin = testnet ? 1 : 0;
-  const path = `m/84'/${coin}'/0'/0/0`;
+  const acctPath = `m/84'/${coin}'/0'`;
+  const path = `${acctPath}/0/0`;
   const child = root.derive(path);
+  const acct = root.derive(acctPath);
+  const fp = root.fingerprint.toString(16).padStart(8, '0');
+  const origin = `[${fp}/84h/${coin}h/0h]`;
   return {
     mnemonic,
     passphraseUsed: !!(passphrase && passphrase.length),
     path,
     address: p2wpkh(child.publicKey, testnet),
     network: testnet ? 'testnet' : 'mainnet',
+    descriptorReceive: withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/0/*)`),
+    descriptorChange:  withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/1/*)`),
   };
 }
 
 // expose for the page + a self-check hook
 if (typeof window !== 'undefined') {
-  window.Alea = { makeWallet, _vectorCheck };
+  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, _vectorCheck };
 }
 
 // Correctness self-check the PAGE runs on load against the official BIP-84 vector.

@@ -26,6 +26,8 @@ button{background:#f0a020;color:#111;border:0;border-radius:8px;padding:12px 18p
 button:disabled{background:#5a4a24;color:#998;cursor:not-allowed}
 button.sec{background:#2b333c;color:#e6edf3;font-size:14px;padding:9px}
 #out{display:none}
+#rwords{font-family:ui-monospace,Menlo,monospace;font-size:15px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:12px;word-spacing:4px;line-height:1.9}
+#raddr{font-family:ui-monospace,monospace;word-break:break-all;color:#7ee2a8}
 #words{font-family:ui-monospace,Menlo,monospace;font-size:16px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:14px;word-spacing:4px;line-height:2}
 #addr{font-family:ui-monospace,monospace;word-break:break-all;color:#7ee2a8}
 .warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:8px;padding:14px;font-size:14px;margin:14px 0}
@@ -102,7 +104,34 @@ money you would miss.
 <div style="margin-top:8px"><span id="vresult"></span></div>
 <button id="wipe" class="sec" style="margin-top:14px">Wipe screen</button>
 </div>
+
+<div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
+<label>Save to your computer</label>
+<p class="hint"><b>Not a <code>wallet.dat</code></b> — that is Bitcoin Core's internal Berkeley DB format, which Core itself is retiring, and a fake one would be a dangerous illusion of a backup. These are the modern equivalents, and they actually restore.</p>
+<p class="hint"><b>Encrypted backup (.json)</b> — your 24 words, encrypted with a password of your choosing (scrypt N=2^16 + XChaCha20-Poly1305). Your BIP-39 passphrase is deliberately <b>not</b> stored in it.</p>
+<div class="row"><div><input id="fpass" type="password" placeholder="file password"></div><div><input id="fpass2" type="password" placeholder="confirm file password"></div></div>
+<div id="fpwarn" class="danger">File passwords do not match.</div>
+<button id="savebk" class="sec" disabled>Download encrypted backup</button>
+<p class="hint" style="margin-top:14px"><b>Watch-only descriptor (.txt)</b> — import into Bitcoin Core or Sparrow to watch the balance. Contains <b>no</b> private key, so it is safe to keep on a normal machine.</p>
+<div id="dr" class="hint" style="font-family:ui-monospace,monospace;word-break:break-all;color:#7ee2a8"></div>
+<button id="savedesc" class="sec">Download watch-only descriptor</button>
+<div style="margin-top:8px"><span id="saveinfo"></span></div>
 </div>
+</div>
+
+<div class="card no-print">
+<label>Restore from an encrypted backup</label>
+<p class="hint">Test this now, while you still have the words on screen — an untested backup is not a backup.</p>
+<input id="bkfile" type="file" accept="application/json,.json">
+<div class="row"><div><input id="rpass" type="password" placeholder="file password"></div><div><input id="rbip39" placeholder="BIP-39 passphrase (if any)"></div></div>
+<button id="restore" class="sec">Restore &amp; verify</button>
+<div style="margin-top:8px"><span id="rinfo"></span></div>
+<div id="rout" style="display:none;margin-top:12px">
+<label>Recovered phrase</label><div id="rwords"></div>
+<label style="margin-top:10px">Derived address</label><div id="raddr"></div>
+</div>
+</div>
+
 
 <p class="sub no-print" style="margin-top:24px;font-size:13px">Built on audited primitives: <code>@scure/bip39</code>, <code>@scure/bip32</code>, <code>@noble/hashes</code>, <code>@noble/curves</code>, <code>@scure/base</code>. Derivation self-verified against the official BIP-84 test vector on load. No network calls, no storage, no URL secrets — works fully offline.</p>
 </div>

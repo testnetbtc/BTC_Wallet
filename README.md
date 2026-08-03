@@ -50,6 +50,42 @@ A hosted copy, if published, is for **testnet / demonstration**. For real funds,
 download and run offline.
 
 
+
+## Saving your wallet to disk
+
+**Why there is no `wallet.dat`.** `wallet.dat` is Bitcoin Core's internal
+Berkeley DB database, not a portable wallet format — and Core is retiring it
+(legacy BDB wallets can no longer be created in recent versions). A file merely
+*named* `wallet.dat` that Core cannot load would be worse than useless: it would
+look like a backup and fail when you needed it. So Alea offers the two things
+that actually work instead:
+
+**1. Encrypted backup (`alea-backup-*.json`)** — your 24 words encrypted under a
+password you choose.
+
+- KDF: **scrypt N=2^16, r=8, p=1** (64 MB memory-hard, ~1-2 s in-browser). Chosen
+  so a leaked backup resists offline guessing. For contrast, 250 PBKDF2
+  iterations — a real bug found in another wallet library — buys almost nothing.
+- Cipher: **XChaCha20-Poly1305** (authenticated, so tampering is detected and a
+  wrong password fails cleanly rather than yielding garbage).
+- Your **BIP-39 passphrase is deliberately NOT stored** in the file. That keeps
+  its purpose intact: the file alone is not enough. On restore you re-enter it,
+  and Alea confirms it by checking the derived address matches the one recorded
+  in the backup — so a mistyped passphrase is caught immediately.
+
+**2. Watch-only descriptor (`alea-descriptor-*.txt`)** — an output descriptor
+(`wpkh([fingerprint/84h/coin h/0h]xpub.../0/*)#checksum`) importable into Bitcoin
+Core (`importdescriptors`) or Sparrow to watch the balance. It contains **no
+private key**, so it is safe to keep on an everyday machine.
+
+The descriptor checksum implementation is differential-tested against Bitcoin
+Core's own reference implementation (`test/framework/descriptors.py`) and matches
+byte-for-byte across a range of descriptors.
+
+**Test your backup before you rely on it.** The page has a restore panel: load
+the file back, enter the password, and confirm the recovered phrase and address
+match — while the original is still on screen. An untested backup is not a backup.
+
 ## Verify what you downloaded (reproducible build)
 
 The build is byte-deterministic: rebuilding from source produces an identical
@@ -58,7 +94,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: 6b663f4ddea98d7f447af50d6fb3b4395c13f881bb59f65d0f5a80468ebce3e4
+# expected: 25d7c94de7356e5be0c2068a10f02b23b34123ea06b57c8544344becd58b29c6
 ```
 
 Or rebuild it yourself and compare:

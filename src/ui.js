@@ -1,5 +1,14 @@
 (function(){
   const $ = s => document.querySelector(s);
+  let current = null;
+
+  function download(name, text, type){
+    const b = new Blob([text], {type: type||'application/json'});
+    const u = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    a.href = u; a.download = name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(u), 1000);
+  }
 
   // --- crypto self-check against the official BIP-84 vector -----------------
   try {
@@ -59,6 +68,8 @@
     $('#addr').textContent  = w.address;
     $('#meta').textContent  = 'network: '+w.network+'  ·  path: '+w.path+
                               '  ·  passphrase: '+(w.passphraseUsed?'set (you MUST keep it)':'(none)');
+    current = w;
+    $('#dr').textContent = w.descriptorReceive;
     setupVerify(w.mnemonic);
     $('#out').style.display='block';
     $('#out').scrollIntoView({behavior:'smooth'});
@@ -83,12 +94,72 @@
     };
   }
 
+  // --- save encrypted backup / descriptor -----------------------------------
+  function filePassOk(){ const a=$('#fpass').value, b=$('#fpass2').value; return a.length>0 && a===b; }
+  function updateFilePass(){
+    const ok = filePassOk();
+    $('#fpwarn').style.display = (($('#fpass').value||$('#fpass2').value) && !ok) ? 'block' : 'none';
+    $('#savebk').disabled = !ok;
+  }
+  $('#fpass').addEventListener('input',updateFilePass);
+  $('#fpass2').addEventListener('input',updateFilePass);
+
+  $('#savebk').addEventListener('click', ()=>{
+    if(!current || !filePassOk()) return;
+    const blob = window.Alea.encryptBackup(current.mnemonic, $('#fpass').value, current);
+    download('alea-backup-'+current.network+'.json', JSON.stringify(blob,null,2));
+    $('#saveinfo').textContent = '✓ encrypted backup downloaded — test restoring it below before you rely on it';
+    $('#saveinfo').className = 'badge ok';
+  });
+
+  $('#savedesc').addEventListener('click', ()=>{
+    if(!current) return;
+    const txt = '# Alea watch-only descriptors ('+current.network+')\n'
+      + '# Import into Bitcoin Core (importdescriptors) or Sparrow. Contains NO private key.\n'
+      + 'receive: '+current.descriptorReceive+'\n'
+      + 'change:  '+current.descriptorChange+'\n';
+    download('alea-descriptor-'+current.network+'.txt', txt, 'text/plain');
+  });
+
+  // --- restore from an encrypted backup file --------------------------------
+  let loaded = null;
+  $('#bkfile').addEventListener('change', e=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try { loaded = JSON.parse(r.result);
+        $('#rinfo').textContent = 'loaded '+(loaded.network||'?')+' backup from '+(loaded.createdAt||'?')
+          + (loaded.passphraseUsed ? ' — this wallet HAS a BIP-39 passphrase, enter it below' : '');
+        $('#rinfo').className='badge ok';
+      } catch(err){ loaded=null; $('#rinfo').textContent='not a valid backup file'; $('#rinfo').className='badge bad'; }
+    };
+    r.readAsText(f);
+  });
+
+  $('#restore').addEventListener('click', ()=>{
+    if(!loaded){ $('#rinfo').textContent='choose a backup file first'; $('#rinfo').className='badge bad'; return; }
+    let out;
+    try { out = window.Alea.decryptBackup(loaded, $('#rpass').value); }
+    catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
+    const testnet = (loaded.network==='testnet');
+    const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
+    const match = d.address === loaded.address;
+    $('#rwords').textContent = out.mnemonic;
+    $('#raddr').textContent  = d.address + (match ? '  ✓ matches the backup' : '  ✗ DOES NOT match — wrong BIP-39 passphrase?');
+    $('#rout').style.display = 'block';
+    $('#rinfo').textContent = match ? '✓ restored and verified' : '✗ decrypted, but the address does not match the file';
+    $('#rinfo').className = 'badge '+(match?'ok':'bad');
+  });
+
   // --- wipe the screen ------------------------------------------------------
   $('#wipe').addEventListener('click', ()=>{
     mouse=[]; $('#mousebar').style.width='0%';
     ['#words','#addr','#meta','#vresult'].forEach(s=>{ $(s).textContent=''; });
     $('#vresult').className='';
-    ['#va1','#va2','#pass','#pass2','#dice'].forEach(s=>{ $(s).value=''; });
+    ['#va1','#va2','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
+    ['#rwords','#raddr','#saveinfo','#rinfo','#dr'].forEach(s=>{ $(s).textContent=''; });
+    $('#saveinfo').className=''; $('#rinfo').className='';
+    $('#rout').style.display='none'; current=null; loaded=null; updateFilePass();
     $('#out').style.display='none';
     updatePass();
     scrollTo({top:0,behavior:'smooth'});

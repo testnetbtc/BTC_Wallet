@@ -5,12 +5,13 @@
   "main": "index.js",
   "scripts": {
     "build": "node build.mjs && node assemble.mjs",
-    "test": "node src/selftest.mjs && node src/addrtest.mjs && node src/uitest.mjs"
+    "test": "node src/selftest.mjs && node src/addrtest.mjs && node src/backuptest.mjs && node src/uitest.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@noble/ciphers": "^0.5.3",
     "@noble/curves": "^1.4.2",
     "@noble/hashes": "^1.4.0",
     "@scure/base": "^1.1.6",
