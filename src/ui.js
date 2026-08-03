@@ -1,6 +1,8 @@
 (function(){
   const $ = s => document.querySelector(s);
   let current = null;
+  let selfCheckOk = false;   // latched: if the crypto self-check fails, generation
+                             // must stay disabled no matter what else happens.
 
   function download(name, text, type){
     const b = new Blob([text], {type: type||'application/json'});
@@ -17,6 +19,7 @@
       ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
       : '✗ crypto self-check FAILED — do not use this build';
     $('#selfcheck').className = vc.ok ? 'badge ok' : 'badge bad';
+    selfCheckOk = !!vc.ok;
     if(!vc.ok) $('#gen').disabled = true;
   } catch(e){
     $('#selfcheck').textContent = 'self-check error: '+e.message;
@@ -38,6 +41,7 @@
   function netmode(){
     const main = $('#net').value === 'mainnet';
     $('#netwarn').style.display = main ? 'block' : 'none';
+    if (!selfCheckOk) return;
     $('#gen').textContent = main ? 'Generate REAL mainnet wallet' : 'Generate wallet';
   }
   $('#net').addEventListener('change', netmode); netmode();
@@ -56,8 +60,9 @@
   function updatePass(){
     const ok = passOk();
     $('#passwarn').style.display = ok ? 'none' : 'block';
-    $('#gen').disabled = !ok;
-    $('#gen').textContent = !ok ? 'Passphrases do not match'
+    $('#gen').disabled = !ok || !selfCheckOk;
+    $('#gen').textContent = !selfCheckOk ? 'Disabled — crypto self-check failed'
+      : !ok ? 'Passphrases do not match'
       : ($('#net').value === 'mainnet' ? 'Generate REAL mainnet wallet' : 'Generate wallet');
   }
   $('#pass').addEventListener('input',updatePass);
@@ -65,7 +70,7 @@
 
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
-    if(!passOk()) return;
+    if(!passOk() || !selfCheckOk) return;
     const testnet = $('#net').value==='testnet';
     const w = window.Alea.makeWallet({
       mouseBytes:new Uint8Array(mouse),
@@ -137,7 +142,7 @@
     const r = new FileReader();
     r.onload = () => {
       try { loaded = JSON.parse(r.result);
-        $('#rinfo').textContent = 'loaded '+(loaded.network||'?')+' backup from '+(loaded.createdAt||'?')
+        $('#rinfo').textContent = 'loaded '+(loaded.network||'?')+' backup (v'+(loaded.version||'?')+') from '+(loaded.createdAt||'?')
           + (loaded.passphraseUsed ? ' — this wallet HAS a BIP-39 passphrase, enter it below' : '');
         $('#rinfo').className='badge ok';
       } catch(err){ loaded=null; $('#rinfo').textContent='not a valid backup file'; $('#rinfo').className='badge bad'; }
@@ -152,7 +157,7 @@
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
     const testnet = (loaded.network==='testnet');
     const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
-    const match = d.address === loaded.address;
+    const match = window.Alea.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
     $('#raddr').textContent  = d.address + (match ? '  ✓ matches the backup' : '  ✗ DOES NOT match — wrong BIP-39 passphrase?');
     $('#rout').style.display = 'block';

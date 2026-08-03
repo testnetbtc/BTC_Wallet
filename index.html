@@ -6063,11 +6063,14 @@ zoo`.split("\n");
     const ct = xchacha20poly1305(key, nonce).encrypt(utf8ToBytes(mnemonic));
     return {
       format: "alea-backup",
-      version: 1,
+      version: 2,
       warning: "Encrypted BIP-39 recovery phrase. The BIP-39 passphrase (if used) is NOT stored here by design.",
+      // v2: store sha256(address) rather than the address itself. Restore can still
+      // verify by comparing hashes, but anyone who obtains the file WITHOUT the
+      // password no longer learns which on-chain address it belongs to.
       network: meta.network,
       path: meta.path,
-      address: meta.address,
+      addressHash: bytesToHex(sha256(utf8ToBytes(meta.address))),
       passphraseUsed: !!meta.passphraseUsed,
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       kdf: { ...KDF, salt: bytesToHex(salt2) },
@@ -6077,7 +6080,7 @@ zoo`.split("\n");
   }
   function decryptBackup(obj, password) {
     if (!obj || obj.format !== "alea-backup") throw new Error("not an Alea backup file");
-    if (obj.version !== 1) throw new Error("unsupported backup version: " + obj.version);
+    if (obj.version !== 1 && obj.version !== 2) throw new Error("unsupported backup version: " + obj.version);
     const k = obj.kdf, c = obj.cipher;
     if (k.name !== "scrypt") throw new Error("unsupported KDF: " + k.name);
     if (c.name !== "xchacha20poly1305") throw new Error("unsupported cipher: " + c.name);
@@ -6128,6 +6131,11 @@ zoo`.split("\n");
   }
   function withChecksum(desc) {
     return desc + "#" + descriptorChecksum(desc);
+  }
+  function verifyAddress(obj, address) {
+    if (obj.addressHash) return bytesToHex(sha256(utf8ToBytes(address))) === obj.addressHash;
+    if (obj.address) return address === obj.address;
+    return false;
   }
 
   // src/app.js
@@ -6181,7 +6189,7 @@ zoo`.split("\n");
     };
   }
   if (typeof window !== "undefined") {
-    window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, _vectorCheck };
+    window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, _vectorCheck };
   }
   function _vectorCheck() {
     const m = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -6196,6 +6204,8 @@ zoo`.split("\n");
 <script>(function(){
   const $ = s => document.querySelector(s);
   let current = null;
+  let selfCheckOk = false;   // latched: if the crypto self-check fails, generation
+                             // must stay disabled no matter what else happens.
 
   function download(name, text, type){
     const b = new Blob([text], {type: type||'application/json'});
@@ -6212,6 +6222,7 @@ zoo`.split("\n");
       ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
       : '✗ crypto self-check FAILED — do not use this build';
     $('#selfcheck').className = vc.ok ? 'badge ok' : 'badge bad';
+    selfCheckOk = !!vc.ok;
     if(!vc.ok) $('#gen').disabled = true;
   } catch(e){
     $('#selfcheck').textContent = 'self-check error: '+e.message;
@@ -6233,6 +6244,7 @@ zoo`.split("\n");
   function netmode(){
     const main = $('#net').value === 'mainnet';
     $('#netwarn').style.display = main ? 'block' : 'none';
+    if (!selfCheckOk) return;
     $('#gen').textContent = main ? 'Generate REAL mainnet wallet' : 'Generate wallet';
   }
   $('#net').addEventListener('change', netmode); netmode();
@@ -6251,8 +6263,9 @@ zoo`.split("\n");
   function updatePass(){
     const ok = passOk();
     $('#passwarn').style.display = ok ? 'none' : 'block';
-    $('#gen').disabled = !ok;
-    $('#gen').textContent = !ok ? 'Passphrases do not match'
+    $('#gen').disabled = !ok || !selfCheckOk;
+    $('#gen').textContent = !selfCheckOk ? 'Disabled — crypto self-check failed'
+      : !ok ? 'Passphrases do not match'
       : ($('#net').value === 'mainnet' ? 'Generate REAL mainnet wallet' : 'Generate wallet');
   }
   $('#pass').addEventListener('input',updatePass);
@@ -6260,7 +6273,7 @@ zoo`.split("\n");
 
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
-    if(!passOk()) return;
+    if(!passOk() || !selfCheckOk) return;
     const testnet = $('#net').value==='testnet';
     const w = window.Alea.makeWallet({
       mouseBytes:new Uint8Array(mouse),
@@ -6332,7 +6345,7 @@ zoo`.split("\n");
     const r = new FileReader();
     r.onload = () => {
       try { loaded = JSON.parse(r.result);
-        $('#rinfo').textContent = 'loaded '+(loaded.network||'?')+' backup from '+(loaded.createdAt||'?')
+        $('#rinfo').textContent = 'loaded '+(loaded.network||'?')+' backup (v'+(loaded.version||'?')+') from '+(loaded.createdAt||'?')
           + (loaded.passphraseUsed ? ' — this wallet HAS a BIP-39 passphrase, enter it below' : '');
         $('#rinfo').className='badge ok';
       } catch(err){ loaded=null; $('#rinfo').textContent='not a valid backup file'; $('#rinfo').className='badge bad'; }
@@ -6347,7 +6360,7 @@ zoo`.split("\n");
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
     const testnet = (loaded.network==='testnet');
     const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
-    const match = d.address === loaded.address;
+    const match = window.Alea.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
     $('#raddr').textContent  = d.address + (match ? '  ✓ matches the backup' : '  ✗ DOES NOT match — wrong BIP-39 passphrase?');
     $('#rout').style.display = 'block';

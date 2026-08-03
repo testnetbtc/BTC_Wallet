@@ -19,9 +19,13 @@ export function encryptBackup(mnemonic, password, meta) {
   const key   = scrypt(utf8ToBytes(password), salt, KDF);
   const ct    = xchacha20poly1305(key, nonce).encrypt(utf8ToBytes(mnemonic));
   return {
-    format: 'alea-backup', version: 1,
+    format: 'alea-backup', version: 2,
     warning: 'Encrypted BIP-39 recovery phrase. The BIP-39 passphrase (if used) is NOT stored here by design.',
-    network: meta.network, path: meta.path, address: meta.address,
+    // v2: store sha256(address) rather than the address itself. Restore can still
+    // verify by comparing hashes, but anyone who obtains the file WITHOUT the
+    // password no longer learns which on-chain address it belongs to.
+    network: meta.network, path: meta.path,
+    addressHash: bytesToHex(sha256(utf8ToBytes(meta.address))),
     passphraseUsed: !!meta.passphraseUsed,
     createdAt: new Date().toISOString(),
     kdf: { ...KDF, salt: bytesToHex(salt) },
@@ -32,7 +36,7 @@ export function encryptBackup(mnemonic, password, meta) {
 
 export function decryptBackup(obj, password) {
   if (!obj || obj.format !== 'alea-backup') throw new Error('not an Alea backup file');
-  if (obj.version !== 1) throw new Error('unsupported backup version: ' + obj.version);
+  if (obj.version !== 1 && obj.version !== 2) throw new Error('unsupported backup version: ' + obj.version);
   const k = obj.kdf, c = obj.cipher;
   if (k.name !== 'scrypt') throw new Error('unsupported KDF: ' + k.name);
   if (c.name !== 'xchacha20poly1305') throw new Error('unsupported cipher: ' + c.name);
@@ -77,3 +81,11 @@ export function descriptorChecksum(desc) {
 }
 
 export function withChecksum(desc) { return desc + '#' + descriptorChecksum(desc); }
+
+// Verify a restored address against a backup file. Handles v2 (address hash) and
+// v1 (cleartext address, kept for backwards compatibility with early backups).
+export function verifyAddress(obj, address) {
+  if (obj.addressHash) return bytesToHex(sha256(utf8ToBytes(address))) === obj.addressHash;
+  if (obj.address)     return address === obj.address;
+  return false;
+}

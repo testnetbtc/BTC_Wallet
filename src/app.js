@@ -6,7 +6,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
 import { bech32 } from '@scure/base';
-import { encryptBackup, decryptBackup, withChecksum } from './backup.js';
+import { encryptBackup, decryptBackup, withChecksum, verifyAddress } from './backup.js';
 
 const hash160 = (b) => ripemd160(sha256(b));
 
@@ -75,7 +75,7 @@ export function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
 
 // expose for the page + a self-check hook
 if (typeof window !== 'undefined') {
-  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, _vectorCheck };
+  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, _vectorCheck };
 }
 
 // Correctness self-check the PAGE runs on load against the official BIP-84 vector.

@@ -99,6 +99,12 @@ The descriptor checksum implementation is differential-tested against Bitcoin
 Core's own reference implementation (`test/framework/descriptors.py`) and matches
 byte-for-byte across a range of descriptors.
 
+**Backup privacy (v2).** The file stores `sha256(address)` rather than the address
+itself, so anyone who obtains the backup *without* the password cannot learn which
+on-chain address it belongs to (and therefore cannot look up its balance). Restore
+still verifies by comparing hashes. Version 1 backups, which stored the address in
+cleartext, are still readable.
+
 **Test your backup before you rely on it.** The page has a restore panel: load
 the file back, enter the password, and confirm the recovered phrase and address
 match — while the original is still on screen. An untested backup is not a backup.
@@ -111,7 +117,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: e4102add53e341b58ed2607dc5c7c8aa66a3e3895a528c56cf1b847b6ed79eac
+# expected: df8e7cafebacff20474bdff9b32e498533eb209eef9b7711dd974d6958a0af7c
 ```
 
 Or rebuild it yourself and compare:
@@ -123,13 +129,20 @@ If the hash differs from the committed file, do not use it.
 
 ## Tests
 
-`npm test` runs three gates, all of which must pass:
+`npm test` runs seven gates, all of which must pass:
 
 1. **BIP-39 vectors** — official Trezor test vector (mnemonic + seed, passphrase "TREZOR").
 2. **BIP-84 vector** — derives `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu` from the
    spec's reference mnemonic.
-3. **UI logic (headless)** — passphrase-mismatch blocks generation, backup
-   verification rejects wrong words and accepts right ones, wipe clears secrets.
+3. **Network correctness** — mainnet yields `xpub`/`bc1`, testnet yields `tpub`/`tb1`.
+4. **Backup round-trip** — encrypt, decrypt, wrong password rejected, mistyped
+   BIP-39 passphrase detected via address mismatch.
+5. **Backup privacy** — the file leaks neither the mnemonic nor the address.
+6. **Self-check latch (sabotage test)** — the self-check is deliberately forced to
+   fail, and the test asserts that no interaction can re-enable generation.
+7. **UI logic (headless)** — passphrase-mismatch blocks generation, backup
+   verification rejects wrong words and accepts right ones, save/restore works,
+   wipe clears secrets.
 
 ## Build
 
