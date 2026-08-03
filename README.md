@@ -1,5 +1,12 @@
 # Alea — a 2014-style Bitcoin wallet, done right
 
+**Live (testnet/demo): <https://alea-wallet.pages.dev>**
+
+> The hosted copy is for demonstration and testnet. For a wallet you will fund,
+> **download `index.html` and open it offline** — a hosted key generator means
+> re-fetching code from a server on every visit, and whoever controls that server
+> controls your keys. The published hash below lets you verify any copy you download.
+
 An instant, frictionless Bitcoin seed generator in a single offline HTML page —
 the RushWallet-era *user experience*, rebuilt on entropy you can actually trust.
 
@@ -143,6 +150,20 @@ If the hash differs from the committed file, do not use it.
 7. **UI logic (headless)** — passphrase-mismatch blocks generation, backup
    verification rejects wrong words and accepts right ones, save/restore works,
    wipe clears secrets.
+
+## Deploying
+
+The page is a single self-contained file; hosting needs no build step.
+
+```
+cp index.html public/
+npx wrangler pages deploy public --project-name=alea-wallet --branch=main
+```
+
+After deploying, verify the live page matches the audited build:
+```
+diff <(curl -s https://alea-wallet.pages.dev | sha256sum) <(sha256sum < index.html)
+```
 
 ## Build
 
