@@ -51,6 +51,23 @@ download and run offline.
 
 
 
+
+## Testnet and mainnet
+
+Alea generates wallets for **both** networks — the selector at the top of the
+page switches between them. It **defaults to testnet on purpose**, so you cannot
+create a real wallet by accident while experimenting. Choosing mainnet shows a
+warning and relabels the button.
+
+| | Testnet | Mainnet |
+|---|---|---|
+| Address | `tb1...` | `bc1...` |
+| Derivation | `m/84'/1'/0'/0/0` | `m/84'/0'/0'/0/0` |
+| Extended key | `tpub...` | `xpub...` |
+| Coins | free, worthless | real |
+
+(The GitHub account name is unrelated to what the tool produces.)
+
 ## Saving your wallet to disk
 
 **Why there is no `wallet.dat`.** `wallet.dat` is Bitcoin Core's internal
@@ -94,7 +111,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: 25d7c94de7356e5be0c2068a10f02b23b34123ea06b57c8544344becd58b29c6
+# expected: e4102add53e341b58ed2607dc5c7c8aa66a3e3895a528c56cf1b847b6ed79eac
 ```
 
 Or rebuild it yourself and compare:

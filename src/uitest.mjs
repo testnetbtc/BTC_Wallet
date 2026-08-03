@@ -7,7 +7,7 @@ const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
 for (const id of ['selfcheck','offline','pad','mousebar','net','dice','pass','pass2',
                   'passwarn','gen','out','words','addr','meta','vq1','vq2','va1','va2',
                   'vcheck','vresult','wipe','dr','fpass','fpass2','fpwarn','savebk','savedesc',
-                  'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr'])
+                  'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr','netwarn'])
   els['#'+id] = mk();
 els['#net'].value = 'testnet';
 

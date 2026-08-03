@@ -57,6 +57,7 @@ money you would miss.
 <div class="card no-print">
 <label>Network</label>
 <select id="net"><option value="testnet" selected>Testnet (recommended for testing)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. Generate offline, and do not fund it beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 
 <div class="card no-print">

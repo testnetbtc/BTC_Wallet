@@ -34,6 +34,14 @@
   }
   net(); addEventListener('online',net); addEventListener('offline',net);
 
+  // --- loud warning when the user switches to mainnet -----------------------
+  function netmode(){
+    const main = $('#net').value === 'mainnet';
+    $('#netwarn').style.display = main ? 'block' : 'none';
+    $('#gen').textContent = main ? 'Generate REAL mainnet wallet' : 'Generate wallet';
+  }
+  $('#net').addEventListener('change', netmode); netmode();
+
   // --- optional entropy stirring (mouse / touch) ---------------------------
   let mouse=[];
   function stir(x,y){
@@ -49,7 +57,8 @@
     const ok = passOk();
     $('#passwarn').style.display = ok ? 'none' : 'block';
     $('#gen').disabled = !ok;
-    $('#gen').textContent = ok ? 'Generate wallet' : 'Passphrases do not match';
+    $('#gen').textContent = !ok ? 'Passphrases do not match'
+      : ($('#net').value === 'mainnet' ? 'Generate REAL mainnet wallet' : 'Generate wallet');
   }
   $('#pass').addEventListener('input',updatePass);
   $('#pass2').addEventListener('input',updatePass);

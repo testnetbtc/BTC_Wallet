@@ -33,9 +33,18 @@ export function buildEntropy({ mouseBytes, diceString }) {
   return sha256(concatBytes(...parts));           // 32 bytes = 256 bits
 }
 
+// BIP-32 serialization version bytes. Testnet extended keys must serialize as
+// tpub/tprv, not xpub/xprv, or descriptor imports into Sparrow/Core can be
+// rejected or misread. (Address derivation is unaffected -- it uses the raw
+// pubkey -- so this changes only the exported descriptor string.)
+const VERSIONS = {
+  mainnet: { private: 0x0488ade4, public: 0x0488b21e },
+  testnet: { private: 0x04358394, public: 0x043587cf },
+};
+
 export function deriveFrom(mnemonic, passphrase, testnet) {
   const seed = mnemonicToSeedSync(mnemonic, passphrase || '');
-  const root = HDKey.fromMasterSeed(seed);
+  const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
   const coin = testnet ? 1 : 0;
   const path = `m/84'/${coin}'/0'/0/0`;
   return { address: p2wpkh(root.derive(path).publicKey, testnet), path };
@@ -45,7 +54,7 @@ export function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
   const entropy = buildEntropy({ mouseBytes, diceString });
   const mnemonic = entropyToMnemonic(entropy, wordlist);       // 24 words
   const seed = mnemonicToSeedSync(mnemonic, passphrase || ''); // passphrase = BIP-39 25th word
-  const root = HDKey.fromMasterSeed(seed);
+  const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
   const coin = testnet ? 1 : 0;
   const acctPath = `m/84'/${coin}'/0'`;
   const path = `${acctPath}/0/0`;

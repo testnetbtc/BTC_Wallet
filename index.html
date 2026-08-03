@@ -54,6 +54,7 @@ money you would miss.
 <div class="card no-print">
 <label>Network</label>
 <select id="net"><option value="testnet" selected>Testnet (recommended for testing)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. Generate offline, and do not fund it beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 
 <div class="card no-print">
@@ -6146,9 +6147,13 @@ zoo`.split("\n");
     ];
     return sha256(concatBytes(...parts));
   }
+  var VERSIONS = {
+    mainnet: { private: 76066276, public: 76067358 },
+    testnet: { private: 70615956, public: 70617039 }
+  };
   function deriveFrom(mnemonic, passphrase, testnet) {
     const seed = mnemonicToSeedSync(mnemonic, passphrase || "");
-    const root = HDKey.fromMasterSeed(seed);
+    const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
     const coin = testnet ? 1 : 0;
     const path = `m/84'/${coin}'/0'/0/0`;
     return { address: p2wpkh(root.derive(path).publicKey, testnet), path };
@@ -6157,7 +6162,7 @@ zoo`.split("\n");
     const entropy = buildEntropy({ mouseBytes, diceString });
     const mnemonic = entropyToMnemonic(entropy, wordlist);
     const seed = mnemonicToSeedSync(mnemonic, passphrase || "");
-    const root = HDKey.fromMasterSeed(seed);
+    const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
     const coin = testnet ? 1 : 0;
     const acctPath = `m/84'/${coin}'/0'`;
     const path = `${acctPath}/0/0`;
@@ -6224,6 +6229,14 @@ zoo`.split("\n");
   }
   net(); addEventListener('online',net); addEventListener('offline',net);
 
+  // --- loud warning when the user switches to mainnet -----------------------
+  function netmode(){
+    const main = $('#net').value === 'mainnet';
+    $('#netwarn').style.display = main ? 'block' : 'none';
+    $('#gen').textContent = main ? 'Generate REAL mainnet wallet' : 'Generate wallet';
+  }
+  $('#net').addEventListener('change', netmode); netmode();
+
   // --- optional entropy stirring (mouse / touch) ---------------------------
   let mouse=[];
   function stir(x,y){
@@ -6239,7 +6252,8 @@ zoo`.split("\n");
     const ok = passOk();
     $('#passwarn').style.display = ok ? 'none' : 'block';
     $('#gen').disabled = !ok;
-    $('#gen').textContent = ok ? 'Generate wallet' : 'Passphrases do not match';
+    $('#gen').textContent = !ok ? 'Passphrases do not match'
+      : ($('#net').value === 'mainnet' ? 'Generate REAL mainnet wallet' : 'Generate wallet');
   }
   $('#pass').addEventListener('input',updatePass);
   $('#pass2').addEventListener('input',updatePass);
