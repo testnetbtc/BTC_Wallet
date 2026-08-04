@@ -40,6 +40,14 @@ export function decryptBackup(obj, password) {
   const k = obj.kdf, c = obj.cipher;
   if (k.name !== 'scrypt') throw new Error('unsupported KDF: ' + k.name);
   if (c.name !== 'xchacha20poly1305') throw new Error('unsupported cipher: ' + c.name);
+  // Bound the KDF parameters BEFORE running scrypt. A tampered/malicious backup
+  // file could otherwise set N huge (e.g. 2^30) and exhaust memory / hang the tab
+  // on restore. Accept only the sane range around our own defaults.
+  const isPow2 = (n) => Number.isInteger(n) && n > 1 && (n & (n - 1)) === 0;
+  if (!isPow2(k.N) || k.N < 16384 || k.N > 1048576) throw new Error('backup KDF parameter N out of range');
+  if (!Number.isInteger(k.r) || k.r < 1 || k.r > 32)  throw new Error('backup KDF parameter r out of range');
+  if (!Number.isInteger(k.p) || k.p < 1 || k.p > 16)  throw new Error('backup KDF parameter p out of range');
+  if (k.dkLen !== 32) throw new Error('backup KDF parameter dkLen must be 32');
   const key = scrypt(utf8ToBytes(password), hexToBytes(k.salt),
                      { N: k.N, r: k.r, p: k.p, dkLen: k.dkLen });
   let pt;

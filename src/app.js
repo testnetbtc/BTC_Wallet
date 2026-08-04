@@ -1,10 +1,10 @@
 // Alea — wallet seed generator core. Built on audited primitives only.
-import { entropyToMnemonic, mnemonicToSeedSync, generateMnemonic } from '@scure/bip39';
+import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { HDKey } from '@scure/bip32';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
-import { bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
+import { concatBytes, utf8ToBytes } from '@noble/hashes/utils';
 import { bech32 } from '@scure/base';
 import { encryptBackup, decryptBackup, withChecksum, verifyAddress } from './backup.js';
 
