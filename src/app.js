@@ -4,7 +4,7 @@ import { wordlist } from '@scure/bip39/wordlists/english';
 import { HDKey } from '@scure/bip32';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
-import { concatBytes, utf8ToBytes } from '@noble/hashes/utils';
+import { concatBytes, utf8ToBytes, bytesToHex } from '@noble/hashes/utils';
 import { bech32 } from '@scure/base';
 import { encryptBackup, decryptBackup, withChecksum, verifyAddress } from './backup.js';
 
@@ -50,12 +50,20 @@ export function deriveFrom(mnemonic, passphrase, testnet) {
   return { address: p2wpkh(root.derive(path).publicKey, testnet), path };
 }
 
-export function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
+// `network` is 'mainnet' | 'testnet3' | 'testnet4'. IMPORTANT HONESTY NOTE:
+// testnet3 and testnet4 derive IDENTICALLY -- both use BIP-44 coin type 1', the
+// `tb` bech32 prefix, and tpub serialization, so the seed/address/descriptor are
+// byte-for-byte the same. The label records only which test CHAIN you intend to
+// broadcast on; it changes nothing about the keys. (Legacy callers may still pass
+// `testnet:true`, which maps to 'testnet3'.)
+export function makeWallet({ mouseBytes, diceString, passphrase, network, testnet }) {
+  if (!network) network = testnet ? 'testnet3' : 'mainnet';
+  const isTestnet = network !== 'mainnet';
   const entropy = buildEntropy({ mouseBytes, diceString });
   const mnemonic = entropyToMnemonic(entropy, wordlist);       // 24 words
   const seed = mnemonicToSeedSync(mnemonic, passphrase || ''); // passphrase = BIP-39 25th word
-  const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
-  const coin = testnet ? 1 : 0;
+  const root = HDKey.fromMasterSeed(seed, isTestnet ? VERSIONS.testnet : VERSIONS.mainnet);
+  const coin = isTestnet ? 1 : 0;
   const acctPath = `m/84'/${coin}'/0'`;
   const path = `${acctPath}/0/0`;
   const child = root.derive(path);
@@ -64,18 +72,48 @@ export function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
   const origin = `[${fp}/84h/${coin}h/0h]`;
   return {
     mnemonic,
+    entropyHex: bytesToHex(entropy),          // the 256-bit root, for verification
     passphraseUsed: !!(passphrase && passphrase.length),
     path,
-    address: p2wpkh(child.publicKey, testnet),
-    network: testnet ? 'testnet' : 'mainnet',
+    address: p2wpkh(child.publicKey, isTestnet),
+    network,
     descriptorReceive: withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/0/*)`),
     descriptorChange:  withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/1/*)`),
   };
 }
 
+// RNG liveness / sanity smoke test. Draws fresh bytes from the SAME CSPRNG the
+// wallet uses (crypto.getRandomValues) and runs a monobit (bit-balance) plus
+// byte-uniformity check. It detects a GROSSLY broken or stuck RNG -- all-zeros, a
+// constant, or a heavy bias. It CANNOT prove cryptographic quality: any competent
+// PRNG, secure or not, passes these. The real assurance is the source and this
+// page's reproducible build, not a statistical test on the output.
+export function rngSelfTest(nBytes = 8192) {
+  const buf = new Uint8Array(nBytes);
+  crypto.getRandomValues(buf);
+  const freq = new Uint32Array(256);
+  let ones = 0;
+  for (let i = 0; i < nBytes; i++) {
+    let b = buf[i];
+    freq[b]++;
+    b = b - ((b >> 1) & 0x55);                // popcount of the byte
+    b = (b & 0x33) + ((b >> 2) & 0x33);
+    ones += (b + (b >> 4)) & 0x0f;
+  }
+  const bits = nBytes * 8;
+  const proportion = ones / bits;
+  const sigma = 0.5 * Math.sqrt(bits);
+  const z = Math.abs(ones - bits / 2) / sigma;  // monobit z-score
+  let distinct = 0, maxFreq = 0;
+  for (let v = 0; v < 256; v++) { if (freq[v]) distinct++; if (freq[v] > maxFreq) maxFreq = freq[v]; }
+  const monobitOk = z < 4;                        // ~1-in-16000 false fail
+  const notStuck = distinct > 200 && maxFreq < (nBytes / 256) * 4;
+  return { ok: monobitOk && notStuck, nBytes, bits, ones, proportion, z, distinct, monobitOk, notStuck };
+}
+
 // expose for the page + a self-check hook
 if (typeof window !== 'undefined') {
-  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, _vectorCheck };
+  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, _vectorCheck };
 }
 
 // Correctness self-check the PAGE runs on load against the official BIP-84 vector.

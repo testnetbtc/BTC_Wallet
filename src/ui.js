@@ -75,15 +75,23 @@
   $('#pass').addEventListener('input',updatePass);
   $('#pass2').addEventListener('input',updatePass);
 
+  // --- RNG sanity smoke test (honest: liveness, not a quality proof) --------
+  $('#rngtest').addEventListener('click', ()=>{
+    const r = window.Alea.rngSelfTest(8192);
+    $('#rngresult').textContent = (r.ok ? '✓ RNG sanity PASS' : '✗ RNG sanity FAIL')
+      + ' — '+r.bits+' bits sampled, '+(r.proportion*100).toFixed(2)+'% ones (want ~50%), '
+      + r.distinct+'/256 byte values seen. Catches a broken RNG; not a proof of quality.';
+    $('#rngresult').className = 'badge '+(r.ok ? 'ok' : 'bad');
+  });
+
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
     if(!passOk() || !selfCheckOk) return;
-    const testnet = $('#net').value==='testnet';
     const w = window.Alea.makeWallet({
       mouseBytes:new Uint8Array(mouse),
       diceString:$('#dice').value.trim(),
       passphrase:$('#pass').value,
-      testnet
+      network:$('#net').value
     });
     $('#words').textContent = w.mnemonic;
     $('#addr').textContent  = w.address;
@@ -91,6 +99,7 @@
                               '  ·  passphrase: '+(w.passphraseUsed?'set (you MUST keep it)':'(none)');
     current = w;
     $('#dr').textContent = w.descriptorReceive;
+    $('#ehex').textContent = w.entropyHex;   // raw 256-bit root, for independent verification
     // Honest entropy summary: strength is ALWAYS 256 bits; show the sources that
     // were combined, never a variable "meter" that implies wiggling = security.
     const usedMouse = mouse.length > 0, usedDice = $('#dice').value.trim().length > 0,
@@ -173,7 +182,7 @@
     let out;
     try { out = window.Alea.decryptBackup(loaded, $('#rpass').value); }
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
-    const testnet = (loaded.network==='testnet');
+    const testnet = (loaded.network !== 'mainnet');  // 'testnet' (legacy), 'testnet3', 'testnet4'
     const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
     const match = window.Alea.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
@@ -186,7 +195,8 @@
   // --- wipe the screen ------------------------------------------------------
   $('#wipe').addEventListener('click', ()=>{
     resetMouse();
-    ['#words','#addr','#meta','#vresult','#entropy'].forEach(s=>{ $(s).textContent=''; });
+    ['#words','#addr','#meta','#vresult','#entropy','#ehex','#rngresult'].forEach(s=>{ $(s).textContent=''; });
+    $('#rngresult').className='';
     $('#vresult').className='';
     ['#va1','#va2','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
     ['#rwords','#raddr','#saveinfo','#rinfo','#dr'].forEach(s=>{ $(s).textContent=''; });

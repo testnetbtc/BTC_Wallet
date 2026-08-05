@@ -4,12 +4,12 @@ const els = {};
 const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
   style:{}, _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null,
   scrollIntoView(){}, });
-for (const id of ['selfcheck','offline','pad','mousebar','mousestat','mousereset','net','dice','pass','pass2',
-                  'passwarn','gen','out','words','addr','meta','entropy','vq1','vq2','va1','va2',
+for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset','net','dice','pass','pass2',
+                  'passwarn','gen','out','words','addr','meta','entropy','ehex','vq1','vq2','va1','va2',
                   'vcheck','vresult','wipe','dr','fpass','fpass2','fpwarn','savebk','savedesc',
                   'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr','netwarn'])
   els['#'+id] = mk();
-els['#net'].value = 'testnet';
+els['#net'].value = 'testnet3';
 
 globalThis.window = globalThis;
 globalThis.document = { querySelector: s => els[s] };
@@ -61,12 +61,32 @@ const words = els['#words'].textContent.split(' ');
 console.log('generated words  :', words.length, '| addr:', els['#addr'].textContent.slice(0,8)+'…');
 if (words.length !== 24) fail('expected 24 words');
 if (!els['#addr'].textContent.startsWith('tb1')) fail('expected testnet tb1 address');
+// raw entropy must be shown and consistent (64 hex chars = 256 bits)
+if (!/^[0-9a-f]{64}$/.test(els['#ehex'].textContent)) fail('raw entropy hex not shown / malformed');
+console.log('entropy hex shown:', els['#ehex'].textContent.slice(0,12)+'… (64 hex)');
 // entropy summary must be honest: always 256 bits, and reflect the sources used
 const esum = els['#entropy'].textContent;
 if (!/256 bits/.test(esum)) fail('entropy summary missing the 256-bit strength statement');
 if (!/mouse ✓/.test(esum) || !/dice ✓/.test(esum)) fail('entropy summary did not mark used sources');
 if (!/passphrase –/.test(esum)) fail('entropy summary marked an unused source as used');
 console.log('entropy summary  : ✓', JSON.stringify(esum.slice(0,46)+'…'));
+
+// 3b. RNG smoke test button must run and pass on a healthy CSPRNG
+els['#rngtest']._h.click();
+if (els['#rngresult'].className !== 'badge ok') fail('RNG smoke test did not pass on a healthy RNG');
+console.log('rng smoke test   : ✓', JSON.stringify(els['#rngresult'].textContent.slice(0,34)+'…'));
+
+// 3c. testnet3 vs testnet4 vs mainnet: labels differ, tb1/bc1 correct, and both
+//     testnets share BIP-44 coin type 1 (identical derivation family).
+const w3 = window.Alea.makeWallet({ network:'testnet3' });
+const w4 = window.Alea.makeWallet({ network:'testnet4' });
+const wm = window.Alea.makeWallet({ network:'mainnet'  });
+if (w3.network!=='testnet3' || w4.network!=='testnet4' || wm.network!=='mainnet') fail('network label not recorded');
+if (!w3.address.startsWith('tb1') || !w4.address.startsWith('tb1')) fail('testnet3/4 must yield tb1 addresses');
+if (!wm.address.startsWith('bc1')) fail('mainnet must yield a bc1 address');
+if (!w3.path.startsWith("m/84'/1'/") || !w4.path.startsWith("m/84'/1'/")) fail('testnet3/4 must use coin type 1');
+if (!wm.path.startsWith("m/84'/0'/")) fail('mainnet must use coin type 0');
+console.log('testnet3/4/main  : ✓ tb1/tb1/bc1, coin 1/1/0');
 
 // 4. backup verification: wrong answer rejected, right answer accepted
 const n1 = parseInt(els['#vq1'].textContent.replace(/\D/g,''),10);

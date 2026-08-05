@@ -4,7 +4,7 @@
 
 **[Security audit](AUDIT.md)** · **[How to verify this is genuine & untampered](VERIFY.md)**
 
-`index.html` SHA-256: `d6faaf410c382a284fac74b3bf2a75abf72b67f7a87f788cb90d70b9b93462da`
+`index.html` SHA-256: `96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f`
 
 > The hosted copy is for demonstration and testnet. For a wallet you will fund,
 > **download `index.html` and open it offline** — a hosted key generator means
@@ -66,16 +66,34 @@ download and run offline.
 ## Testnet and mainnet
 
 Alea generates wallets for **both** networks — the selector at the top of the
-page switches between them. It **defaults to testnet on purpose**, so you cannot
+page switches between them. It **defaults to Testnet3 on purpose**, so you cannot
 create a real wallet by accident while experimenting. Choosing mainnet shows a
 warning and relabels the button.
 
-| | Testnet | Mainnet |
+The selector offers **Testnet3** and **Testnet4** separately, but be clear about
+what that choice means: at the key level they are **identical**. Both use BIP-44
+coin type `1'`, both produce `tb1...` addresses, both serialize as `tpub`, so the
+generated seed, address, and descriptor are byte-for-byte the same. The label only
+records which test *chain* you intend to broadcast on (Testnet4 is the newer
+network introduced in Bitcoin Core 28); it changes nothing about the keys.
+
+| | Testnet3 / Testnet4 | Mainnet |
 |---|---|---|
-| Address | `tb1...` | `bc1...` |
+| Address | `tb1...` (identical for both) | `bc1...` |
 | Derivation | `m/84'/1'/0'/0/0` | `m/84'/0'/0'/0/0` |
 | Extended key | `tpub...` | `xpub...` |
 | Coins | free, worthless | real |
+
+### Checking the entropy
+
+You cannot statistically *prove* a single 256-bit value is "good" — any competent
+RNG produces 32 bytes that look perfectly random. Alea instead gives you two honest
+checks. The output reveals the **raw 256-bit entropy hex**: paste it (offline) into
+any independent BIP-39 tool and confirm it yields the same 24 words — the hex↔words
+map is a bijection, so this proves the page hid or weakened nothing. And a **"Test
+the RNG"** button runs a monobit + byte-uniformity smoke test that catches a grossly
+broken or stuck RNG. Neither is a cryptographic guarantee; the real assurance is the
+source (`crypto.getRandomValues`) plus the reproducible build.
 
 (The GitHub account name is unrelated to what the tool produces.)
 
@@ -128,7 +146,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: d6faaf410c382a284fac74b3bf2a75abf72b67f7a87f788cb90d70b9b93462da
+# expected: 96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f
 ```
 
 Or rebuild it yourself and compare:

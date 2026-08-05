@@ -56,13 +56,17 @@ money you would miss.
 
 <div class="card no-print">
 <label>Network</label>
-<select id="net"><option value="testnet" selected>Testnet (recommended for testing)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<select id="net"><option value="testnet3" selected>Testnet3 (recommended for testing)</option><option value="testnet4">Testnet4</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<p class="hint">Testnet3 and Testnet4 derive <b>identical</b> <code>tb1…</code> addresses (both are BIP-44 coin&nbsp;type&nbsp;1); the choice only records which test chain you mean to broadcast on. Mainnet uses <code>bc1…</code>.</p>
 <div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. Generate offline, and do not fund it beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 
 <div class="card no-print">
 <label>1 · Entropy root <span style="color:#7ee2a8;font-weight:400">— automatic</span></label>
 <p class="hint">256 bits are drawn from your operating system's cryptographic RNG (<code>crypto.getRandomValues</code>) the moment you press Generate. <b>This is the real security.</b> Everything below is optional defence-in-depth, folded in by hashing — it can only help, never hurt.</p>
+<button id="rngtest" class="sec" style="width:auto;margin-top:2px;padding:7px 14px;font-size:13px">Test the RNG now</button>
+<div style="margin-top:8px"><span id="rngresult" class="hint" style="margin:0"></span></div>
+<p class="hint" style="margin-top:6px">This draws fresh bytes and checks they are balanced. It catches a <b>grossly broken or stuck</b> RNG — it cannot prove cryptographic quality (any competent RNG passes). Real assurance is the source above plus this page's reproducible build.</p>
 </div>
 
 <div class="card no-print">
@@ -99,6 +103,9 @@ money you would miss.
 <div id="addr"></div>
 <p id="meta" class="hint" style="margin-top:8px"></p>
 <div id="entropy" class="hint" style="margin-top:10px;padding:11px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;line-height:1.5"></div>
+<label style="margin-top:16px" class="no-print">Raw 256-bit entropy <span style="color:#9aa7b4;font-weight:400">— advanced / verification</span></label>
+<p class="hint no-print">The same secret as your words, in hex. Offline, paste it into any independent BIP-39 tool: it must produce the exact 24 words above — proof this page hid or weakened nothing. Treat it as secret, exactly like the words.</p>
+<div id="ehex" class="no-print" style="font-family:ui-monospace,monospace;word-break:break-all;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:13px"></div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
 <label>Verify your backup</label>

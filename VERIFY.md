@@ -8,7 +8,7 @@ comfortable with — each one is stronger than the last.
 **The official SHA-256 of `index.html` for this release:**
 
 ```
-d6faaf410c382a284fac74b3bf2a75abf72b67f7a87f788cb90d70b9b93462da
+96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f
 ```
 
 The same hash is published in three independent places, so tampering with one is

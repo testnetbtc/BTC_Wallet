@@ -2,17 +2,31 @@
 
 **Artifact:** `index.html` (single self-contained page)
 **Version audited:** commit at time of this report
-**SHA-256 of `index.html`:** `d6faaf410c382a284fac74b3bf2a75abf72b67f7a87f788cb90d70b9b93462da`
+**SHA-256 of `index.html`:** `96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f`
 **Date:** 2026-08-05
 **Auditor:** Claude (Anthropic) — the same author that wrote the code.
 
-> **Revision 2026-08-05 (UX only, security model unchanged):** clarified that the
+> **Revision 2026-08-05a (UX only, security model unchanged):** clarified that the
 > mouse box only needs movement (no clicking/holding), added a Reset button for the
 > optional mouse stir, and added an honest entropy summary at the output stage. That
 > summary always states **256 bits — full strength** and merely ticks which optional
 > sources were folded in; it is deliberately *not* a variable "wiggle harder = safer"
 > meter (the RushWallet-style theatre this project exists to critique). The security
 > root remains `crypto.getRandomValues`; mouse/dice/passphrase remain defence-in-depth.
+>
+> **Revision 2026-08-05b (network labels + entropy verifiability, derivation unchanged):**
+> (1) The network selector now offers **Testnet3**, **Testnet4**, and Mainnet. Testnet3
+> and Testnet4 derive **identically** — both BIP-44 coin type `1'`, `tb` prefix, `tpub`
+> serialization — so seed/address/descriptor are byte-for-byte the same; the label only
+> records which test chain you intend to broadcast on. The restore path now treats any
+> non-mainnet label as testnet, preserving backward compatibility with old `"testnet"`
+> backups. (2) Added an honest way to **check the entropy**: the output reveals the raw
+> 256-bit entropy hex (paste into any independent BIP-39 tool offline — it must yield the
+> same 24 words; the hex↔words map is a bijection, so this proves the page hid/weakened
+> nothing), and a **"Test the RNG"** button runs a monobit + byte-uniformity smoke test.
+> That test is explicitly framed as detecting a *grossly broken/stuck* RNG only — it
+> cannot prove cryptographic quality, since any competent PRNG passes it. No change to
+> key derivation, costs, or the security root.
 
 ## ⚠️ Read this first: what this report is, and is not
 
@@ -27,7 +41,7 @@ can run without trusting this document at all:
 2. **Round-trip on testnet:** generate a wallet here, restore the 24 words in an
    independent wallet (Sparrow), confirm the same address. Independent software
    agreeing is proof no self-test can give.
-3. Have a real third party review the source (it is short: ~360 lines across
+3. Have a real third party review the source (it is short: ~440 lines across
    `app.js`, `backup.js`, `ui.js`).
 
 Until at least (1) and (2) are done, treat this as a **learning / testnet tool**
@@ -40,10 +54,10 @@ cryptographic libraries. Reviewed:
 
 | File | Lines | Role |
 |---|---|---|
-| `src/app.js` | ~90 | entropy, BIP-39/32 derivation, address, descriptors |
+| `src/app.js` | ~130 | entropy, BIP-39/32 derivation, address, descriptors, RNG smoke test |
 | `src/backup.js` | ~100 | encrypted backup, restore, descriptor checksum |
-| `src/ui.js` | ~180 | DOM handlers, no crypto of its own |
-| `assemble.mjs`, `build.mjs` | ~150 | deterministic bundle → `index.html` |
+| `src/ui.js` | ~210 | DOM handlers, no crypto of its own |
+| `assemble.mjs`, `build.mjs` | ~165 | deterministic bundle → `index.html` |
 
 **Cryptographic primitives are NOT hand-rolled.** They are the audited
 `@noble`/`@scure` libraries, pinned in `package-lock.json`:

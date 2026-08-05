@@ -53,13 +53,17 @@ money you would miss.
 
 <div class="card no-print">
 <label>Network</label>
-<select id="net"><option value="testnet" selected>Testnet (recommended for testing)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<select id="net"><option value="testnet3" selected>Testnet3 (recommended for testing)</option><option value="testnet4">Testnet4</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<p class="hint">Testnet3 and Testnet4 derive <b>identical</b> <code>tb1…</code> addresses (both are BIP-44 coin&nbsp;type&nbsp;1); the choice only records which test chain you mean to broadcast on. Mainnet uses <code>bc1…</code>.</p>
 <div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. Generate offline, and do not fund it beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 
 <div class="card no-print">
 <label>1 · Entropy root <span style="color:#7ee2a8;font-weight:400">— automatic</span></label>
 <p class="hint">256 bits are drawn from your operating system's cryptographic RNG (<code>crypto.getRandomValues</code>) the moment you press Generate. <b>This is the real security.</b> Everything below is optional defence-in-depth, folded in by hashing — it can only help, never hurt.</p>
+<button id="rngtest" class="sec" style="width:auto;margin-top:2px;padding:7px 14px;font-size:13px">Test the RNG now</button>
+<div style="margin-top:8px"><span id="rngresult" class="hint" style="margin:0"></span></div>
+<p class="hint" style="margin-top:6px">This draws fresh bytes and checks they are balanced. It catches a <b>grossly broken or stuck</b> RNG — it cannot prove cryptographic quality (any competent RNG passes). Real assurance is the source above plus this page's reproducible build.</p>
 </div>
 
 <div class="card no-print">
@@ -96,6 +100,9 @@ money you would miss.
 <div id="addr"></div>
 <p id="meta" class="hint" style="margin-top:8px"></p>
 <div id="entropy" class="hint" style="margin-top:10px;padding:11px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;line-height:1.5"></div>
+<label style="margin-top:16px" class="no-print">Raw 256-bit entropy <span style="color:#9aa7b4;font-weight:400">— advanced / verification</span></label>
+<p class="hint no-print">The same secret as your words, in hex. Offline, paste it into any independent BIP-39 tool: it must produce the exact 24 words above — proof this page hid or weakened nothing. Treat it as secret, exactly like the words.</p>
+<div id="ehex" class="no-print" style="font-family:ui-monospace,monospace;word-break:break-all;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:13px"></div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
 <label>Verify your backup</label>
@@ -6177,12 +6184,14 @@ zoo`.split("\n");
     const path = `m/84'/${coin}'/0'/0/0`;
     return { address: p2wpkh(root.derive(path).publicKey, testnet), path };
   }
-  function makeWallet({ mouseBytes, diceString, passphrase, testnet }) {
+  function makeWallet({ mouseBytes, diceString, passphrase, network, testnet }) {
+    if (!network) network = testnet ? "testnet3" : "mainnet";
+    const isTestnet = network !== "mainnet";
     const entropy = buildEntropy({ mouseBytes, diceString });
     const mnemonic = entropyToMnemonic(entropy, wordlist);
     const seed = mnemonicToSeedSync(mnemonic, passphrase || "");
-    const root = HDKey.fromMasterSeed(seed, testnet ? VERSIONS.testnet : VERSIONS.mainnet);
-    const coin = testnet ? 1 : 0;
+    const root = HDKey.fromMasterSeed(seed, isTestnet ? VERSIONS.testnet : VERSIONS.mainnet);
+    const coin = isTestnet ? 1 : 0;
     const acctPath = `m/84'/${coin}'/0'`;
     const path = `${acctPath}/0/0`;
     const child = root.derive(path);
@@ -6191,16 +6200,43 @@ zoo`.split("\n");
     const origin = `[${fp}/84h/${coin}h/0h]`;
     return {
       mnemonic,
+      entropyHex: bytesToHex(entropy),
+      // the 256-bit root, for verification
       passphraseUsed: !!(passphrase && passphrase.length),
       path,
-      address: p2wpkh(child.publicKey, testnet),
-      network: testnet ? "testnet" : "mainnet",
+      address: p2wpkh(child.publicKey, isTestnet),
+      network,
       descriptorReceive: withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/0/*)`),
       descriptorChange: withChecksum(`wpkh(${origin}${acct.publicExtendedKey}/1/*)`)
     };
   }
+  function rngSelfTest(nBytes = 8192) {
+    const buf = new Uint8Array(nBytes);
+    crypto.getRandomValues(buf);
+    const freq = new Uint32Array(256);
+    let ones = 0;
+    for (let i = 0; i < nBytes; i++) {
+      let b = buf[i];
+      freq[b]++;
+      b = b - (b >> 1 & 85);
+      b = (b & 51) + (b >> 2 & 51);
+      ones += b + (b >> 4) & 15;
+    }
+    const bits = nBytes * 8;
+    const proportion = ones / bits;
+    const sigma2 = 0.5 * Math.sqrt(bits);
+    const z = Math.abs(ones - bits / 2) / sigma2;
+    let distinct = 0, maxFreq = 0;
+    for (let v = 0; v < 256; v++) {
+      if (freq[v]) distinct++;
+      if (freq[v] > maxFreq) maxFreq = freq[v];
+    }
+    const monobitOk = z < 4;
+    const notStuck = distinct > 200 && maxFreq < nBytes / 256 * 4;
+    return { ok: monobitOk && notStuck, nBytes, bits, ones, proportion, z, distinct, monobitOk, notStuck };
+  }
   if (typeof window !== "undefined") {
-    window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, _vectorCheck };
+    window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, _vectorCheck };
   }
   function _vectorCheck() {
     const m = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -6289,15 +6325,23 @@ zoo`.split("\n");
   $('#pass').addEventListener('input',updatePass);
   $('#pass2').addEventListener('input',updatePass);
 
+  // --- RNG sanity smoke test (honest: liveness, not a quality proof) --------
+  $('#rngtest').addEventListener('click', ()=>{
+    const r = window.Alea.rngSelfTest(8192);
+    $('#rngresult').textContent = (r.ok ? '✓ RNG sanity PASS' : '✗ RNG sanity FAIL')
+      + ' — '+r.bits+' bits sampled, '+(r.proportion*100).toFixed(2)+'% ones (want ~50%), '
+      + r.distinct+'/256 byte values seen. Catches a broken RNG; not a proof of quality.';
+    $('#rngresult').className = 'badge '+(r.ok ? 'ok' : 'bad');
+  });
+
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
     if(!passOk() || !selfCheckOk) return;
-    const testnet = $('#net').value==='testnet';
     const w = window.Alea.makeWallet({
       mouseBytes:new Uint8Array(mouse),
       diceString:$('#dice').value.trim(),
       passphrase:$('#pass').value,
-      testnet
+      network:$('#net').value
     });
     $('#words').textContent = w.mnemonic;
     $('#addr').textContent  = w.address;
@@ -6305,6 +6349,7 @@ zoo`.split("\n");
                               '  ·  passphrase: '+(w.passphraseUsed?'set (you MUST keep it)':'(none)');
     current = w;
     $('#dr').textContent = w.descriptorReceive;
+    $('#ehex').textContent = w.entropyHex;   // raw 256-bit root, for independent verification
     // Honest entropy summary: strength is ALWAYS 256 bits; show the sources that
     // were combined, never a variable "meter" that implies wiggling = security.
     const usedMouse = mouse.length > 0, usedDice = $('#dice').value.trim().length > 0,
@@ -6387,7 +6432,7 @@ zoo`.split("\n");
     let out;
     try { out = window.Alea.decryptBackup(loaded, $('#rpass').value); }
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
-    const testnet = (loaded.network==='testnet');
+    const testnet = (loaded.network !== 'mainnet');  // 'testnet' (legacy), 'testnet3', 'testnet4'
     const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
     const match = window.Alea.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
@@ -6400,7 +6445,8 @@ zoo`.split("\n");
   // --- wipe the screen ------------------------------------------------------
   $('#wipe').addEventListener('click', ()=>{
     resetMouse();
-    ['#words','#addr','#meta','#vresult','#entropy'].forEach(s=>{ $(s).textContent=''; });
+    ['#words','#addr','#meta','#vresult','#entropy','#ehex','#rngresult'].forEach(s=>{ $(s).textContent=''; });
+    $('#rngresult').className='';
     $('#vresult').className='';
     ['#va1','#va2','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
     ['#rwords','#raddr','#saveinfo','#rinfo','#dr'].forEach(s=>{ $(s).textContent=''; });
