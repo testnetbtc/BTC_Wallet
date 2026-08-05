@@ -4,8 +4,8 @@ const els = {};
 const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
   style:{}, _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null,
   scrollIntoView(){}, });
-for (const id of ['selfcheck','offline','pad','mousebar','net','dice','pass','pass2',
-                  'passwarn','gen','out','words','addr','meta','vq1','vq2','va1','va2',
+for (const id of ['selfcheck','offline','pad','mousebar','mousestat','mousereset','net','dice','pass','pass2',
+                  'passwarn','gen','out','words','addr','meta','entropy','vq1','vq2','va1','va2',
                   'vcheck','vresult','wipe','dr','fpass','fpass2','fpwarn','savebk','savedesc',
                   'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr','netwarn'])
   els['#'+id] = mk();
@@ -45,14 +45,28 @@ els['#pass2'].value='hunter2'; els['#pass2']._h.input();
 if (els['#gen'].disabled) fail('matching passphrase left generate disabled');
 console.log('match re-enables :', !els['#gen'].disabled);
 
-// 3. stir some mouse entropy, then generate
+// 3. stir some mouse entropy; the reset button must clear it; then generate
+for (let i=0;i<50;i++) els['#pad']._h.mousemove({clientX:100+i, clientY:200+i});
+if (els['#mousebar'].style.width === '0%' || els['#mousestat'].textContent === 'optional stir: 0%')
+  fail('mouse stir readout did not update on movement');
+els['#mousereset']._h.click();
+if (els['#mousebar'].style.width !== '0%' || els['#mousestat'].textContent !== 'optional stir: 0%')
+  fail('reset button did not clear the mouse stir');
+console.log('mouse reset      : ✓ ('+els['#mousestat'].textContent+')');
 for (let i=0;i<50;i++) els['#pad']._h.mousemove({clientX:100+i, clientY:200+i});
 els['#dice'].value='4 2 6 1 3 5';
+els['#pass'].value=''; els['#pass2'].value=''; els['#pass']._h.input();  // no passphrase for this run
 els['#gen']._h.click();
 const words = els['#words'].textContent.split(' ');
 console.log('generated words  :', words.length, '| addr:', els['#addr'].textContent.slice(0,8)+'…');
 if (words.length !== 24) fail('expected 24 words');
 if (!els['#addr'].textContent.startsWith('tb1')) fail('expected testnet tb1 address');
+// entropy summary must be honest: always 256 bits, and reflect the sources used
+const esum = els['#entropy'].textContent;
+if (!/256 bits/.test(esum)) fail('entropy summary missing the 256-bit strength statement');
+if (!/mouse ✓/.test(esum) || !/dice ✓/.test(esum)) fail('entropy summary did not mark used sources');
+if (!/passphrase –/.test(esum)) fail('entropy summary marked an unused source as used');
+console.log('entropy summary  : ✓', JSON.stringify(esum.slice(0,46)+'…'));
 
 // 4. backup verification: wrong answer rejected, right answer accepted
 const n1 = parseInt(els['#vq1'].textContent.replace(/\D/g,''),10);

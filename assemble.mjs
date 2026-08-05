@@ -67,8 +67,13 @@ money you would miss.
 
 <div class="card no-print">
 <label>2 · Mouse motion <span style="color:#9aa7b4;font-weight:400">— optional</span></label>
-<p class="hint">Wiggle (or drag on touch) inside the box to stir in extra entropy.</p>
-<div id="pad">— wiggle here —</div><div class="bar"><div id="mousebar"></div></div>
+<p class="hint"><b>Just move</b> your mouse around inside the box — no clicking, no holding, just move it. (On a phone, drag your finger.) This stirs in extra entropy, but it is <b>optional</b>: your wallet is already 256-bit secure from step&nbsp;1 whether or not you move the mouse.</p>
+<div id="pad">— move your mouse in here (no clicking needed) —</div>
+<div class="bar"><div id="mousebar"></div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+<span id="mousestat" class="hint" style="margin:0">optional stir: 0%</span>
+<button id="mousereset" class="sec" style="width:auto;margin:0;padding:5px 12px;font-size:13px">Reset</button>
+</div>
 </div>
 
 <div class="card no-print">
@@ -93,6 +98,7 @@ money you would miss.
 <label style="margin-top:16px">First receive address</label>
 <div id="addr"></div>
 <p id="meta" class="hint" style="margin-top:8px"></p>
+<div id="entropy" class="hint" style="margin-top:10px;padding:11px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;line-height:1.5"></div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
 <label>Verify your backup</label>

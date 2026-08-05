@@ -2,9 +2,17 @@
 
 **Artifact:** `index.html` (single self-contained page)
 **Version audited:** commit at time of this report
-**SHA-256 of `index.html`:** `a62264a9b08d775b9b5255b711dee3a6509d2457cd62c03a9d859099e2e95d94`
-**Date:** 2026-08-04
+**SHA-256 of `index.html`:** `d6faaf410c382a284fac74b3bf2a75abf72b67f7a87f788cb90d70b9b93462da`
+**Date:** 2026-08-05
 **Auditor:** Claude (Anthropic) — the same author that wrote the code.
+
+> **Revision 2026-08-05 (UX only, security model unchanged):** clarified that the
+> mouse box only needs movement (no clicking/holding), added a Reset button for the
+> optional mouse stir, and added an honest entropy summary at the output stage. That
+> summary always states **256 bits — full strength** and merely ticks which optional
+> sources were folded in; it is deliberately *not* a variable "wiggle harder = safer"
+> meter (the RushWallet-style theatre this project exists to critique). The security
+> root remains `crypto.getRandomValues`; mouse/dice/passphrase remain defence-in-depth.
 
 ## ⚠️ Read this first: what this report is, and is not
 

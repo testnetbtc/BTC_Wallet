@@ -47,13 +47,20 @@
   $('#net').addEventListener('change', netmode); netmode();
 
   // --- optional entropy stirring (mouse / touch) ---------------------------
+  // NOTE: this is DEFENCE IN DEPTH, not the security root. The key always has
+  // 256 bits from crypto.getRandomValues; the mouse only stirs extra into the
+  // hash. So the readout is labelled "optional stir", never "key strength".
   let mouse=[];
   function stir(x,y){
     if(mouse.length<6000) mouse.push(x&255, y&255, (performance.now()*1000|0)&255);
-    $('#mousebar').style.width = Math.min(100, mouse.length/1800*100).toFixed(0)+'%';
+    const pct = Math.min(100, mouse.length/1800*100);
+    $('#mousebar').style.width = pct.toFixed(0)+'%';
+    $('#mousestat').textContent = 'optional stir: '+pct.toFixed(0)+'%'+(pct>=100?' (plenty — more adds nothing)':'');
   }
+  function resetMouse(){ mouse=[]; $('#mousebar').style.width='0%'; $('#mousestat').textContent='optional stir: 0%'; }
   $('#pad').addEventListener('mousemove', e=>stir(e.clientX,e.clientY));
   $('#pad').addEventListener('touchmove', e=>{ const t=e.touches[0]; if(t) stir(t.clientX|0,t.clientY|0); }, {passive:true});
+  $('#mousereset').addEventListener('click', resetMouse);
 
   // --- passphrase confirmation (a typo here = funds lost forever) ----------
   function passOk(){ const a=$('#pass').value, b=$('#pass2').value; return (!a && !b) || a===b; }
@@ -84,6 +91,17 @@
                               '  ·  passphrase: '+(w.passphraseUsed?'set (you MUST keep it)':'(none)');
     current = w;
     $('#dr').textContent = w.descriptorReceive;
+    // Honest entropy summary: strength is ALWAYS 256 bits; show the sources that
+    // were combined, never a variable "meter" that implies wiggling = security.
+    const usedMouse = mouse.length > 0, usedDice = $('#dice').value.trim().length > 0,
+          usedPass = $('#pass').value.length > 0;
+    const mark = b => b ? '✓' : '–';
+    $('#entropy').textContent =
+      'Entropy: 256 bits — full strength (the maximum a 24-word phrase can hold). '
+      + 'Sources hashed together: OS CSPRNG ✓ (always) · mouse '+mark(usedMouse)
+      + ' · dice '+mark(usedDice)+' · passphrase '+mark(usedPass)+'. '
+      + 'The result is 256-bit strong because the CSPRNG always is — the optional '
+      + 'sources can only add, never subtract, and cannot push it above 256.';
     setupVerify(w.mnemonic);
     $('#out').style.display='block';
     $('#out').scrollIntoView({behavior:'smooth'});
@@ -167,8 +185,8 @@
 
   // --- wipe the screen ------------------------------------------------------
   $('#wipe').addEventListener('click', ()=>{
-    mouse=[]; $('#mousebar').style.width='0%';
-    ['#words','#addr','#meta','#vresult'].forEach(s=>{ $(s).textContent=''; });
+    resetMouse();
+    ['#words','#addr','#meta','#vresult','#entropy'].forEach(s=>{ $(s).textContent=''; });
     $('#vresult').className='';
     ['#va1','#va2','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
     ['#rwords','#raddr','#saveinfo','#rinfo','#dr'].forEach(s=>{ $(s).textContent=''; });
