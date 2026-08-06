@@ -4,11 +4,12 @@ import { readFileSync } from 'fs';
 const els = {};
 const mk = () => ({ textContent:'', value:'', className:'', disabled:false, style:{},
   _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null, scrollIntoView(){} });
-for (const id of ['selfcheck','offline','pad','mousebar','net','dice','pass','pass2','passwarn',
-  'gen','out','words','addr','meta','vq1','vq2','va1','va2','vcheck','vresult','wipe','dr',
+for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset',
+  'net','dice','pass','pass2','passwarn',
+  'gen','out','words','addr','meta','entropy','ehex','vq1','vq2','va1','va2','vcheck','vresult','wipe','dr',
   'fpass','fpass2','fpwarn','savebk','savedesc','saveinfo','bkfile','rpass','rbip39','restore',
   'rinfo','rout','rwords','raddr','netwarn']) els['#'+id] = mk();
-els['#net'].value='testnet';
+els['#net'].value='testnet3';
 globalThis.window = globalThis;
 globalThis.document = { querySelector:s=>els[s], createElement:()=>({click(){},set href(v){},set download(v){}}) };
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
