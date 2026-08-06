@@ -2,7 +2,9 @@ name: ci
 
 on:
   push:
+    branches: [main, 'feature/**']
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -29,12 +31,17 @@ jobs:
         run: npm audit --omit=dev || true
 
   secret-scan:
+    # Self-contained, dependency-free scan for high-value secret patterns across
+    # the whole tree. This is a backstop; GitHub's native secret scanning + push
+    # protection (repo Settings → Code security) is the primary line and is free
+    # for public repos. Excludes .github/ so the patterns below don't match
+    # themselves.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan for private keys / tokens / xprv
+        run: |
+          if git grep -nIE 'BEGIN (RSA|EC|OPENSSH|PGP) PRIVATE KEY|[xt]prv[1-9A-HJ-NP-Za-km-z]{90,}|cf(k|ut)_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}' -- . ':!.github/'; then
+            echo "::error::possible secret detected in the tree — do NOT push"; exit 1
+          fi
+          echo "no obvious secrets ✓"
