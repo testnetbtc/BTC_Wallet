@@ -1,4 +1,4 @@
-import { makeWallet, deriveFrom } from '/home/faucet/BTC_Wallet/src/app.js';
+import { makeWallet, deriveFrom } from './app.js';
 const out = {};
 for (const network of ['mainnet', 'testnet3', 'testnet4']) {
   const w = makeWallet({ mouseBytes:new Uint8Array([1]), diceString:'', passphrase:'', network });
