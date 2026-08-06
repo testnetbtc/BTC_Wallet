@@ -4,7 +4,7 @@
 
 **[Security audit](AUDIT.md)** · **[How to verify this is genuine & untampered](VERIFY.md)**
 
-`index.html` SHA-256: `96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f`
+`index.html` SHA-256: `25dda510e7d6276e5f3a08f52561b12613f5c98561674aa9102b263219a72b9c`
 
 > The hosted copy is for demonstration and testnet. For a wallet you will fund,
 > **download `index.html` and open it offline** — a hosted key generator means
@@ -146,7 +146,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: 96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f
+# expected: 25dda510e7d6276e5f3a08f52561b12613f5c98561674aa9102b263219a72b9c
 ```
 
 Or rebuild it yourself and compare:

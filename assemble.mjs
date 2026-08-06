@@ -3,6 +3,7 @@ const bundle = readFileSync('dist/alea.bundle.js','utf8');
 const ui = readFileSync('src/ui.js','utf8');
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>Alea — a 2014-style Bitcoin wallet, done right</title>
 <style>
 :root{color-scheme:dark}
@@ -58,15 +59,15 @@ money you would miss.
 <label>Network</label>
 <select id="net"><option value="testnet3" selected>Testnet3 (recommended for testing)</option><option value="testnet4">Testnet4</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
 <p class="hint">Testnet3 and Testnet4 derive <b>identical</b> <code>tb1…</code> addresses (both are BIP-44 coin&nbsp;type&nbsp;1); the choice only records which test chain you mean to broadcast on. Mainnet uses <code>bc1…</code>.</p>
-<div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. Generate offline, and do not fund it beyond what you can afford to lose until this code has been independently reviewed.</div>
+<div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. For your safety, mainnet generation is <b>blocked while this browser is online</b>: download this page, disconnect from the internet, and reopen it offline. Do not fund a mainnet wallet beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 
 <div class="card no-print">
 <label>1 · Entropy root <span style="color:#7ee2a8;font-weight:400">— automatic</span></label>
 <p class="hint">256 bits are drawn from your operating system's cryptographic RNG (<code>crypto.getRandomValues</code>) the moment you press Generate. <b>This is the real security.</b> Everything below is optional defence-in-depth, folded in by hashing — it can only help, never hurt.</p>
-<button id="rngtest" class="sec" style="width:auto;margin-top:2px;padding:7px 14px;font-size:13px">Test the RNG now</button>
+<button id="rngtest" class="sec" style="width:auto;margin-top:2px;padding:7px 14px;font-size:13px">Check the browser RNG (liveness)</button>
 <div style="margin-top:8px"><span id="rngresult" class="hint" style="margin:0"></span></div>
-<p class="hint" style="margin-top:6px">This draws fresh bytes and checks they are balanced. It catches a <b>grossly broken or stuck</b> RNG — it cannot prove cryptographic quality (any competent RNG passes). Real assurance is the source above plus this page's reproducible build.</p>
+<p class="hint" style="margin-top:6px"><b>Liveness check only.</b> This draws fresh bytes and checks they are balanced — it catches a <b>grossly broken or stuck</b> RNG (all-zeros, constant, heavy bias). It <b>cannot</b> prove cryptographic quality: any competent RNG, secure or not, passes it. Real assurance is the source above plus this page's reproducible build.</p>
 </div>
 
 <div class="card no-print">
@@ -89,7 +90,8 @@ money you would miss.
 <div class="card no-print">
 <label>4 · Passphrase <span style="color:#9aa7b4;font-weight:400">— optional (BIP-39 &quot;25th word&quot;)</span></label>
 <p class="hint">A secret applied on top of the 24 words. If set, you need <b>both</b> to restore. <b>Lose it or mistype it and the funds are gone — there is no recovery.</b> Type it twice.</p>
-<div class="row"><div><input id="pass" placeholder="passphrase (blank if unsure)"></div><div><input id="pass2" placeholder="confirm passphrase"></div></div>
+<div class="row"><div><input id="pass" type="password" autocomplete="off" spellcheck="false" placeholder="passphrase (blank if unsure)"></div><div><input id="pass2" type="password" autocomplete="off" spellcheck="false" placeholder="confirm passphrase"></div></div>
+<button id="passshow" class="sec" style="width:auto;margin:0 0 8px;padding:5px 12px;font-size:13px">Show</button>
 <div id="passwarn" class="danger">Passphrases do not match.</div>
 </div>
 
@@ -103,9 +105,12 @@ money you would miss.
 <div id="addr"></div>
 <p id="meta" class="hint" style="margin-top:8px"></p>
 <div id="entropy" class="hint" style="margin-top:10px;padding:11px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;line-height:1.5"></div>
-<label style="margin-top:16px" class="no-print">Raw 256-bit entropy <span style="color:#9aa7b4;font-weight:400">— advanced / verification</span></label>
-<p class="hint no-print">The same secret as your words, in hex. Offline, paste it into any independent BIP-39 tool: it must produce the exact 24 words above — proof this page hid or weakened nothing. Treat it as secret, exactly like the words.</p>
-<div id="ehex" class="no-print" style="font-family:ui-monospace,monospace;word-break:break-all;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:13px"></div>
+<button id="advtoggle" class="sec no-print" style="width:auto;margin-top:12px;padding:6px 12px;font-size:13px">Advanced: show raw entropy (verify)</button>
+<div id="adv" class="no-print" style="display:none">
+<label style="margin-top:14px">Raw 256-bit entropy <span style="color:#9aa7b4;font-weight:400">— advanced / verification</span></label>
+<p class="hint">The same secret as your words, in hex — it is <b>not</b> extra information, just the words in another form, so it is hidden by default to keep it off-screen. Offline, paste it into any independent BIP-39 tool: it must produce the exact 24 words above — proof this page hid or weakened nothing. Treat it as secret, exactly like the words.</p>
+<div id="ehex" style="font-family:ui-monospace,monospace;word-break:break-all;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:13px"></div>
+</div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
 <label>Verify your backup</label>
@@ -122,8 +127,10 @@ money you would miss.
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
 <label>Save to your computer</label>
 <p class="hint"><b>Not a <code>wallet.dat</code></b> — that is Bitcoin Core's internal Berkeley DB format, which Core itself is retiring, and a fake one would be a dangerous illusion of a backup. These are the modern equivalents, and they actually restore.</p>
-<p class="hint"><b>Encrypted backup (.json)</b> — your 24 words, encrypted with a password of your choosing (scrypt N=2^16 + XChaCha20-Poly1305). Your BIP-39 passphrase is deliberately <b>not</b> stored in it.</p>
-<div class="row"><div><input id="fpass" type="password" placeholder="file password"></div><div><input id="fpass2" type="password" placeholder="confirm file password"></div></div>
+<p class="hint"><b>Encrypted backup (.json)</b> — your 24 words, encrypted with a password of your choosing (scrypt N=2^16 + XChaCha20-Poly1305; v3 also authenticates the file's metadata). Your BIP-39 passphrase is deliberately <b>not</b> stored in it. <b>This file can be attacked offline, so its password is the weak link — use a strong one.</b></p>
+<div class="row"><div><input id="fpass" type="password" autocomplete="off" spellcheck="false" placeholder="file password"></div><div><input id="fpass2" type="password" autocomplete="off" spellcheck="false" placeholder="confirm file password"></div></div>
+<button id="genpw" class="sec" style="width:auto;margin:0 0 6px;padding:5px 12px;font-size:13px">Generate strong password</button>
+<p id="fpstrength" class="hint" style="margin:2px 0 6px"></p>
 <div id="fpwarn" class="danger">File passwords do not match.</div>
 <button id="savebk" class="sec" disabled>Download encrypted backup</button>
 <p class="hint" style="margin-top:14px"><b>Watch-only descriptor (.txt)</b> — import into Bitcoin Core or Sparrow to watch the balance. Contains <b>no</b> private key, so it is safe to keep on a normal machine.</p>

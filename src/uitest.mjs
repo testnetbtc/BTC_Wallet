@@ -4,9 +4,10 @@ const els = {};
 const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
   style:{}, _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null,
   scrollIntoView(){}, });
-for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset','net','dice','pass','pass2',
-                  'passwarn','gen','out','words','addr','meta','entropy','ehex','vq1','vq2','va1','va2',
-                  'vcheck','vresult','wipe','dr','fpass','fpass2','fpwarn','savebk','savedesc',
+for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset','net','dice',
+                  'pass','pass2','passshow','passwarn','gen','out','words','addr','meta','entropy',
+                  'advtoggle','adv','ehex','vq1','vq2','va1','va2',
+                  'vcheck','vresult','wipe','dr','fpass','fpass2','genpw','fpstrength','fpwarn','savebk','savedesc',
                   'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr','netwarn'])
   els['#'+id] = mk();
 els['#net'].value = 'testnet3';
@@ -137,5 +138,22 @@ els['#rpass'].value='filepw'; els['#rbip39'].value=''; els['#restore']._h.click(
 if (els['#rwords'].textContent !== gen) fail('restored mnemonic does not match');
 if (els['#rinfo'].className !== 'badge ok') fail('restore did not verify address');
 console.log('restore correct  : words match + address verified ✓');
+
+// 8. F-03: one-click strong password generator fills + mirrors both fields
+els['#genpw']._h.click();
+if (!/^[a-z]+(-[a-z]+){5}$/.test(els['#fpass'].value)) fail('generated password is not 6 hyphenated words');
+if (els['#fpass'].value !== els['#fpass2'].value) fail('generated password not mirrored to confirm field');
+console.log('gen strong pw    : ✓ ('+els['#fpass'].value.slice(0,20)+'…)');
+
+// 9. F-01: mainnet generation is BLOCKED while online, ALLOWED while offline
+els['#pass'].value=''; els['#pass2'].value=''; els['#pass']._h.input();
+Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+els['#net'].value='mainnet'; els['#net']._h.change();
+if (!els['#gen'].disabled) fail('mainnet generation was NOT blocked while online');
+console.log('mainnet online   : blocked ✓ ('+els['#gen'].textContent+')');
+Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
+els['#net']._h.change();
+if (els['#gen'].disabled) fail('mainnet blocked even while offline (should be allowed)');
+console.log('mainnet offline  : allowed ✓');
 
 console.log(process.exitCode ? '\nUI TEST FAILED' : '\nUI TEST PASS');

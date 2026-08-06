@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install (exact, from lockfile)
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Test suite
+        run: npm test
+      - name: Reproducible build — committed index.html must equal a fresh build
+        run: git diff --exit-code -- index.html
+      - name: Publish index.html SHA-256
+        run: sha256sum index.html
+      - name: Dependency audit (advisory, non-blocking)
+        run: npm audit --omit=dev || true
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
