@@ -1,3 +1,24 @@
 node_modules/
 dist/
 public/
+
+# --- Chainwatch infrastructure: NEVER commit secrets or runtime state ---
+.env
+.env.*
+!.env.example
+*.cookie
+*.secret
+*.pem
+*.key
+!infra/**/*.example
+runtime/
+logs/
+backups/
+data/
+# Tor hidden-service material must never be committed
+*.onion
+hostname
+hs_ed25519_secret_key
+hs_ed25519_public_key
+# stray audit tooling that doesn't belong in this repo
+check_bridge.mjs
