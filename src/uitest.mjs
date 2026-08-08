@@ -28,7 +28,7 @@ globalThis.FileReader = class {
 };
 globalThis.scrollTo = () => {};
 
-await import('../dist/alea.bundle.js');
+await import('../dist/olesia.bundle.js');
 eval(readFileSync('src/ui.js','utf8'));
 
 const fail = m => { console.log('FAIL:', m); process.exitCode = 1; };
@@ -79,9 +79,9 @@ console.log('rng smoke test   : ✓', JSON.stringify(els['#rngresult'].textConte
 
 // 3c. testnet3 vs testnet4 vs mainnet: labels differ, tb1/bc1 correct, and both
 //     testnets share BIP-44 coin type 1 (identical derivation family).
-const w3 = window.Alea.makeWallet({ network:'testnet3' });
-const w4 = window.Alea.makeWallet({ network:'testnet4' });
-const wm = window.Alea.makeWallet({ network:'mainnet'  });
+const w3 = window.Olesia.makeWallet({ network:'testnet3' });
+const w4 = window.Olesia.makeWallet({ network:'testnet4' });
+const wm = window.Olesia.makeWallet({ network:'mainnet'  });
 if (w3.network!=='testnet3' || w4.network!=='testnet4' || wm.network!=='mainnet') fail('network label not recorded');
 if (!w3.address.startsWith('tb1') || !w4.address.startsWith('tb1')) fail('testnet3/4 must yield tb1 addresses');
 if (!wm.address.startsWith('bc1')) fail('mainnet must yield a bc1 address');

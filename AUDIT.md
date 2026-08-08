@@ -1,8 +1,8 @@
-# Alea — Security Audit Report
+# Olesia — Security Audit Report
 
 **Artifact:** `index.html` (single self-contained page)
 **Version audited:** commit at time of this report
-**SHA-256 of `index.html`:** `25dda510e7d6276e5f3a08f52561b12613f5c98561674aa9102b263219a72b9c`
+**SHA-256 of `index.html`:** `8a28ce4a92cf421bd332fbffd053fbddb6ea18b76d1eab255d7039285ac3a668`
 **Date:** 2026-08-06
 **Auditor:** Claude (Anthropic) — the same author that wrote the code; plus responses
 to two independent external AI reviews (see the 2026-08-06 revision below).
@@ -41,7 +41,7 @@ to two independent external AI reviews (see the 2026-08-06 revision below).
 >   requires downloading the page and going offline. (Signed offline GitHub Releases
 >   are the recommended next step — see F-7 below.)
 > - **[Medium → FIXED] Restore DoS (tightened F-1):** `decryptBackup` now accepts
->   **only the exact canonical KDF params** Alea emits (N=65536, r=8, p=1, dkLen=32);
+>   **only the exact canonical KDF params** Olesia emits (N=65536, r=8, p=1, dkLen=32);
 >   the previous *range* still allowed ~4 GB scrypt at the top of the range. Any other
 >   params are refused before scrypt runs.
 > - **[Medium-Low → FIXED] Backup metadata now authenticated (F-2):** new **v3 backup
@@ -135,7 +135,7 @@ No High or Critical findings. All items below are Low or Informational.
 maliciously-crafted backup with `N = 2³⁰` could exhaust memory / hang the tab on
 restore. First fix bounded the range; an external reviewer correctly noted the
 *top* of that range (N=2²⁰, r=32) is still ~4 GB. **Now fully fixed:** restore
-accepts **only the exact canonical params** Alea emits (N=65536, r=8, p=1,
+accepts **only the exact canonical params** Olesia emits (N=65536, r=8, p=1,
 dkLen=32) — anything else is refused before scrypt runs (regression test covers it).
 
 ### F-2 (Low → FIXED 2026-08-06) — backup metadata not authenticated
@@ -181,7 +181,7 @@ at convenience.
   `VERIFY.md`), and for real funds, **run the downloaded file offline**.
 - **Endpoint security.** Malware, a compromised browser extension, or a
   screen-grabber on your machine defeats any software wallet. For meaningful
-  value, a dedicated hardware wallet remains the stronger choice; Alea is a
+  value, a dedicated hardware wallet remains the stronger choice; Olesia is a
   low-friction generator and learning tool, honestly labelled as such.
 
 ## Verdict

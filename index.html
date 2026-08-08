@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>Alea — a 2014-style Bitcoin wallet, done right</title>
+<title>Olesia — a 2014-style Bitcoin wallet, done right</title>
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -41,7 +41,7 @@ code{background:#0e1116;padding:1px 5px;border-radius:4px}
 }
 </style></head>
 <body><div class="wrap">
-<h1>Alea<span>.</span></h1>
+<h1>Olesia<span>.</span></h1>
 <p class="sub no-print">A 2014-style instant wallet — the frictionless idea, rebuilt on entropy you can trust.</p>
 <div class="no-print"><span id="selfcheck" class="badge">checking…</span><span id="offline" class="badge">…</span></div>
 
@@ -6076,7 +6076,7 @@ zoo`.split("\n");
     return b;
   };
   function aadString(h) {
-    return `alea-backup|v=${h.version}|net=${h.network}|path=${h.path}|addrhash=${h.addressHash}|pp=${h.passphraseUsed ? 1 : 0}`;
+    return `${h.format}|v=${h.version}|net=${h.network}|path=${h.path}|addrhash=${h.addressHash}|pp=${h.passphraseUsed ? 1 : 0}`;
   }
   function encryptBackup(mnemonic, password, meta) {
     if (!password) throw new Error("a file password is required");
@@ -6084,7 +6084,7 @@ zoo`.split("\n");
     const nonce = rand(24);
     const key = scrypt(utf8ToBytes(password), salt2, KDF);
     const header = {
-      format: "alea-backup",
+      format: "olesia-backup",
       version: 3,
       network: meta.network,
       path: meta.path,
@@ -6103,16 +6103,18 @@ zoo`.split("\n");
     };
   }
   function decryptBackup(obj, password) {
-    if (!obj || obj.format !== "alea-backup") throw new Error("not an Alea backup file");
+    if (!obj || obj.format !== "olesia-backup" && obj.format !== "alea-backup")
+      throw new Error("not an Olesia backup file");
     if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3)
       throw new Error("unsupported backup version: " + obj.version);
     const k = obj.kdf, c = obj.cipher;
     if (!k || k.name !== "scrypt") throw new Error("unsupported KDF: " + (k && k.name));
     if (!c || c.name !== "xchacha20poly1305") throw new Error("unsupported cipher: " + (c && c.name));
     if (k.N !== KDF.N || k.r !== KDF.r || k.p !== KDF.p || k.dkLen !== KDF.dkLen)
-      throw new Error("backup KDF parameters are not the canonical Alea values \u2014 refusing (out of range)");
+      throw new Error("backup KDF parameters are not the canonical Olesia values \u2014 refusing (out of range)");
     const key = scrypt(utf8ToBytes(password), hexToBytes(k.salt), KDF);
     const aad = obj.version >= 3 ? utf8ToBytes(aadString({
+      format: obj.format,
       version: obj.version,
       network: obj.network,
       path: obj.path,
@@ -6253,7 +6255,7 @@ zoo`.split("\n");
     return Array.from(idx, (i) => wordlist[i % 2048]).join("-");
   }
   if (typeof window !== "undefined") {
-    window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, randomPassword, _vectorCheck };
+    window.Olesia = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, randomPassword, _vectorCheck };
   }
   function _vectorCheck() {
     const m = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -6281,7 +6283,7 @@ zoo`.split("\n");
 
   // --- crypto self-check against the official BIP-84 vector -----------------
   try {
-    const vc = window.Alea._vectorCheck();
+    const vc = window.Olesia._vectorCheck();
     $('#selfcheck').textContent = vc.ok
       ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
       : '✗ crypto self-check FAILED — do not use this build';
@@ -6356,7 +6358,7 @@ zoo`.split("\n");
 
   // --- browser RNG liveness check (diagnostic; NOT a proof of quality) ------
   $('#rngtest').addEventListener('click', ()=>{
-    const r = window.Alea.rngSelfTest(8192);
+    const r = window.Olesia.rngSelfTest(8192);
     $('#rngresult').textContent = (r.ok ? '✓ RNG liveness: alive' : '✗ RNG liveness: FAILED')
       + ' — '+r.bits+' bits sampled, '+(r.proportion*100).toFixed(2)+'% ones (want ~50%), '
       + r.distinct+'/256 byte values seen. Liveness only: detects a broken/stuck RNG, never a proof of quality.';
@@ -6377,7 +6379,7 @@ zoo`.split("\n");
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
     if(!passOk() || !selfCheckOk) return;
-    const w = window.Alea.makeWallet({
+    const w = window.Olesia.makeWallet({
       mouseBytes:new Uint8Array(mouse),
       diceString:$('#dice').value.trim(),
       passphrase:$('#pass').value,
@@ -6454,7 +6456,7 @@ zoo`.split("\n");
   $('#fpass2').addEventListener('input',updateFilePass);
   // one-click strong password for the backup FILE (Diceware from the wordlist).
   $('#genpw').addEventListener('click', ()=>{
-    const pw = window.Alea.randomPassword(6);
+    const pw = window.Olesia.randomPassword(6);
     $('#fpass').type='text'; $('#fpass2').type='text';   // reveal so it can be written down
     $('#fpass').value = pw; $('#fpass2').value = pw;
     updateFilePass();
@@ -6464,19 +6466,19 @@ zoo`.split("\n");
 
   $('#savebk').addEventListener('click', ()=>{
     if(!current || !filePassOk()) return;
-    const blob = window.Alea.encryptBackup(current.mnemonic, $('#fpass').value, current);
-    download('alea-backup-'+current.network+'.json', JSON.stringify(blob,null,2));
+    const blob = window.Olesia.encryptBackup(current.mnemonic, $('#fpass').value, current);
+    download('olesia-backup-'+current.network+'.json', JSON.stringify(blob,null,2));
     $('#saveinfo').textContent = '✓ encrypted backup downloaded — test restoring it below before you rely on it';
     $('#saveinfo').className = 'badge ok';
   });
 
   $('#savedesc').addEventListener('click', ()=>{
     if(!current) return;
-    const txt = '# Alea watch-only descriptors ('+current.network+')\n'
+    const txt = '# Olesia watch-only descriptors ('+current.network+')\n'
       + '# Import into Bitcoin Core (importdescriptors) or Sparrow. Contains NO private key.\n'
       + 'receive: '+current.descriptorReceive+'\n'
       + 'change:  '+current.descriptorChange+'\n';
-    download('alea-descriptor-'+current.network+'.txt', txt, 'text/plain');
+    download('olesia-descriptor-'+current.network+'.txt', txt, 'text/plain');
   });
 
   // --- restore from an encrypted backup file --------------------------------
@@ -6497,11 +6499,11 @@ zoo`.split("\n");
   $('#restore').addEventListener('click', ()=>{
     if(!loaded){ $('#rinfo').textContent='choose a backup file first'; $('#rinfo').className='badge bad'; return; }
     let out;
-    try { out = window.Alea.decryptBackup(loaded, $('#rpass').value); }
+    try { out = window.Olesia.decryptBackup(loaded, $('#rpass').value); }
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
     const testnet = (loaded.network !== 'mainnet');  // 'testnet' (legacy), 'testnet3', 'testnet4'
-    const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
-    const match = window.Alea.verifyAddress(loaded, d.address);
+    const d = window.Olesia.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
+    const match = window.Olesia.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
     $('#raddr').textContent  = d.address + (match ? '  ✓ matches the backup' : '  ✗ DOES NOT match — wrong BIP-39 passphrase?');
     $('#rout').style.display = 'block';

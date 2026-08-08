@@ -20,9 +20,9 @@ globalThis.URL = { createObjectURL:()=> 'blob:x', revokeObjectURL(){} };
 globalThis.setTimeout = ()=>{};
 globalThis.FileReader = class { readAsText(f){ this.result=f._text; this.onload&&this.onload(); } };
 
-await import('../dist/alea.bundle.js');
+await import('../dist/olesia.bundle.js');
 // SABOTAGE the self-check to simulate a broken/tampered build
-window.Alea._vectorCheck = () => ({ ok:false, addr:'wrong', expected:'right' });
+window.Olesia._vectorCheck = () => ({ ok:false, addr:'wrong', expected:'right' });
 eval(readFileSync('src/ui.js','utf8'));
 
 let bad = false;

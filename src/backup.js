@@ -18,7 +18,10 @@ const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); re
 // by the AEAD itself (a wrong salt yields a wrong key -> MAC failure), so they are
 // not repeated here. Order is fixed so encrypt and decrypt produce identical bytes.
 function aadString(h) {
-  return `alea-backup|v=${h.version}|net=${h.network}|path=${h.path}`
+  // Prefix is the file's own format tag so encrypt/decrypt stay self-consistent
+  // across a rebrand: old files carry format 'alea-backup', new ones 'olesia-backup',
+  // and each reproduces the exact AAD it was sealed with.
+  return `${h.format}|v=${h.version}|net=${h.network}|path=${h.path}`
        + `|addrhash=${h.addressHash}|pp=${h.passphraseUsed ? 1 : 0}`;
 }
 
@@ -30,7 +33,7 @@ export function encryptBackup(mnemonic, password, meta) {
   // v3 header: sha256(address) not the address (privacy), passphrase NEVER stored,
   // and the header below is authenticated via AAD.
   const header = {
-    format: 'alea-backup', version: 3,
+    format: 'olesia-backup', version: 3,
     network: meta.network, path: meta.path,
     addressHash: bytesToHex(sha256(utf8ToBytes(meta.address))),
     passphraseUsed: !!meta.passphraseUsed,
@@ -48,24 +51,26 @@ export function encryptBackup(mnemonic, password, meta) {
 }
 
 export function decryptBackup(obj, password) {
-  if (!obj || obj.format !== 'alea-backup') throw new Error('not an Alea backup file');
+  if (!obj || (obj.format !== 'olesia-backup' && obj.format !== 'alea-backup'))
+    throw new Error('not an Olesia backup file');
   if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3)
     throw new Error('unsupported backup version: ' + obj.version);
   const k = obj.kdf, c = obj.cipher;
   if (!k || k.name !== 'scrypt') throw new Error('unsupported KDF: ' + (k && k.name));
   if (!c || c.name !== 'xchacha20poly1305') throw new Error('unsupported cipher: ' + (c && c.name));
-  // Accept ONLY the exact canonical KDF parameters Alea itself emits. Alea has always
+  // Accept ONLY the exact canonical KDF parameters Olesia itself emits. Olesia has always
   // used these values, so every genuine backup passes; a malicious file that sets N
   // huge (a memory bomb) is rejected BEFORE scrypt runs, eliminating the restore-time
   // DoS entirely. Any future parameter change ships as a new backup version, not as
   // attacker-chosen numbers inside the file.
   if (k.N !== KDF.N || k.r !== KDF.r || k.p !== KDF.p || k.dkLen !== KDF.dkLen)
-    throw new Error('backup KDF parameters are not the canonical Alea values — refusing (out of range)');
+    throw new Error('backup KDF parameters are not the canonical Olesia values — refusing (out of range)');
   const key = scrypt(utf8ToBytes(password), hexToBytes(k.salt), KDF);
   // v3 binds metadata as AAD; v1/v2 predate that and used no associated data.
   const aad = obj.version >= 3
-    ? utf8ToBytes(aadString({ version: obj.version, network: obj.network, path: obj.path,
-                              addressHash: obj.addressHash, passphraseUsed: !!obj.passphraseUsed }))
+    ? utf8ToBytes(aadString({ format: obj.format, version: obj.version, network: obj.network,
+                              path: obj.path, addressHash: obj.addressHash,
+                              passphraseUsed: !!obj.passphraseUsed }))
     : undefined;
   let pt;
   try { pt = xchacha20poly1305(key, hexToBytes(c.nonce), aad).decrypt(hexToBytes(obj.ciphertext)); }

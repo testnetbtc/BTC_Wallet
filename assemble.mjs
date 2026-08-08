@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from 'fs';
-const bundle = readFileSync('dist/alea.bundle.js','utf8');
+const bundle = readFileSync('dist/olesia.bundle.js','utf8');
 const ui = readFileSync('src/ui.js','utf8');
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>Alea — a 2014-style Bitcoin wallet, done right</title>
+<title>Olesia — a 2014-style Bitcoin wallet, done right</title>
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -44,7 +44,7 @@ code{background:#0e1116;padding:1px 5px;border-radius:4px}
 }
 </style></head>
 <body><div class="wrap">
-<h1>Alea<span>.</span></h1>
+<h1>Olesia<span>.</span></h1>
 <p class="sub no-print">A 2014-style instant wallet — the frictionless idea, rebuilt on entropy you can trust.</p>
 <div class="no-print"><span id="selfcheck" class="badge">checking…</span><span id="offline" class="badge">…</span></div>
 

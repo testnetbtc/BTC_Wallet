@@ -1,5 +1,5 @@
 {
-  "name": "alea-wallet",
+  "name": "olesia-wallet",
   "version": "1.0.0",
   "description": "A 2014-style Bitcoin wallet, done right — offline BIP-39 generator on audited primitives",
   "main": "index.js",

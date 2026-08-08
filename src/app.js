@@ -1,4 +1,4 @@
-// Alea — wallet seed generator core. Built on audited primitives only.
+// Olesia — wallet seed generator core. Built on audited primitives only.
 import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { HDKey } from '@scure/bip32';
@@ -124,7 +124,7 @@ export function randomPassword(nWords = 6) {
 
 // expose for the page + a self-check hook
 if (typeof window !== 'undefined') {
-  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, randomPassword, _vectorCheck };
+  window.Olesia = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, randomPassword, _vectorCheck };
 }
 
 // Correctness self-check the PAGE runs on load against the official BIP-84 vector.

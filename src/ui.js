@@ -14,7 +14,7 @@
 
   // --- crypto self-check against the official BIP-84 vector -----------------
   try {
-    const vc = window.Alea._vectorCheck();
+    const vc = window.Olesia._vectorCheck();
     $('#selfcheck').textContent = vc.ok
       ? '✓ crypto self-check PASS — derivation matches the official BIP-84 test vector'
       : '✗ crypto self-check FAILED — do not use this build';
@@ -89,7 +89,7 @@
 
   // --- browser RNG liveness check (diagnostic; NOT a proof of quality) ------
   $('#rngtest').addEventListener('click', ()=>{
-    const r = window.Alea.rngSelfTest(8192);
+    const r = window.Olesia.rngSelfTest(8192);
     $('#rngresult').textContent = (r.ok ? '✓ RNG liveness: alive' : '✗ RNG liveness: FAILED')
       + ' — '+r.bits+' bits sampled, '+(r.proportion*100).toFixed(2)+'% ones (want ~50%), '
       + r.distinct+'/256 byte values seen. Liveness only: detects a broken/stuck RNG, never a proof of quality.';
@@ -110,7 +110,7 @@
   // --- generate -------------------------------------------------------------
   $('#gen').addEventListener('click', ()=>{
     if(!passOk() || !selfCheckOk) return;
-    const w = window.Alea.makeWallet({
+    const w = window.Olesia.makeWallet({
       mouseBytes:new Uint8Array(mouse),
       diceString:$('#dice').value.trim(),
       passphrase:$('#pass').value,
@@ -187,7 +187,7 @@
   $('#fpass2').addEventListener('input',updateFilePass);
   // one-click strong password for the backup FILE (Diceware from the wordlist).
   $('#genpw').addEventListener('click', ()=>{
-    const pw = window.Alea.randomPassword(6);
+    const pw = window.Olesia.randomPassword(6);
     $('#fpass').type='text'; $('#fpass2').type='text';   // reveal so it can be written down
     $('#fpass').value = pw; $('#fpass2').value = pw;
     updateFilePass();
@@ -197,19 +197,19 @@
 
   $('#savebk').addEventListener('click', ()=>{
     if(!current || !filePassOk()) return;
-    const blob = window.Alea.encryptBackup(current.mnemonic, $('#fpass').value, current);
-    download('alea-backup-'+current.network+'.json', JSON.stringify(blob,null,2));
+    const blob = window.Olesia.encryptBackup(current.mnemonic, $('#fpass').value, current);
+    download('olesia-backup-'+current.network+'.json', JSON.stringify(blob,null,2));
     $('#saveinfo').textContent = '✓ encrypted backup downloaded — test restoring it below before you rely on it';
     $('#saveinfo').className = 'badge ok';
   });
 
   $('#savedesc').addEventListener('click', ()=>{
     if(!current) return;
-    const txt = '# Alea watch-only descriptors ('+current.network+')\n'
+    const txt = '# Olesia watch-only descriptors ('+current.network+')\n'
       + '# Import into Bitcoin Core (importdescriptors) or Sparrow. Contains NO private key.\n'
       + 'receive: '+current.descriptorReceive+'\n'
       + 'change:  '+current.descriptorChange+'\n';
-    download('alea-descriptor-'+current.network+'.txt', txt, 'text/plain');
+    download('olesia-descriptor-'+current.network+'.txt', txt, 'text/plain');
   });
 
   // --- restore from an encrypted backup file --------------------------------
@@ -230,11 +230,11 @@
   $('#restore').addEventListener('click', ()=>{
     if(!loaded){ $('#rinfo').textContent='choose a backup file first'; $('#rinfo').className='badge bad'; return; }
     let out;
-    try { out = window.Alea.decryptBackup(loaded, $('#rpass').value); }
+    try { out = window.Olesia.decryptBackup(loaded, $('#rpass').value); }
     catch(err){ $('#rinfo').textContent='✗ '+err.message; $('#rinfo').className='badge bad'; return; }
     const testnet = (loaded.network !== 'mainnet');  // 'testnet' (legacy), 'testnet3', 'testnet4'
-    const d = window.Alea.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
-    const match = window.Alea.verifyAddress(loaded, d.address);
+    const d = window.Olesia.deriveFrom(out.mnemonic, $('#rbip39').value, testnet);
+    const match = window.Olesia.verifyAddress(loaded, d.address);
     $('#rwords').textContent = out.mnemonic;
     $('#raddr').textContent  = d.address + (match ? '  ✓ matches the backup' : '  ✗ DOES NOT match — wrong BIP-39 passphrase?');
     $('#rout').style.display = 'block';

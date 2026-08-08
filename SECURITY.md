@@ -1,6 +1,6 @@
 # Security Policy
 
-Alea is an **offline BIP-39 seed generator** (not a full wallet, no signing). A bug
+Olesia is an **offline BIP-39 seed generator** (not a full wallet, no signing). A bug
 in it can cost real funds, so security reports are very welcome.
 
 ## Reporting a vulnerability
