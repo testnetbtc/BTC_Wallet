@@ -14,6 +14,34 @@ export function opReturnScript(message) {
   return btc.Script.encode(['RETURN', data]);
 }
 
+// Sweep: send the ENTIRE spendable balance (all UTXOs) to one address, minus fee.
+// No change output — the recipient receives total-fee. Validates the destination.
+export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName }) {
+  const n = net(networkName);
+  if (!utxos?.length) throw new Error('no UTXOs to sweep');
+  btc.Address(n.btc).decode(toAddress); // throws on an invalid/wrong-network address
+  const inputs = utxos.map((u) => ({
+    txid: hexToBytes(u.txid), index: u.vout,
+    witnessUtxo: { script: key.spend.script, amount: BigInt(u.value) },
+    ...key.spend,
+  }));
+  // Empty outputs + changeAddress = destination => everything (minus fee) goes there.
+  const sel = btc.selectUTXO(inputs, [], 'all', {
+    changeAddress: toAddress, feePerByte: BigInt(feeRate), network: n.btc,
+    createTx: true, dust: 546n, allowUnknownOutputs: true,
+  });
+  if (!sel || !sel.tx) throw new Error('sweep build failed — balance below fee?');
+  const tx = sel.tx;
+  tx.sign(key.privKey);
+  tx.finalize();
+  const total = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
+  return {
+    txHex: bytesToHex(tx.extract()), txid: tx.id,
+    fee: sel.fee != null ? Number(sel.fee) : undefined,
+    vsize: tx.vsize, swept: Number(total - (sel.fee ?? 0n)), inputsUsed: inputs.length,
+  };
+}
+
 // { utxos:[{txid,vout,value}], key (from deriveKey), recipients:[{address,amount}],
 //   message?, changeAddress?, feeRate (sat/vB), networkName } -> { txHex, txid, fee, vsize }
 export function buildSignedTx({ utxos, key, recipients = [], message = null,
