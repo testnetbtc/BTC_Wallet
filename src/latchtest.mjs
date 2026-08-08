@@ -5,9 +5,9 @@ const els = {};
 const mk = () => ({ textContent:'', value:'', className:'', disabled:false, style:{},
   _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null, scrollIntoView(){} });
 for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset',
-  'net','dice','pass','pass2','passwarn',
-  'gen','out','words','addr','meta','entropy','ehex','vq1','vq2','va1','va2','vcheck','vresult','wipe','dr',
-  'fpass','fpass2','fpwarn','savebk','savedesc','saveinfo','bkfile','rpass','rbip39','restore',
+  'net','dice','pass','pass2','passshow','passwarn',
+  'gen','out','words','addr','meta','entropy','advtoggle','adv','ehex','vq1','vq2','va1','va2','vcheck','vresult','wipe','dr',
+  'fpass','fpass2','genpw','fpstrength','fpwarn','savebk','savedesc','saveinfo','bkfile','rpass','rbip39','restore',
   'rinfo','rout','rwords','raddr','netwarn']) els['#'+id] = mk();
 els['#net'].value='testnet3';
 globalThis.window = globalThis;
@@ -20,9 +20,9 @@ globalThis.URL = { createObjectURL:()=> 'blob:x', revokeObjectURL(){} };
 globalThis.setTimeout = ()=>{};
 globalThis.FileReader = class { readAsText(f){ this.result=f._text; this.onload&&this.onload(); } };
 
-await import('../dist/alea.bundle.js');
+await import('../dist/olesia.bundle.js');
 // SABOTAGE the self-check to simulate a broken/tampered build
-window.Alea._vectorCheck = () => ({ ok:false, addr:'wrong', expected:'right' });
+window.Olesia._vectorCheck = () => ({ ok:false, addr:'wrong', expected:'right' });
 eval(readFileSync('src/ui.js','utf8'));
 
 let bad = false;

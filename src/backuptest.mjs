@@ -20,5 +20,19 @@ const right = deriveFrom(back.mnemonic, 'my-25th-word', true).address;
 const wrong = deriveFrom(back.mnemonic, 'typo',         true).address;
 console.log('restore w/ pass  :', right === w.address ? 'address matches ✓' : 'MISMATCH ✗');
 console.log('restore w/ typo  :', wrong !== w.address ? 'differs (correctly detected) ✓' : 'SILENTLY SAME ✗');
-const ok = back.mnemonic===w.mnemonic && bad && right===w.address && wrong!==w.address;
+
+// v3: metadata is authenticated as AEAD associated data — tampering must fail restore.
+const vt = blob.version === 3;
+function tamper(mut){ const b=JSON.parse(JSON.stringify(blob)); mut(b);
+  try { decryptBackup(b,'file-password-123'); return false; } catch { return true; } }
+const t1 = tamper(b=>b.network='mainnet');
+const t2 = tamper(b=>b.addressHash='00'.repeat(32));
+const t3 = tamper(b=>b.path="m/84'/0'/0'/0/0");
+console.log('v3 format        :', vt ? 'YES ✓' : 'NO ✗');
+console.log('tamper network   :', t1 ? 'rejected ✓' : 'ACCEPTED ✗');
+console.log('tamper addr-hash :', t2 ? 'rejected ✓' : 'ACCEPTED ✗');
+console.log('tamper path      :', t3 ? 'rejected ✓' : 'ACCEPTED ✗');
+
+const ok = back.mnemonic===w.mnemonic && bad && right===w.address && wrong!==w.address
+        && vt && t1 && t2 && t3;
 console.log(ok ? '\nBACKUP TEST PASS' : '\nBACKUP TEST FAIL'); process.exit(ok?0:1);

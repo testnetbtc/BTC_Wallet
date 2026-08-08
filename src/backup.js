@@ -12,21 +12,37 @@ export const KDF = { name: 'scrypt', N: 65536, r: 8, p: 1, dkLen: 32 };
 
 const rand = (n) => { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; };
 
+// v3 authenticates the security-relevant metadata by binding it as AEAD associated
+// data (AAD). If any of these fields is altered in the file, restore fails instead
+// of silently deriving the wrong thing. Salt and nonce are already integrity-bound
+// by the AEAD itself (a wrong salt yields a wrong key -> MAC failure), so they are
+// not repeated here. Order is fixed so encrypt and decrypt produce identical bytes.
+function aadString(h) {
+  // Prefix is the file's own format tag so encrypt/decrypt stay self-consistent
+  // across a rebrand: old files carry format 'alea-backup', new ones 'olesia-backup',
+  // and each reproduces the exact AAD it was sealed with.
+  return `${h.format}|v=${h.version}|net=${h.network}|path=${h.path}`
+       + `|addrhash=${h.addressHash}|pp=${h.passphraseUsed ? 1 : 0}`;
+}
+
 export function encryptBackup(mnemonic, password, meta) {
   if (!password) throw new Error('a file password is required');
   const salt  = rand(16);
   const nonce = rand(24);
   const key   = scrypt(utf8ToBytes(password), salt, KDF);
-  const ct    = xchacha20poly1305(key, nonce).encrypt(utf8ToBytes(mnemonic));
-  return {
-    format: 'alea-backup', version: 2,
-    warning: 'Encrypted BIP-39 recovery phrase. The BIP-39 passphrase (if used) is NOT stored here by design.',
-    // v2: store sha256(address) rather than the address itself. Restore can still
-    // verify by comparing hashes, but anyone who obtains the file WITHOUT the
-    // password no longer learns which on-chain address it belongs to.
+  // v3 header: sha256(address) not the address (privacy), passphrase NEVER stored,
+  // and the header below is authenticated via AAD.
+  const header = {
+    format: 'olesia-backup', version: 3,
     network: meta.network, path: meta.path,
     addressHash: bytesToHex(sha256(utf8ToBytes(meta.address))),
     passphraseUsed: !!meta.passphraseUsed,
+  };
+  const aad = utf8ToBytes(aadString(header));
+  const ct  = xchacha20poly1305(key, nonce, aad).encrypt(utf8ToBytes(mnemonic));
+  return {
+    ...header,
+    warning: 'Encrypted BIP-39 recovery phrase. The BIP-39 passphrase (if used) is NOT stored here by design. In v3 the metadata is authenticated (bound as AEAD associated data), so tampering is detected on restore.',
     createdAt: new Date().toISOString(),
     kdf: { ...KDF, salt: bytesToHex(salt) },
     cipher: { name: 'xchacha20poly1305', nonce: bytesToHex(nonce) },
@@ -35,24 +51,30 @@ export function encryptBackup(mnemonic, password, meta) {
 }
 
 export function decryptBackup(obj, password) {
-  if (!obj || obj.format !== 'alea-backup') throw new Error('not an Alea backup file');
-  if (obj.version !== 1 && obj.version !== 2) throw new Error('unsupported backup version: ' + obj.version);
+  if (!obj || (obj.format !== 'olesia-backup' && obj.format !== 'alea-backup'))
+    throw new Error('not an Olesia backup file');
+  if (obj.version !== 1 && obj.version !== 2 && obj.version !== 3)
+    throw new Error('unsupported backup version: ' + obj.version);
   const k = obj.kdf, c = obj.cipher;
-  if (k.name !== 'scrypt') throw new Error('unsupported KDF: ' + k.name);
-  if (c.name !== 'xchacha20poly1305') throw new Error('unsupported cipher: ' + c.name);
-  // Bound the KDF parameters BEFORE running scrypt. A tampered/malicious backup
-  // file could otherwise set N huge (e.g. 2^30) and exhaust memory / hang the tab
-  // on restore. Accept only the sane range around our own defaults.
-  const isPow2 = (n) => Number.isInteger(n) && n > 1 && (n & (n - 1)) === 0;
-  if (!isPow2(k.N) || k.N < 16384 || k.N > 1048576) throw new Error('backup KDF parameter N out of range');
-  if (!Number.isInteger(k.r) || k.r < 1 || k.r > 32)  throw new Error('backup KDF parameter r out of range');
-  if (!Number.isInteger(k.p) || k.p < 1 || k.p > 16)  throw new Error('backup KDF parameter p out of range');
-  if (k.dkLen !== 32) throw new Error('backup KDF parameter dkLen must be 32');
-  const key = scrypt(utf8ToBytes(password), hexToBytes(k.salt),
-                     { N: k.N, r: k.r, p: k.p, dkLen: k.dkLen });
+  if (!k || k.name !== 'scrypt') throw new Error('unsupported KDF: ' + (k && k.name));
+  if (!c || c.name !== 'xchacha20poly1305') throw new Error('unsupported cipher: ' + (c && c.name));
+  // Accept ONLY the exact canonical KDF parameters Olesia itself emits. Olesia has always
+  // used these values, so every genuine backup passes; a malicious file that sets N
+  // huge (a memory bomb) is rejected BEFORE scrypt runs, eliminating the restore-time
+  // DoS entirely. Any future parameter change ships as a new backup version, not as
+  // attacker-chosen numbers inside the file.
+  if (k.N !== KDF.N || k.r !== KDF.r || k.p !== KDF.p || k.dkLen !== KDF.dkLen)
+    throw new Error('backup KDF parameters are not the canonical Olesia values — refusing (out of range)');
+  const key = scrypt(utf8ToBytes(password), hexToBytes(k.salt), KDF);
+  // v3 binds metadata as AAD; v1/v2 predate that and used no associated data.
+  const aad = obj.version >= 3
+    ? utf8ToBytes(aadString({ format: obj.format, version: obj.version, network: obj.network,
+                              path: obj.path, addressHash: obj.addressHash,
+                              passphraseUsed: !!obj.passphraseUsed }))
+    : undefined;
   let pt;
-  try { pt = xchacha20poly1305(key, hexToBytes(c.nonce)).decrypt(hexToBytes(obj.ciphertext)); }
-  catch { throw new Error('wrong password (or the file is corrupt)'); }
+  try { pt = xchacha20poly1305(key, hexToBytes(c.nonce), aad).decrypt(hexToBytes(obj.ciphertext)); }
+  catch { throw new Error('wrong password, corrupt file, or tampered metadata'); }
   return { mnemonic: new TextDecoder().decode(pt), meta: obj };
 }
 

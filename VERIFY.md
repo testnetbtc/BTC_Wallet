@@ -1,6 +1,6 @@
-# How to verify Alea is genuine and untampered
+# How to verify Olesia is genuine and untampered
 
-Alea's honesty rests on one property: **you never have to take our word for it.**
+Olesia's honesty rests on one property: **you never have to take our word for it.**
 The whole program is a single readable text file, the build is reproducible, and
 the official hash is published below. Pick the level of checking you're
 comfortable with — each one is stronger than the last.
@@ -8,7 +8,7 @@ comfortable with — each one is stronger than the last.
 **The official SHA-256 of `index.html` for this release:**
 
 ```
-96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f
+8a28ce4a92cf421bd332fbffd053fbddb6ea18b76d1eab255d7039285ac3a668
 ```
 
 The same hash is published in three independent places, so tampering with one is
@@ -91,14 +91,14 @@ deterministic, so this will match to the byte.
 Correct-looking output isn't proof the *keys* are right. Prove it with a wallet
 made by someone else entirely:
 
-1. In Alea, set the network to **Testnet** and generate a wallet.
+1. In Olesia, set the network to **Testnet** and generate a wallet.
 2. Write down the 24 words.
 3. Open **Sparrow Wallet** (sparrowwallet.com), create a new wallet, choose
    "Import" → enter the 24 words, keep the derivation on **Native SegWit (bip84)**.
 4. Check that Sparrow shows the **same first receive address** (`tb1...`) that
-   Alea showed.
+   Olesia showed.
 
-If Sparrow — which shares no code with Alea — derives the identical address, the
+If Sparrow — which shares no code with Olesia — derives the identical address, the
 recovery phrase is genuinely standards-correct. This is the one check that no
 self-test can provide, and it's worth doing before any real use.
 
@@ -106,7 +106,7 @@ self-test can provide, and it's worth doing before any real use.
 
 ## Can I run it completely offline? — Yes.
 
-Alea makes **zero network requests** and needs no server. To run it fully offline:
+Olesia makes **zero network requests** and needs no server. To run it fully offline:
 
 1. Download `index.html` (and verify its hash, Level 1).
 2. **Disconnect from the internet** (airplane mode, or unplug).
@@ -125,7 +125,7 @@ you intend to fund, generate it **offline**.
 
 Most of the dangerous tools we've seen share one trait: **you can't see what they
 do.** They ship a compiled `.exe`, or load code from a CDN, or minify everything
-into an unreadable blob. Alea is the opposite:
+into an unreadable blob. Olesia is the opposite:
 
 - **It's readable.** `index.html` is plain text; the logic is ~360 lines you (or
   anyone) can inspect.

@@ -1,10 +1,11 @@
-# Alea — Security Audit Report
+# Olesia — Security Audit Report
 
 **Artifact:** `index.html` (single self-contained page)
 **Version audited:** commit at time of this report
-**SHA-256 of `index.html`:** `96ad5024c7a32c8b67a7bc4360cbd86db2b8f2abc134618d1f54a00e4237a28f`
-**Date:** 2026-08-05
-**Auditor:** Claude (Anthropic) — the same author that wrote the code.
+**SHA-256 of `index.html`:** `8a28ce4a92cf421bd332fbffd053fbddb6ea18b76d1eab255d7039285ac3a668`
+**Date:** 2026-08-06
+**Auditor:** Claude (Anthropic) — the same author that wrote the code; plus responses
+to two independent external AI reviews (see the 2026-08-06 revision below).
 
 > **Revision 2026-08-05a (UX only, security model unchanged):** clarified that the
 > mouse box only needs movement (no clicking/holding), added a Reset button for the
@@ -27,6 +28,38 @@
 > That test is explicitly framed as detecting a *grossly broken/stuck* RNG only — it
 > cannot prove cryptographic quality, since any competent PRNG passes it. No change to
 > key derivation, costs, or the security root.
+>
+> **Revision 2026-08-06 — responses to two independent external reviews.** The public
+> repo was audited by two *different, non-Anthropic* AI reviewers. Both found **no
+> Critical/High issue in the cryptographic core** (entropy, derivation, backup
+> encryption) and corroborated this self-review; the detailed reviewer raised one
+> High on *operational* supply-chain risk (hosted mainnet generation) and several
+> Medium/Low hardening items. Changes shipped in response (derivation & security root
+> unchanged throughout):
+> - **[High → mitigated] Hosted mainnet generation:** mainnet generation is now
+>   **blocked while `navigator.onLine` is true**. Testnet is unaffected; a real wallet
+>   requires downloading the page and going offline. (Signed offline GitHub Releases
+>   are the recommended next step — see F-7 below.)
+> - **[Medium → FIXED] Restore DoS (tightened F-1):** `decryptBackup` now accepts
+>   **only the exact canonical KDF params** Olesia emits (N=65536, r=8, p=1, dkLen=32);
+>   the previous *range* still allowed ~4 GB scrypt at the top of the range. Any other
+>   params are refused before scrypt runs.
+> - **[Medium-Low → FIXED] Backup metadata now authenticated (F-2):** new **v3 backup
+>   format** binds `network`, `path`, `addressHash`, `passphraseUsed` as AEAD
+>   associated data, so tampering fails the restore (tests added). v1/v2 still read.
+> - **[Medium → addressed] Weak backup passwords:** added a one-click **strong-password
+>   generator** (6-word Diceware from the wordlist, ~66 bits) and an explicitly
+>   *conservative/optimistic* strength hint that steers users to the generator.
+> - **[Low] Raw entropy** is now **hidden behind an "Advanced" toggle** (off by default)
+>   — keeps the verification path, reduces on-screen exposure.
+> - **[Low] BIP-39 passphrase fields** are now `type=password` with a Show/Hide toggle
+>   and `autocomplete=off`.
+> - **[Low] Backup-verify wording** now says "2 of 24 is a spot-check — do a full
+>   restore," not "backup verified."
+> - **[Low] CSP added** (`default-src 'none'; connect-src 'none'; …`) as a `<meta>` —
+>   **pending a browser round-trip test of the Blob download** (see F-5).
+> - **[Info] Wording:** "the CSPRNG always is strong" softened to "on a correctly
+>   functioning, uncompromised system"; the RNG button is now a **"liveness check."**
 
 ## ⚠️ Read this first: what this report is, and is not
 
@@ -54,10 +87,10 @@ cryptographic libraries. Reviewed:
 
 | File | Lines | Role |
 |---|---|---|
-| `src/app.js` | ~130 | entropy, BIP-39/32 derivation, address, descriptors, RNG smoke test |
-| `src/backup.js` | ~100 | encrypted backup, restore, descriptor checksum |
-| `src/ui.js` | ~210 | DOM handlers, no crypto of its own |
-| `assemble.mjs`, `build.mjs` | ~165 | deterministic bundle → `index.html` |
+| `src/app.js` | ~140 | entropy, BIP-39/32 derivation, address, descriptors, RNG liveness, pw-gen |
+| `src/backup.js` | ~115 | v3 authenticated backup, restore, descriptor checksum |
+| `src/ui.js` | ~265 | DOM handlers, no crypto of its own |
+| `assemble.mjs`, `build.mjs` | ~170 | deterministic bundle → `index.html` |
 
 **Cryptographic primitives are NOT hand-rolled.** They are the audited
 `@noble`/`@scure` libraries, pinned in `package-lock.json`:
@@ -97,20 +130,21 @@ cryptographic libraries. Reviewed:
 
 No High or Critical findings. All items below are Low or Informational.
 
-### F-1 (Low, FIXED) — unbounded KDF parameters on restore
-`decryptBackup` previously passed the file's `kdf.N` straight to scrypt, so a
+### F-1 (Low, FIXED — then tightened 2026-08-06) — unbounded KDF parameters on restore
+`decryptBackup` originally passed the file's `kdf.N` straight to scrypt, so a
 maliciously-crafted backup with `N = 2³⁰` could exhaust memory / hang the tab on
-restore. **Fixed:** parameters are now bounds-checked (N a power of two in
-[2¹⁴, 2²⁰], r ≤ 32, p ≤ 16, dkLen = 32) before scrypt runs, with a regression
-test. Exposure was low regardless — you only ever restore your own files.
+restore. First fix bounded the range; an external reviewer correctly noted the
+*top* of that range (N=2²⁰, r=32) is still ~4 GB. **Now fully fixed:** restore
+accepts **only the exact canonical params** Olesia emits (N=65536, r=8, p=1,
+dkLen=32) — anything else is refused before scrypt runs (regression test covers it).
 
-### F-2 (Low, documented) — backup metadata not authenticated
-The `network`, `path`, and `addressHash` fields sit outside the AEAD. Tampering
-with them **cannot reveal the mnemonic** (it is encrypted and its ciphertext is
-authenticated), but could cause a restore to derive the wrong network and show a
-false "address does not match." Impact is a confusing restore, not key loss.
-**Remediation (not yet applied, to keep the format stable):** bind the metadata
-as AEAD associated data (AAD). Tracked as a known low item.
+### F-2 (Low → FIXED 2026-08-06) — backup metadata not authenticated
+The `network`, `path`, and `addressHash` fields previously sat outside the AEAD.
+Tampering could not reveal the mnemonic, but could cause a confusing wrong-network
+restore. **Fixed:** the **v3 backup format** binds these fields (plus
+`passphraseUsed`) as AEAD associated data, so any tampering fails the restore
+(`backuptest.mjs` asserts network/path/addressHash tampers are rejected). v1/v2
+files remain readable.
 
 ### F-3 (Informational) — modulo bias in the backup-verification quiz
 The two words the page asks you to re-type are chosen with `r % 24`, a negligibly
@@ -123,12 +157,15 @@ may persist in memory until garbage-collected. This is **inherent to every
 browser-based wallet**: a compromised or memory-dumped machine defeats any web
 wallet. Generate real wallets on a clean, offline machine.
 
-### F-5 (Informational, recommended) — no Content-Security-Policy
-A strict CSP (e.g. `connect-src 'none'`) would harden the **hosted** case by
-blocking any network egress even from injected code. Not yet added because it
-must be browser-tested against the Blob-based backup download first (a CSP that
-breaks "save backup" would be worse than the marginal gain). Recommended as a
-tested follow-up. Note: offline use has no network to egress to regardless.
+### F-5 (Low → ADDED 2026-08-06, pending browser test) — Content-Security-Policy
+A strict CSP is now shipped as a `<meta http-equiv>` tag:
+`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none';
+frame-ancestors 'none'`. `connect-src 'none'` blocks all network egress even from
+injected code (the main hosted threat). **Action required:** confirm in a real
+browser that the Blob-based "Download encrypted backup", the descriptor download,
+and file "Restore" still work under this CSP; if a download breaks, the single
+`<meta>` line is trivially reverted. Offline use has no network to egress regardless.
 
 ### F-6 (Informational) — dev-only dependency advisory
 `esbuild` (the bundler) has advisory GHSA-67mh-4wv8-2f99, which concerns its
@@ -144,7 +181,7 @@ at convenience.
   `VERIFY.md`), and for real funds, **run the downloaded file offline**.
 - **Endpoint security.** Malware, a compromised browser extension, or a
   screen-grabber on your machine defeats any software wallet. For meaningful
-  value, a dedicated hardware wallet remains the stronger choice; Alea is a
+  value, a dedicated hardware wallet remains the stronger choice; Olesia is a
   low-friction generator and learning tool, honestly labelled as such.
 
 ## Verdict

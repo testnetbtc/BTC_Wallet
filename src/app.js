@@ -1,4 +1,4 @@
-// Alea — wallet seed generator core. Built on audited primitives only.
+// Olesia — wallet seed generator core. Built on audited primitives only.
 import { entropyToMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { HDKey } from '@scure/bip32';
@@ -111,9 +111,20 @@ export function rngSelfTest(nBytes = 8192) {
   return { ok: monobitOk && notStuck, nBytes, bits, ones, proportion, z, distinct, monobitOk, notStuck };
 }
 
+// Generate a strong random passphrase for the ENCRYPTED BACKUP FILE (not the
+// wallet). Backup files can be attacked offline, so a weak file password is the
+// weak link; the easiest honest fix is to make a strong one one click away.
+// Diceware-style from the BIP-39 wordlist: 6 words ~= 66 bits. 2^32 is an exact
+// multiple of 2048, so `% 2048` is unbiased.
+export function randomPassword(nWords = 6) {
+  const idx = new Uint32Array(nWords);
+  crypto.getRandomValues(idx);
+  return Array.from(idx, (i) => wordlist[i % 2048]).join('-');
+}
+
 // expose for the page + a self-check hook
 if (typeof window !== 'undefined') {
-  window.Alea = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, _vectorCheck };
+  window.Olesia = { makeWallet, deriveFrom, encryptBackup, decryptBackup, verifyAddress, rngSelfTest, randomPassword, _vectorCheck };
 }
 
 // Correctness self-check the PAGE runs on load against the official BIP-84 vector.
