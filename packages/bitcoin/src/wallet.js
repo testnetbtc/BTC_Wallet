@@ -1,0 +1,23 @@
+// Derive a BIP-84 (native segwit, P2WPKH) signing key for send/receive.
+// Same derivation as the offline Olesia generator: m/84'/coin'/0'/0/index.
+import { HDKey } from '@scure/bip32';
+import { mnemonicToSeedSync } from '@scure/bip39';
+import * as btc from '@scure/btc-signer';
+import { net } from './networks.js';
+
+export function deriveKey(mnemonic, passphrase, networkName, index = 0) {
+  const n = net(networkName);
+  const seed = mnemonicToSeedSync(mnemonic, passphrase || '');
+  const child = HDKey.fromMasterSeed(seed).derive(`m/84'/${n.coin}'/0'/0/${index}`);
+  if (!child.privateKey) throw new Error('no private key derived');
+  const spend = btc.p2wpkh(child.publicKey, n.btc); // { script, address }
+  return {
+    networkName,
+    index,
+    privKey: child.privateKey,   // 32 bytes
+    pubkey: child.publicKey,     // 33 bytes compressed
+    address: spend.address,      // tb1... / bc1...
+    spend,                       // {script, address} used when adding inputs
+    path: `m/84'/${n.coin}'/0'/0/${index}`,
+  };
+}
