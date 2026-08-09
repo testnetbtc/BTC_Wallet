@@ -1,0 +1,16 @@
+[Unit]
+Description=Olesia broadcast service (localhost:8787 -> bitcoind sendrawtransaction)
+After=network-online.target bitcoind.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/infra/broadcast/server.mjs
+Restart=on-failure
+RestartSec=10
+# uses `sudo -u bitcoin bitcoin-cli` (NOPASSWD), so privilege escalation must be allowed
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
