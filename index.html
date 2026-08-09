@@ -6333,14 +6333,24 @@ zoo`.split("\n");
   function mainnetOnlineBlocked(){ return $('#net').value==='mainnet' && navigator.onLine; }
   function refreshGen(){
     const isMain = $('#net').value === 'mainnet';
-    $('#netwarn').style.display = isMain ? 'block' : 'none';
+    const blocked = mainnetOnlineBlocked();
+    if (isMain) {
+      $('#netwarn').style.display = 'block';
+      // amber (reassuring) when offline, red (blocking) when online
+      $('#netwarn').className = blocked ? 'danger' : 'warn';
+      $('#netwarn').textContent = blocked
+        ? '⚠ Mainnet + ONLINE. For your safety, mainnet generation is blocked while this browser is online. Download this page, disconnect from the internet, then reopen it offline.'
+        : '✓ Mainnet selected, and this browser is OFFLINE — you can generate below. Do not fund a mainnet wallet beyond what you can afford to lose until this code has been independently reviewed.';
+    } else {
+      $('#netwarn').style.display = 'none';
+    }
     const ok = passOk();
     $('#passwarn').style.display = ok ? 'none' : 'block';
-    $('#gen').disabled = !selfCheckOk || !ok || mainnetOnlineBlocked();
+    $('#gen').disabled = !selfCheckOk || !ok || blocked;
     $('#gen').textContent =
         !selfCheckOk ? 'Disabled — crypto self-check failed'
       : !ok ? 'Passphrases do not match'
-      : mainnetOnlineBlocked() ? 'Disconnect from the internet for mainnet'
+      : blocked ? 'Disconnect from the internet for mainnet'
       : isMain ? 'Generate REAL mainnet wallet'
       : 'Generate wallet';
   }
