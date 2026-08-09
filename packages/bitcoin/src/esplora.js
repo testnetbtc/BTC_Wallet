@@ -35,6 +35,17 @@ export async function getFeeRate(networkName, target = 6) {
 }
 
 export async function broadcast(txHex, networkName) {
+  // Mainnet goes through YOUR OWN node (api.olesia.io -> tunnel -> bitcoind), which
+  // validates with testmempoolaccept before sendrawtransaction. Testnet stays on the
+  // public API (the node is mainnet-only).
+  if (networkName === 'mainnet') {
+    const r = await fetch('https://api.olesia.io/broadcast', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txHex }),
+    });
+    const t = await r.text();
+    if (!r.ok) throw new Error(`own-node broadcast rejected: ${t.slice(0, 200)}`);
+    try { return JSON.parse(t).txid; } catch { return t.trim(); }
+  }
   const base = net(networkName).esplora;
   return (await j(`${base}/tx`, { method: 'POST', body: txHex })).trim(); // returns txid
 }

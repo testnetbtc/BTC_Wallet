@@ -3,7 +3,7 @@ const bundle = readFileSync('web/dist/online.bundle.js', 'utf8');
 const ui = readFileSync('web/ui.js', 'utf8');
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://mempool.space https://blockstream.info; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://mempool.space https://blockstream.info https://api.olesia.io; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>Olesia Wallet — online (testnet)</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
