@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>Olesia — a Bitcoin wallet, done right</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#0e1116;color:#e6edf3}
+.wrap{max-width:760px;margin:0 auto;padding:40px 20px 90px}
+h1{font-size:40px;margin:0 0 4px;letter-spacing:.5px}h1 span{color:#f0a020}
+.tag{color:#9aa7b4;margin:0 0 28px;font-size:18px}
+.grid{display:flex;gap:14px;flex-wrap:wrap;margin:22px 0}
+.tile{flex:1;min-width:240px;background:#161b22;border:1px solid #2b333c;border-radius:12px;padding:20px;text-decoration:none;color:inherit;display:block}
+.tile:hover{border-color:#f0a020}
+.tile h3{margin:0 0 6px;font-size:19px}.tile p{margin:0;color:#9aa7b4;font-size:14px}
+.tile .go{color:#7ee2a8;font-size:14px;margin-top:10px;display:inline-block}
+h2{font-size:22px;margin:34px 0 8px;border-top:1px solid #2b333c;padding-top:26px}
+.hint{color:#9aa7b4;font-size:14px}
+code,pre{background:#161b22;border:1px solid #2b333c;border-radius:7px}
+code{padding:2px 6px;font-size:13px;word-break:break-all}
+pre{padding:12px;overflow-x:auto;font-size:13px}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:10px;padding:16px;margin:22px 0;font-size:14px}
+.warn b{color:#ffd57a}
+a{color:#7ee2a8}
+.foot{color:#6b7480;font-size:13px;margin-top:40px}
+</style></head>
+<body><div class="wrap">
+<h1>Olesia<span>.</span></h1>
+<p class="tag">A Bitcoin wallet built from scratch on audited primitives — cold generation, honest entropy, and a testnet playground you can actually use.</p>
+
+<div class="grid">
+<a class="tile" href="https://app.olesia.io">
+<h3>Open the wallet →</h3>
+<p>Send, receive, sweep and message on testnet. Balances, QR, history. Runs in your browser.</p>
+<span class="go">app.olesia.io</span>
+</a>
+<a class="tile" href="https://offline.olesia.io">
+<h3>Cold generator →</h3>
+<p>Create a 24-word seed, backup and watch-only descriptor. Built to run <b>offline</b>.</p>
+<span class="go">offline.olesia.io</span>
+</a>
+</div>
+
+<div class="warn">
+<b>The one rule.</b> For any wallet you will fund with real value: <b>download</b> the cold generator,
+<b>verify its hash</b> (below), <b>disconnect from the internet</b>, and run it offline. A page served
+over the web can be changed by whoever controls the server — verifying the hash and running offline
+removes that trust. The online wallet is for testnet and small amounts.
+</div>
+
+<h2>Verify the cold generator</h2>
+<p class="hint">The build is byte-reproducible. Confirm any copy you download is exactly the reviewed code:</p>
+<pre>curl -sL https://offline.olesia.io -o olesia.html
+sha256sum olesia.html
+# expected:
+8a28ce4a92cf421bd332fbffd053fbddb6ea18b76d1eab255d7039285ac3a668</pre>
+<p class="hint">Full instructions and an independent Sparrow round-trip are in <a href="https://github.com/testnetbtc/BTC_Wallet/blob/main/VERIFY.md">VERIFY.md</a>. Source, security audit and reproducible build: <a href="https://github.com/testnetbtc/BTC_Wallet">github.com/testnetbtc/BTC_Wallet</a>.</p>
+
+<h2>How it's built</h2>
+<p class="hint">
+<b>Cold generator</b> — audited <code>@scure</code>/<code>@noble</code> primitives, 256-bit entropy from the OS CSPRNG, fail-closed self-check, encrypted authenticated backups, reproducible single-file build.<br>
+<b>Online wallet</b> — signs locally with <code>@scure/btc-signer</code> (RFC-6979); balances/broadcast over the network; never stores your seed.<br>
+<b>Mainnet (coming)</b> — air-gap only: watch-only online, sign offline, broadcast through your own node. The seed never goes online.
+</p>
+
+<p class="foot">Olesia is experimental and self-audited. Not financial advice; not a substitute for a hardware wallet for large sums. Testnet first, always.</p>
+</div>
+</body></html>
