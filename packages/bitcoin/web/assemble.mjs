@@ -39,10 +39,12 @@ mainnet seed here.</b> For real funds, generate and sign offline.
 <div class="card">
 <label>Network</label>
 <select id="net"></select>
-<label>Your 24-word seed <span class="hint">(paste one, or generate a fresh testnet wallet)</span></label>
-<textarea id="mnemonic" placeholder="word1 word2 … word24" autocomplete="off" spellcheck="false"></textarea>
+<div id="mainwarn" class="warn" style="display:none">⚠ <b>Mainnet.</b> Do <b>not</b> paste a mainnet seed here. Load your <b>account xpub</b> (watch-only), build an unsigned PSBT below, sign it <b>offline</b>, then broadcast the signed PSBT here. Hot send/sweep are disabled on mainnet.</div>
+<label>24-word seed <span class="hint">— or an account xpub for watch-only</span></label>
+<textarea id="mnemonic" placeholder="word1 word2 … word24   —or—   xpub…/tpub…" autocomplete="off" spellcheck="false"></textarea>
 <button id="gen" class="sec">Generate new</button>
-<button id="load">Load wallet</button>
+<button id="load">Load</button>
+<span id="mode" class="hint"></span>
 </div>
 
 <div class="card" id="recv">
@@ -56,6 +58,8 @@ mainnet seed here.</b> For real funds, generate and sign offline.
 <div id="bal" class="mono"></div>
 <div id="utxos" class="hint"></div>
 <button id="refresh" class="sec">Refresh</button>
+<button id="expxpub" class="sec" style="display:none">Show account xpub</button>
+<div id="xpubout" class="mono" style="display:none;margin-top:6px"></div>
 <label style="margin-top:16px">Recent transactions</label>
 <div id="history" class="hint">—</div>
 </div>
@@ -70,6 +74,7 @@ mainnet seed here.</b> For real funds, generate and sign offline.
 <div class="row"><div><input id="fee" placeholder="fee rate (sat/vB, default 2)" inputmode="numeric"></div></div>
 <button id="dryrun" class="sec">Build (dry run)</button>
 <button id="send">Send</button>
+<div><span id="hotnote" class="hint"></span></div>
 
 <label style="margin-top:18px;border-top:1px solid #2b333c;padding-top:12px">Sweep (send everything, minus fee)</label>
 <input id="sweepto" placeholder="destination address for the full balance" autocomplete="off">
@@ -77,6 +82,21 @@ mainnet seed here.</b> For real funds, generate and sign offline.
 <button id="sweep">Sweep all</button>
 
 <div id="result" class="mono" style="margin-top:12px"></div>
+</div>
+
+<div class="card" id="airgap" style="display:none">
+<label>Air-gap / PSBT tools <span class="hint">— the mainnet-safe path</span></label>
+<p class="hint">Watch-only online: <b>Build unsigned</b> here (fills from the Send fields above) → sign it <b>offline</b> → <b>Broadcast signed</b> here. The seed never needs to be online.</p>
+<button id="buildunsigned" class="sec">Build unsigned PSBT (from Send fields)</button>
+<textarea id="unsignedout" placeholder="unsigned PSBT (base64) — copy to your offline signer" readonly></textarea>
+<label style="margin-top:12px">Sign a PSBT <span class="hint">(needs the seed — run this page offline for mainnet)</span></label>
+<textarea id="signin" placeholder="paste an unsigned PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
+<button id="signbtn" class="sec">Sign PSBT</button>
+<textarea id="signedout" placeholder="signed PSBT (base64) appears here" readonly></textarea>
+<label style="margin-top:12px">Broadcast a signed PSBT</label>
+<textarea id="bcin" placeholder="paste a signed PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
+<button id="bcbtn">Broadcast signed PSBT</button>
+<div id="agresult" class="mono" style="display:none;margin-top:10px"></div>
 </div>
 
 <div style="margin-top:10px"><span id="status" class="hint"></span></div>
