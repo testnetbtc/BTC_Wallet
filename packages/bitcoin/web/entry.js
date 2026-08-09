@@ -9,7 +9,7 @@ import {
   walletAddress, statusByAddress, isXpub, prepareAndSend, prepareSweep,
   prepareUnsigned, signUnsigned, broadcastSigned,
 } from '../src/send.js';
-import { accountXpub } from '../src/wallet.js';
+import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { getTxHistory } from '../src/esplora.js';
 import { NETWORKS } from '../src/networks.js';
 
@@ -17,8 +17,20 @@ const T = (s) => (s || '').trim();
 
 window.OW = {
   generate: () => generateMnemonic(wordlist, 256),
-  validate: (m) => { try { return validateMnemonic(T(m), wordlist); } catch { return false; } },
+  validate: (m) => { try { return validateMnemonic(normalizeMnemonic(m), wordlist); } catch { return false; } },
   isXpub: (s) => isXpub(s),
+  // Human-readable reason a seed/xpub was rejected — never echoes the words, only positions.
+  diagnose: (s) => {
+    s = T(s);
+    if (isXpub(s)) return 'looks like an xpub';
+    const words = normalizeMnemonic(s).split(' ').filter(Boolean);
+    if (![12, 15, 18, 21, 24].includes(words.length))
+      return `got ${words.length} words — a 24-word seed is expected. Check for a missing/extra word or a line-break.`;
+    const bad = []; words.forEach((w, i) => { if (!wordlist.includes(w)) bad.push(i + 1); });
+    if (bad.length)
+      return `word${bad.length > 1 ? 's' : ''} #${bad.join(', #')} ${bad.length > 1 ? 'are' : 'is'} not a BIP-39 word — likely autocorrect. Fix and reload.`;
+    return 'all words are valid BIP-39 words but the checksum fails — a word is probably wrong or out of order.';
+  },
   networks: Object.keys(NETWORKS),
   explorer: (network) => NETWORKS[network].explorer,
   qr: async (text) => {

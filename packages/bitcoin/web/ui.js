@@ -19,7 +19,7 @@
     const s = $('#mnemonic').value.trim();
     if (window.OW.validate(s)) mode = 'full';
     else if (window.OW.isXpub(s)) mode = 'watch';
-    else { show($('#status'), '✗ not a valid 24-word seed or account xpub.', 'bad'); return; }
+    else { show($('#status'), '✗ ' + window.OW.diagnose(s), 'bad'); return; }
     source = s; network = $('#net').value;
     const addr = window.OW.address(source, network);
     show($('#addr'), addr, 'mono');
@@ -37,12 +37,17 @@
   function applyGating() {
     const isMain = network === 'mainnet';
     $('#mainwarn').style.display = isMain ? 'block' : 'none';
-    const hot = mode === 'full' && !isMain;       // one-click send/sweep only for testnet + seed
+    const hot = mode === 'full';  // a loaded seed => hot send/sweep (incl. mainnet — opt-in)
     [['#send', hot], ['#dryrun', hot], ['#sweep', hot], ['#sweepdry', hot],
      ['#signbtn', mode === 'full']].forEach(([id, on]) => { const el = $(id); if (el) el.disabled = !on; });
-    $('#hotnote').textContent = hot ? '' : (isMain
-      ? 'Hot send/sweep are off on mainnet — use the air-gap tools below.'
-      : (mode === 'watch' ? 'Watch-only: no seed loaded — build an unsigned PSBT, sign it elsewhere.' : ''));
+    if (isMain) {
+      $('#mainwarn').textContent = mode === 'full'
+        ? '⚠ Mainnet HOT WALLET — REAL bitcoin. Your seed is in this browser tab (never stored, never sent); Send/Sweep broadcast immediately via your own node. Keep only small amounts you would accept losing. For larger sums, load an xpub (watch-only) and use the offline air-gap tools below.'
+        : '⚠ Mainnet, watch-only (xpub). Build an unsigned PSBT below, sign it offline, then broadcast the signed PSBT here.';
+    }
+    $('#hotnote').textContent = hot
+      ? (isMain ? '⚠ mainnet hot wallet — real BTC, small amounts only' : '')
+      : (mode === 'watch' ? 'Watch-only: no seed loaded — build an unsigned PSBT, sign it elsewhere.' : '');
   }
 
   $('#expxpub').addEventListener('click', () => {

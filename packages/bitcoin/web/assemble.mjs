@@ -31,9 +31,10 @@ a{color:#7ee2a8}
 <p class="sub">Online send / receive — <b>testnet</b>. A companion to the offline generator.</p>
 
 <div class="warn">
-<b>Hot wallet — testnet only.</b> Your seed is typed into this page and used to sign in your browser.
-It is <b>never stored and never leaves this tab</b>, but a web page is not cold storage. <b>Do not enter a
-mainnet seed here.</b> For real funds, generate and sign offline.
+<b>Hot wallet.</b> Your seed is typed into this page and used to sign in your browser. It is
+<b>never stored and never leaves this tab</b>, but a web page is not cold storage. Fine for testnet, and
+for <b>small mainnet amounts you'd accept losing</b> (like any mobile wallet). For meaningful funds, load a
+watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balance seed in a web page.
 </div>
 
 <div class="card">
