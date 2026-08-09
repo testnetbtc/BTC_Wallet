@@ -5,6 +5,14 @@ import { mnemonicToSeedSync } from '@scure/bip39';
 import * as btc from '@scure/btc-signer';
 import { net } from './networks.js';
 
+// Account-level extended PUBLIC key (m/84'/coin'/0') — this is what you hand to a
+// watch-only online wallet so it can see balances and build PSBTs WITHOUT the seed.
+export function accountXpub(mnemonic, passphrase, networkName) {
+  const n = net(networkName);
+  const seed = mnemonicToSeedSync(mnemonic, passphrase || '');
+  return HDKey.fromMasterSeed(seed).derive(`m/84'/${n.coin}'/0'`).publicExtendedKey;
+}
+
 export function deriveKey(mnemonic, passphrase, networkName, index = 0) {
   const n = net(networkName);
   const seed = mnemonicToSeedSync(mnemonic, passphrase || '');
