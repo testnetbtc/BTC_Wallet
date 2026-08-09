@@ -46,13 +46,18 @@ mainnet seed here.</b> For real funds, generate and sign offline.
 </div>
 
 <div class="card" id="recv">
+<label>Wallet label <span class="hint">(optional — saved in this browser only)</span></label>
+<input id="label" placeholder="e.g. testnet spending" autocomplete="off">
 <label>Receive address</label>
 <div id="addr" class="mono"></div>
-<p class="hint">Send testnet coin here, then Refresh. (Same BIP-84 derivation as the offline Olesia generator, so a seed made there works here.)</p>
+<img id="qr" alt="receive address QR" style="display:none;margin:8px 0;border-radius:8px">
+<p class="hint">Send testnet coin here, then Refresh. Same BIP-84 derivation as the offline Olesia generator.</p>
 <label>Balance</label>
 <div id="bal" class="mono"></div>
 <div id="utxos" class="hint"></div>
-<button id="refresh" class="sec">Refresh balance</button>
+<button id="refresh" class="sec">Refresh</button>
+<label style="margin-top:16px">Recent transactions</label>
+<div id="history" class="hint">—</div>
 </div>
 
 <div class="card" id="actions">

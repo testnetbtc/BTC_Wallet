@@ -3,7 +3,9 @@
 // used to sign locally with @scure/btc-signer. Testnet-first (hot wallet).
 import { generateMnemonic, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
+import QRCode from 'qrcode';
 import { receiveAddress, walletStatus, prepareAndSend, prepareSweep } from '../src/send.js';
+import { getTxHistory } from '../src/esplora.js';
 import { NETWORKS } from '../src/networks.js';
 
 window.OW = {
@@ -14,6 +16,11 @@ window.OW = {
 
   address: (mnemonic, network, index = 0) => receiveAddress(mnemonic.trim(), '', network, index),
   status: (mnemonic, network, index = 0) => walletStatus(mnemonic.trim(), '', network, index),
+  history: (mnemonic, network, index = 0) => getTxHistory(receiveAddress(mnemonic.trim(), '', network, index), network),
+  qr: async (text) => {
+    const svg = await QRCode.toString(text, { type: 'svg', margin: 1, color: { dark: '#0e1116', light: '#e6edf3' } });
+    return 'data:image/svg+xml;base64,' + btoa(svg); // canvas-free; CSP img-src data:
+  },
 
   send: ({ mnemonic, network, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = true }) =>
     prepareAndSend({

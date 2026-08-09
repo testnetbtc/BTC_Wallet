@@ -22,14 +22,24 @@
     const m = $('#mnemonic').value.trim();
     if (!window.OW.validate(m)) { show($('#status'), '✗ not a valid BIP-39 mnemonic (check the words).', 'bad'); return; }
     mnemonic = m; network = $('#net').value;
-    show($('#addr'), window.OW.address(mnemonic, network), 'mono');
+    const addr = window.OW.address(mnemonic, network);
+    show($('#addr'), addr, 'mono');
+    try { const q = $('#qr'); q.src = await window.OW.qr(addr); q.style.display = 'inline-block'; } catch {}
+    $('#label').value = localStorage.getItem('olesia:label:' + addr) || '';
     $('#recv').style.display = 'block';
-    show($('#status'), 'Wallet loaded. Fetching balance…', 'hint');
+    show($('#status'), 'Wallet loaded. Fetching…', 'hint');
     await refreshStatus();
+    await refreshHistory();
     $('#actions').style.display = 'block';
   }
 
-  $('#refresh').addEventListener('click', refreshStatus);
+  // wallet label persists locally (not a secret)
+  $('#label').addEventListener('input', () => {
+    const addr = $('#addr').textContent;
+    if (addr) localStorage.setItem('olesia:label:' + addr, $('#label').value);
+  });
+
+  $('#refresh').addEventListener('click', async () => { await refreshStatus(); await refreshHistory(); });
   async function refreshStatus() {
     try {
       const s = await window.OW.status(mnemonic, network);
@@ -39,6 +49,26 @@
         : '(no UTXOs yet — send testnet coin to the address above)';
       show($('#status'), 'Balance updated.', 'ok');
     } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+  }
+
+  async function refreshHistory() {
+    try {
+      const txs = await window.OW.history(mnemonic, network);
+      const h = $('#history'); h.textContent = '';
+      if (!txs.length) { h.textContent = '(no transactions yet)'; return; }
+      const base = window.OW.explorer(network);
+      for (const t of txs) {
+        const row = document.createElement('div');
+        row.style.margin = '3px 0';
+        row.style.color = t.net >= 0 ? '#7ee2a8' : '#ff9ca0';
+        const amt = (t.net >= 0 ? '+' : '−') + Math.abs(t.net).toLocaleString() + ' sat';
+        row.appendChild(document.createTextNode(`${t.confirmed ? '✓' : '⧗ pending'}  ${amt}   `));
+        const a = document.createElement('a');
+        a.href = base + t.txid; a.target = '_blank'; a.rel = 'noopener'; a.textContent = t.txid.slice(0, 12) + '… ↗';
+        row.appendChild(a);
+        h.appendChild(row);
+      }
+    } catch (e) { $('#history').textContent = '✗ ' + e.message; }
   }
 
   async function runSend(broadcast) {
@@ -79,6 +109,6 @@
     }
     r.style.display = 'block';
     show($('#status'), broadcast ? '✓ sent — see result below' : 'built (dry run) — press Send to broadcast', broadcast ? 'ok' : 'hint');
-    if (broadcast) setTimeout(refreshStatus, 1500);
+    if (broadcast) setTimeout(async () => { await refreshStatus(); await refreshHistory(); }, 1500);
   }
 })();

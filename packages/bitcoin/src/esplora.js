@@ -38,3 +38,21 @@ export async function broadcast(txHex, networkName) {
   const base = net(networkName).esplora;
   return (await j(`${base}/tx`, { method: 'POST', body: txHex })).trim(); // returns txid
 }
+
+// Recent transaction history for an address, with the net effect (sats) on it.
+export async function getTxHistory(address, networkName, limit = 15) {
+  const base = net(networkName).esplora;
+  const txs = JSON.parse(await j(`${base}/address/${address}/txs`));
+  return txs.slice(0, limit).map((t) => {
+    let inFromUs = 0, outToUs = 0;
+    for (const vin of t.vin) if (vin.prevout?.scriptpubkey_address === address) inFromUs += vin.prevout.value;
+    for (const vout of t.vout) if (vout.scriptpubkey_address === address) outToUs += vout.value;
+    return {
+      txid: t.txid,
+      confirmed: !!t.status?.confirmed,
+      height: t.status?.block_height ?? null,
+      net: outToUs - inFromUs, // >0 received, <0 sent
+      fee: t.fee ?? 0,
+    };
+  });
+}
