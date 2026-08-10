@@ -15,6 +15,16 @@
   function showAbout() { const t = window.OW.scriptTypes().find((x) => x.id === scriptType); $('#stype_about').textContent = t ? t.about : ''; }
   showAbout();
   $('#stype').addEventListener('change', () => { scriptType = $('#stype').value; showAbout(); applyGating(); if (source) loadWallet(); });
+
+  // inline "?" tooltips + onboarding dismiss
+  document.addEventListener('click', (e) => {
+    if (e.target.classList && e.target.classList.contains('help')) {
+      const t = document.getElementById(e.target.dataset.target);
+      if (t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
+    }
+  });
+  try { if (localStorage.getItem('olesia:onboard') === 'done' && $('#onboard')) $('#onboard').style.display = 'none'; } catch {}
+  if ($('#onboard_x')) $('#onboard_x').addEventListener('click', () => { $('#onboard').style.display = 'none'; try { localStorage.setItem('olesia:onboard', 'done'); } catch {} });
   $('#gen').addEventListener('click', () => {
     $('#mnemonic').value = window.OW.generate();
     show($('#status'), 'New 24-word seed generated. Write it down, then press Load.', 'hint');
@@ -50,9 +60,10 @@
     [['#send', hot], ['#dryrun', hot], ['#sweep', hot], ['#sweepdry', hot],
      ['#signbtn', mode === 'full']].forEach(([id, on]) => { const el = $(id); if (el) el.disabled = !on; });
     if (isMain) {
-      $('#mainwarn').textContent = mode === 'full'
-        ? '⚠ Mainnet HOT WALLET — REAL bitcoin. Your seed is in this browser tab (never stored, never sent); Send/Sweep broadcast immediately via your own node. Keep only small amounts you would accept losing. For larger sums, load an xpub (watch-only) and use the offline air-gap tools below.'
-        : '⚠ Mainnet, watch-only (xpub). Build an unsigned PSBT below, sign it offline, then broadcast the signed PSBT here.';
+      $('#mainwarn').textContent =
+        mode === 'full' ? '⚠ Mainnet HOT WALLET — REAL bitcoin. Your seed is in this browser tab (never stored, never sent); Send/Sweep broadcast immediately via your own node. Keep only small amounts you would accept losing. For larger sums, load an xpub (watch-only) and use the offline air-gap tools below.'
+        : mode === 'watch' ? '⚠ Mainnet, watch-only (xpub) — build an unsigned PSBT below, sign it offline, then broadcast the signed PSBT here.'
+        : '⚠ Mainnet — REAL bitcoin. Paste a 12- or 24-word seed and press Load to use it as a hot wallet (keep amounts small), or an xpub for watch-only.';
     }
     $('#hotnote').textContent =
       p2pk ? 'P2PK is receive / museum-display only for now — spending a bare public key is a dedicated follow-up.'

@@ -32,6 +32,13 @@ button.sec{background:#2b333c;color:#e6edf3;font-weight:600}
 #addr,#bal,#utxos,#result{background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;margin:4px 0}
 #result{display:none}#recv,#actions{display:none}
 a{color:#7ee2a8}
+.help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:#2b333c;color:#e6edf3;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;user-select:none;vertical-align:middle}
+.tiptext{display:none;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:9px 11px;margin:7px 0;font-size:13px;color:#9aa7b4;line-height:1.55}
+.onboard{background:#161b22;border:1px solid #2b333c;border-radius:12px;padding:16px 18px;margin:12px 0}
+.onboard h3{margin:0 0 8px;font-size:17px}
+.onboard ol{margin:0;padding-left:20px;color:#9aa7b4;font-size:14.5px;line-height:1.7}
+.onboard b{color:#e6edf3}
+.onboard .x{float:right;color:#6b7480;cursor:pointer;font-size:20px;line-height:1;margin:-4px -4px 0 0}
 </style></head>
 <body><div class="wrap">
 <h1>Olesia Wallet<span>.</span></h1>
@@ -44,11 +51,25 @@ for <b>small mainnet amounts you'd accept losing</b> (like any mobile wallet). F
 watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balance seed in a web page.
 </div>
 
+<div class="onboard" id="onboard">
+<span class="x" id="onboard_x" title="dismiss">×</span>
+<h3>New here? Four steps 👋</h3>
+<ol>
+<li>Pick a <b>network</b> — <b>Signet</b> is smoothest (regular blocks, free coins).</li>
+<li>Tap <b>Generate new</b>, then <b>Load</b>. Write the 24 words on paper.</li>
+<li><b>Receive:</b> copy your address, get free coins from a faucet.</li>
+<li><b>Send</b> anywhere, add an OP_RETURN message, or switch <b>script types</b> to explore.</li>
+</ol>
+<p class="hint" style="margin:8px 0 0">All testnet-safe. <a href="https://olesia.io/learn/">Learn the concepts →</a></p>
+</div>
+
 <div class="card">
-<label>Network</label>
+<label>Network <span class="help" data-target="tip_net">?</span></label>
+<div class="tiptext" id="tip_net">Bitcoin has several chains that share the same rules. <b>Testnet3/4</b> and <b>Signet</b> use free, worthless coins for practice (Signet has regular ~10-min blocks — the nicest to learn on). <b>Mainnet</b> is real money.</div>
 <select id="net"></select>
 <div id="mainwarn" class="warn" style="display:none">⚠ <b>Mainnet.</b> Do <b>not</b> paste a mainnet seed here. Load your <b>account xpub</b> (watch-only), build an unsigned PSBT below, sign it <b>offline</b>, then broadcast the signed PSBT here. Hot send/sweep are disabled on mainnet.</div>
-<label>24-word seed <span class="hint">— or an account xpub for watch-only</span></label>
+<label>24-word seed <span class="help" data-target="tip_seed">?</span><span class="hint"> — or an account xpub for watch-only</span></label>
+<div class="tiptext" id="tip_seed">Your wallet <i>is</i> these 24 words (the BIP-39 standard). Anyone with them controls the coins — there's no "reset". Write them on paper, in order; never screenshot or cloud-sync them. An <b>xpub</b> is a public key that can watch a balance but cannot spend.</div>
 <textarea id="mnemonic" placeholder="word1 word2 … word24   —or—   xpub…/tpub…" autocomplete="off" spellcheck="false"></textarea>
 <button id="gen" class="sec">Generate new</button>
 <button id="load">Load</button>
@@ -76,18 +97,24 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 </div>
 
 <div class="card" id="actions">
-<label>Send</label>
+<label>Send <span class="help" data-target="tip_send">?</span></label>
+<div class="tiptext" id="tip_send">A transaction spends your UTXOs (coins) as inputs and creates outputs: one to the recipient, and usually one back to you as <b>change</b>. You choose the destination address and amount (in sats).</div>
 <div class="row">
 <div><input id="to" placeholder="destination address (tb1… or m/n…)" autocomplete="off"></div>
 <div><input id="amt" placeholder="amount (sats)" inputmode="numeric"></div>
 </div>
+<label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">OP_RETURN message <span class="help" data-target="tip_msg">?</span></label>
+<div class="tiptext" id="tip_msg"><b>OP_RETURN</b> attaches up to ~80 bytes of arbitrary data to a transaction — a permanent, public message written on-chain. It carries no coins and can never be spent.</div>
 <input id="msg" placeholder="optional OP_RETURN message (≤80 bytes)" autocomplete="off">
+<label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">Fee rate <span class="help" data-target="tip_fee">?</span></label>
+<div class="tiptext" id="tip_fee">Miners include transactions that pay them, priced in <b>satoshis per virtual byte</b> (sat/vB). Higher = confirms faster. On testnets fees barely matter, so it is a safe place to experiment.</div>
 <div class="row"><div><input id="fee" placeholder="fee rate (sat/vB, default 2)" inputmode="numeric"></div></div>
 <button id="dryrun" class="sec">Build (dry run)</button>
 <button id="send">Send</button>
 <div><span id="hotnote" class="hint"></span></div>
 
-<label style="margin-top:18px;border-top:1px solid #2b333c;padding-top:12px">Sweep (send everything, minus fee)</label>
+<label style="margin-top:18px;border-top:1px solid #2b333c;padding-top:12px">Sweep (send everything, minus fee) <span class="help" data-target="tip_sweep">?</span></label>
+<div class="tiptext" id="tip_sweep">A <b>sweep</b> empties the whole wallet to one address in a single transaction — no change output. Handy for moving everything to a new wallet.</div>
 <input id="sweepto" placeholder="destination address for the full balance" autocomplete="off">
 <button id="sweepdry" class="sec">Build sweep</button>
 <button id="sweep">Sweep all</button>
