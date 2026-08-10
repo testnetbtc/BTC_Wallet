@@ -11,6 +11,11 @@ Restart=on-failure
 RestartSec=10
 # uses `sudo -u bitcoin bitcoin-cli` (NOPASSWD), so privilege escalation must be allowed
 NoNewPrivileges=false
+# DoS containment: cap memory/CPU/process count so a flood can't exhaust the host
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=96
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

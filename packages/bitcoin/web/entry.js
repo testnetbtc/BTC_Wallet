@@ -44,14 +44,15 @@ window.OW = {
   history: (source, network, index = 0) => getTxHistory(walletAddress(T(source), network, index), network),
   xpub: (mnemonic, network) => accountXpub(T(mnemonic), '', network),
 
-  // hot-wallet send/sweep (mnemonic required)
-  send: ({ mnemonic, network, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = true }) =>
+  // hot-wallet send/sweep (mnemonic required). Mainnet requires CONFIRMED inputs
+  // (spending unconfirmed is riskier with real money); testnet may chain unconfirmed.
+  send: ({ mnemonic, network, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet' }) =>
     prepareAndSend({
       mnemonic: T(mnemonic), network,
       recipients: (toAddress && Number(amount) > 0) ? [{ address: T(toAddress), amount: Number(amount) }] : [],
       message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed,
     }),
-  sweep: ({ mnemonic, network, toAddress, feeRate, index = 0, broadcast = false, allowUnconfirmed = true }) =>
+  sweep: ({ mnemonic, network, toAddress, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet' }) =>
     prepareSweep({ mnemonic: T(mnemonic), network, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed }),
 
   // air-gap PSBT flow
