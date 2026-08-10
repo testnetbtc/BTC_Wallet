@@ -125,6 +125,8 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <label style="margin-top:12px">Your P2PK coins <span class="hint">(tracked in this browser — explorers can't)</span></label>
 <div id="p2pk_list" class="hint">—</div>
 <button type="button" id="p2pk_refresh" class="sec">Refresh</button>
+<label style="margin-top:12px">Recover a coin <span class="hint">— cleared your browser? paste the funding txid</span></label>
+<div class="field"><input id="p2pk_import" placeholder="txid   (or txid:vout)" autocomplete="off" spellcheck="false"><button type="button" id="p2pk_importbtn" class="sec">Add</button></div>
 <label style="margin-top:12px">Spend a P2PK coin out</label>
 <div class="field"><input id="p2pk_to" placeholder="destination address (tb1q… / m…)" autocomplete="off"><button type="button" class="sec paste" data-paste="p2pk_to">Paste</button></div>
 <div id="p2pk_result" class="mono" style="display:none;margin-top:8px"></div>

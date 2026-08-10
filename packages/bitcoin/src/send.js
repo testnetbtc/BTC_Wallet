@@ -108,6 +108,20 @@ export async function p2pkOutpoints({ network, outpoints }) {
   }));
 }
 
+// Recover a P2PK coin by its funding txid: verify the output really is THIS
+// wallet's P2PK script (explorers can't look it up by address), then return it
+// so the UI can re-track it after browser data was cleared.
+export async function importP2PK({ source, network, txid, vout = 0 }) {
+  const tgt = deriveScript(source, network, 'p2pk');
+  const tx = await getTx(txid, network);
+  const out = tx.vout?.[vout];
+  if (!out) throw new Error(`no output #${vout} in that transaction`);
+  if ((out.scriptpubkey || '').toLowerCase() !== tgt.scriptHex.toLowerCase())
+    throw new Error(`output #${vout} isn't this wallet's P2PK — wrong txid, vout, or seed`);
+  const spend = await getOutspend(txid, vout, network);
+  return { txid, vout, amount: out.value, confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
+}
+
 // Sweep one tracked P2PK output to any address (hand-rolled legacy spend).
 export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false }) {
   const tgt = deriveScript(source, network, 'p2pk');

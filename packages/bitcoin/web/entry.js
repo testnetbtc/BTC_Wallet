@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
-  fundP2PK, p2pkOutpoints, spendP2PK,
+  fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
@@ -67,6 +67,7 @@ window.OW = {
   fundP2PK: ({ source, network, amount, feeRate, broadcast = true }) =>
     fundP2PK({ source: T(source), network, amount: Number(amount), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
   p2pkStatus: ({ network, outpoints }) => p2pkOutpoints({ network, outpoints }),
+  p2pkImport: ({ source, network, txid, vout }) => importP2PK({ source: T(source), network, txid: T(txid), vout: Number(vout) || 0 }),
   spendP2PK: ({ source, network, outpoint, toAddress, feeRate, broadcast = true }) =>
     spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
 };

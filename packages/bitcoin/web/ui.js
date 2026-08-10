@@ -171,6 +171,19 @@
     } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
   });
   $('#p2pk_refresh').addEventListener('click', refreshP2PKList);
+  $('#p2pk_importbtn').addEventListener('click', async () => {
+    const raw = $('#p2pk_import').value.trim();
+    if (!raw) return show($('#status'), 'paste the funding txid to recover a P2PK coin', 'bad');
+    const [txid, voutStr] = raw.split(':'); const vout = Number(voutStr) || 0;
+    show($('#status'), 'Looking up…', 'hint');
+    try {
+      const o = await window.OW.p2pkImport({ source, network, txid: txid.trim(), vout });
+      const list = p2pkLoad();
+      if (list.some((x) => x.txid === o.txid && x.vout === o.vout)) show($('#status'), 'already tracked', 'hint');
+      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount }); p2pkStore(list); show($('#status'), '✓ P2PK coin recovered', 'ok'); }
+      $('#p2pk_import').value = ''; await refreshP2PKList();
+    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+  });
 
   $('#expxpub').addEventListener('click', () => {
     try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; $('#copyxpub').style.display = 'inline-block'; }
