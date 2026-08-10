@@ -25,6 +25,28 @@
   });
   try { if (localStorage.getItem('olesia:onboard') === 'done' && $('#onboard')) $('#onboard').style.display = 'none'; } catch {}
   if ($('#onboard_x')) $('#onboard_x').addEventListener('click', () => { $('#onboard').style.display = 'none'; try { localStorage.setItem('olesia:onboard', 'done'); } catch {} });
+
+  // tabs (Receive / Send / Advanced)
+  function showTab(name) {
+    ['recv', 'actions', 'airgap'].forEach((n) => { const el = $('#' + n); if (el) el.style.display = n === name ? 'block' : 'none'; });
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  }
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+  // fee presets (slow / normal / fast) + custom override
+  const setFeeActive = () => document.querySelectorAll('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
+  $('#fee').value = '2';
+  document.querySelectorAll('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
+  $('#fee').addEventListener('input', setFeeActive);
+
+  // copy-to-clipboard buttons (data-copy = element id)
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.copy'); if (!b || !b.dataset.copy) return;
+    const el = $('#' + b.dataset.copy); if (!el) return;
+    const text = ('value' in el) ? el.value : el.textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = o; }, 1200); }).catch(() => {});
+  });
   $('#gen').addEventListener('click', () => {
     $('#mnemonic').value = window.OW.generate();
     show($('#status'), 'New 24-word seed generated. Write it down, then press Load.', 'hint');
@@ -45,8 +67,8 @@
     $('#label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
     show($('#mode'), (mode === 'full' ? 'full wallet (can sign)' : 'watch-only (xpub)') + ' · ' + scriptType, 'hint');
     $('#expxpub').style.display = mode === 'full' ? 'inline-block' : 'none';
-    $('#xpubout').style.display = 'none';
-    $('#recv').style.display = 'block'; $('#actions').style.display = 'block'; $('#airgap').style.display = 'block';
+    $('#xpubout').style.display = 'none'; $('#copyxpub').style.display = 'none';
+    $('#tabs').style.display = 'flex'; showTab('recv');
     applyGating();
     show($('#status'), 'Loaded. Fetching…', 'hint');
     await refreshStatus(); await refreshHistory();
@@ -72,7 +94,7 @@
   }
 
   $('#expxpub').addEventListener('click', () => {
-    try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; }
+    try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; $('#copyxpub').style.display = 'inline-block'; }
     catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
   });
   $('#label').addEventListener('input', () => { const a = $('#addr').textContent; if (a) localStorage.setItem('olesia:label:' + a, $('#label').value); });
@@ -114,7 +136,10 @@
     const r = $('#result'); r.textContent = '';
     const line = (t) => { const d = document.createElement('div'); d.textContent = t; r.appendChild(d); };
     line(broadcast ? '✓ BROADCAST' : '· DRY RUN (nothing sent)');
-    line('txid: ' + res.txid);
+    const txidRow = document.createElement('div'); txidRow.textContent = 'txid: ' + res.txid;
+    const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'sec copy'; cp.textContent = 'Copy'; cp.style.marginLeft = '8px';
+    cp.addEventListener('click', () => navigator.clipboard.writeText(res.txid).then(() => { cp.textContent = 'Copied ✓'; setTimeout(() => { cp.textContent = 'Copy'; }, 1200); }).catch(() => {}));
+    txidRow.appendChild(cp); r.appendChild(txidRow);
     line('fee: ' + res.fee + ' sat  ·  vsize: ' + res.vsize + '  ·  ' + res.feeRate + ' sat/vB');
     if (res.swept != null) line('sweeping ' + res.swept + ' sat → ' + res.to);
     if (broadcast && res.explorer) { const a = document.createElement('a'); a.href = res.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'view on explorer ↗'; r.appendChild(a); }

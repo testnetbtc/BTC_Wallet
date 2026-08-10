@@ -39,6 +39,14 @@ a{color:#7ee2a8}
 .onboard ol{margin:0;padding-left:20px;color:#9aa7b4;font-size:14.5px;line-height:1.7}
 .onboard b{color:#e6edf3}
 .onboard .x{float:right;color:#6b7480;cursor:pointer;font-size:20px;line-height:1;margin:-4px -4px 0 0}
+.tabs{display:flex;gap:6px;margin:16px 0 0}
+.tab{flex:1;background:#161b22;border:1px solid #2b333c;color:#9aa7b4;border-radius:10px;padding:11px 8px;font-weight:700;font-size:14px;margin:0;cursor:pointer}
+.tab.active{background:#f0a020;color:#111;border-color:#f0a020}
+.feeps{display:flex;gap:8px;margin:2px 0 8px}
+.feep{flex:1;background:#0e1116;border:1px solid #2b333c;color:#e6edf3;border-radius:8px;padding:9px 6px;font-weight:600;font-size:13px;margin:0;cursor:pointer}
+.feep.active{background:#243447;border-color:#4a7fb5;color:#cfe6ff}
+.copy{font-size:12px;padding:5px 10px}
+.addrrow{display:flex;gap:8px;align-items:flex-start}.addrrow #addr{flex:1}
 </style></head>
 <body><div class="wrap">
 <h1>Olesia Wallet<span>.</span></h1>
@@ -76,6 +84,12 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <span id="mode" class="hint"></span>
 </div>
 
+<div class="tabs" id="tabs" style="display:none">
+<button type="button" class="tab active" data-tab="recv">Receive</button>
+<button type="button" class="tab" data-tab="actions">Send</button>
+<button type="button" class="tab" data-tab="airgap">Advanced</button>
+</div>
+
 <div class="card" id="recv">
 <label>Script type <span class="hint">— the address format, i.e. how coins are locked</span></label>
 <select id="stype"></select>
@@ -83,7 +97,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <label>Wallet label <span class="hint">(optional — saved in this browser only)</span></label>
 <input id="label" placeholder="e.g. testnet spending" autocomplete="off">
 <label>Receive address <span class="hint">(P2PK has none — you'll see its script)</span></label>
-<div id="addr" class="mono"></div>
+<div class="addrrow"><div id="addr" class="mono"></div><button type="button" class="sec copy" data-copy="addr">Copy</button></div>
 <img id="qr" alt="receive address QR" style="display:none;margin:8px 0;border-radius:8px">
 <p class="hint">Send coins to this address, then Refresh. Need some? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener" style="color:#7ee2a8">Get free testnet coins from the faucet →</a></p>
 <label>Balance</label>
@@ -91,6 +105,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <div id="utxos" class="hint"></div>
 <button id="refresh" class="sec">Refresh</button>
 <button id="expxpub" class="sec" style="display:none">Show account xpub</button>
+<button type="button" id="copyxpub" class="sec copy" data-copy="xpubout" style="display:none">Copy xpub</button>
 <div id="xpubout" class="mono" style="display:none;margin-top:6px"></div>
 <label style="margin-top:16px">Recent transactions</label>
 <div id="history" class="hint">—</div>
@@ -108,7 +123,12 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <input id="msg" placeholder="optional OP_RETURN message (≤80 bytes)" autocomplete="off">
 <label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">Fee rate <span class="help" data-target="tip_fee">?</span></label>
 <div class="tiptext" id="tip_fee">Miners include transactions that pay them, priced in <b>satoshis per virtual byte</b> (sat/vB). Higher = confirms faster. On testnets fees barely matter, so it is a safe place to experiment.</div>
-<div class="row"><div><input id="fee" placeholder="fee rate (sat/vB, default 2)" inputmode="numeric"></div></div>
+<div class="feeps">
+<button type="button" class="feep" data-fee="1">🐢 Slow</button>
+<button type="button" class="feep active" data-fee="2">🚶 Normal</button>
+<button type="button" class="feep" data-fee="5">🚀 Fast</button>
+</div>
+<div class="row"><div><input id="fee" placeholder="custom sat/vB" inputmode="numeric"></div></div>
 <button id="dryrun" class="sec">Build (dry run)</button>
 <button id="send">Send</button>
 <div><span id="hotnote" class="hint"></span></div>
@@ -127,10 +147,12 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <p class="hint">Watch-only online: <b>Build unsigned</b> here (fills from the Send fields above) → sign it <b>offline</b> → <b>Broadcast signed</b> here. The seed never needs to be online.</p>
 <button id="buildunsigned" class="sec">Build unsigned PSBT (from Send fields)</button>
 <textarea id="unsignedout" placeholder="unsigned PSBT (base64) — copy to your offline signer" readonly></textarea>
+<button type="button" class="sec copy" data-copy="unsignedout">Copy unsigned PSBT</button>
 <label style="margin-top:12px">Sign a PSBT <span class="hint">(needs the seed — run this page offline for mainnet)</span></label>
 <textarea id="signin" placeholder="paste an unsigned PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
 <button id="signbtn" class="sec">Sign PSBT</button>
 <textarea id="signedout" placeholder="signed PSBT (base64) appears here" readonly></textarea>
+<button type="button" class="sec copy" data-copy="signedout">Copy signed PSBT</button>
 <label style="margin-top:12px">Broadcast a signed PSBT</label>
 <textarea id="bcin" placeholder="paste a signed PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
 <button id="bcbtn">Broadcast signed PSBT</button>
