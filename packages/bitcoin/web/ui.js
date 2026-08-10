@@ -47,6 +47,18 @@
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = o; }, 1200); }).catch(() => {});
   });
+
+  // paste-from-clipboard buttons (data-paste = element id) — mobile-friendly
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('.paste'); if (!b || !b.dataset.paste) return;
+    const el = $('#' + b.dataset.paste); if (!el) return;
+    try {
+      const t = await navigator.clipboard.readText();
+      if (!t) return;
+      el.value = t.trim(); el.dispatchEvent(new Event('input'));
+      const o = b.textContent; b.textContent = 'Pasted ✓'; setTimeout(() => { b.textContent = o; }, 1200);
+    } catch { show($('#status'), "Couldn't read clipboard — paste manually (long-press the field)", 'bad'); }
+  });
   $('#gen').addEventListener('click', () => {
     $('#mnemonic').value = window.OW.generate();
     show($('#status'), 'New 24-word seed generated. Write it down, then press Load.', 'hint');

@@ -15,13 +15,13 @@ const html = `<!doctype html>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#0e1116;color:#e6edf3}
-.wrap{max-width:720px;margin:0 auto;padding:26px 20px 90px}
+.wrap{max-width:720px;margin:0 auto;padding:26px max(20px,env(safe-area-inset-right)) max(90px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
 h1{font-size:28px;margin:0 0 2px}h1 span{color:#f0a020}
 .sub{color:#9aa7b4;margin:0 0 16px}
 .card{background:#161b22;border:1px solid #2b333c;border-radius:10px;padding:16px;margin:14px 0}
 label{display:block;font-weight:600;margin:10px 0 6px}
 .hint{color:#9aa7b4;font-size:13px;margin:4px 0}
-input,select,textarea{width:100%;padding:9px 11px;background:#0e1116;border:1px solid #2b333c;border-radius:7px;color:#e6edf3;font:inherit;margin-bottom:6px}
+input,select,textarea{width:100%;padding:10px 11px;background:#0e1116;border:1px solid #2b333c;border-radius:7px;color:#e6edf3;font-family:inherit;font-size:16px;margin-bottom:6px}
 textarea{resize:vertical;min-height:64px;font-family:ui-monospace,monospace}
 button{background:#f0a020;color:#111;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;margin:4px 6px 4px 0}
 button.sec{background:#2b333c;color:#e6edf3;font-weight:600}
@@ -45,8 +45,11 @@ a{color:#7ee2a8}
 .feeps{display:flex;gap:8px;margin:2px 0 8px}
 .feep{flex:1;background:#0e1116;border:1px solid #2b333c;color:#e6edf3;border-radius:8px;padding:9px 6px;font-weight:600;font-size:13px;margin:0;cursor:pointer}
 .feep.active{background:#243447;border-color:#4a7fb5;color:#cfe6ff}
-.copy{font-size:12px;padding:5px 10px}
+.copy,.paste{font-size:12px;padding:6px 11px}
 .addrrow{display:flex;gap:8px;align-items:flex-start}.addrrow #addr{flex:1}
+.field{display:flex;gap:8px;align-items:stretch}.field input{flex:1;margin-bottom:0}
+button{min-height:40px}
+@media(max-width:480px){.row>div{min-width:100%}h1{font-size:24px}.wrap{padding-top:20px}}
 </style></head>
 <body><div class="wrap">
 <h1>Olesia Wallet<span>.</span></h1>
@@ -79,6 +82,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <label>24-word seed <span class="help" data-target="tip_seed">?</span><span class="hint"> — or an account xpub for watch-only</span></label>
 <div class="tiptext" id="tip_seed">Your wallet <i>is</i> these 24 words (the BIP-39 standard). Anyone with them controls the coins — there's no "reset". Write them on paper, in order; never screenshot or cloud-sync them. An <b>xpub</b> is a public key that can watch a balance but cannot spend.</div>
 <textarea id="mnemonic" placeholder="word1 word2 … word24   —or—   xpub…/tpub…" autocomplete="off" spellcheck="false"></textarea>
+<button type="button" class="sec paste" data-paste="mnemonic">Paste</button>
 <button id="gen" class="sec">Generate new</button>
 <button id="load">Load</button>
 <span id="mode" class="hint"></span>
@@ -115,7 +119,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <label>Send <span class="help" data-target="tip_send">?</span></label>
 <div class="tiptext" id="tip_send">A transaction spends your UTXOs (coins) as inputs and creates outputs: one to the recipient, and usually one back to you as <b>change</b>. You choose the destination address and amount (in sats).</div>
 <div class="row">
-<div><input id="to" placeholder="destination address (tb1… or m/n…)" autocomplete="off"></div>
+<div><div class="field"><input id="to" placeholder="destination address (tb1… or m/n…)" autocomplete="off"><button type="button" class="sec paste" data-paste="to">Paste</button></div></div>
 <div><input id="amt" placeholder="amount (sats)" inputmode="numeric"></div>
 </div>
 <label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">OP_RETURN message <span class="help" data-target="tip_msg">?</span></label>
@@ -135,7 +139,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 
 <label style="margin-top:18px;border-top:1px solid #2b333c;padding-top:12px">Sweep (send everything, minus fee) <span class="help" data-target="tip_sweep">?</span></label>
 <div class="tiptext" id="tip_sweep">A <b>sweep</b> empties the whole wallet to one address in a single transaction — no change output. Handy for moving everything to a new wallet.</div>
-<input id="sweepto" placeholder="destination address for the full balance" autocomplete="off">
+<div class="field"><input id="sweepto" placeholder="destination address for the full balance" autocomplete="off"><button type="button" class="sec paste" data-paste="sweepto">Paste</button></div>
 <button id="sweepdry" class="sec">Build sweep</button>
 <button id="sweep">Sweep all</button>
 
@@ -150,11 +154,13 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <button type="button" class="sec copy" data-copy="unsignedout">Copy unsigned PSBT</button>
 <label style="margin-top:12px">Sign a PSBT <span class="hint">(needs the seed — run this page offline for mainnet)</span></label>
 <textarea id="signin" placeholder="paste an unsigned PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
+<button type="button" class="sec paste" data-paste="signin">Paste</button>
 <button id="signbtn" class="sec">Sign PSBT</button>
 <textarea id="signedout" placeholder="signed PSBT (base64) appears here" readonly></textarea>
 <button type="button" class="sec copy" data-copy="signedout">Copy signed PSBT</button>
 <label style="margin-top:12px">Broadcast a signed PSBT</label>
 <textarea id="bcin" placeholder="paste a signed PSBT (base64)" autocomplete="off" spellcheck="false"></textarea>
+<button type="button" class="sec paste" data-paste="bcin">Paste</button>
 <button id="bcbtn">Broadcast signed PSBT</button>
 <div id="agresult" class="mono" style="display:none;margin-top:10px"></div>
 </div>
