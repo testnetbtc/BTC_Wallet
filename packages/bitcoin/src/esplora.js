@@ -10,16 +10,25 @@ async function j(url, opts) {
   return text;
 }
 
-export async function getUTXOs(address, networkName) {
+// A lookup target is either an address (string) or { scripthash } for scripts with
+// no address (P2PK). Esplora serves both under /address/... and /scripthash/...
+const locPath = (t) => (typeof t === 'string' ? `/address/${t}` : `/scripthash/${t.scripthash}`);
+
+// Full raw previous transaction (hex) — needed to spend LEGACY inputs (nonWitnessUtxo).
+export async function getTxHex(txid, networkName) {
+  return (await j(`${net(networkName).esplora}/tx/${txid}/hex`)).trim();
+}
+
+export async function getUTXOs(target, networkName) {
   const base = net(networkName).esplora;
-  const utxos = JSON.parse(await j(`${base}/address/${address}/utxo`));
+  const utxos = JSON.parse(await j(`${base}${locPath(target)}/utxo`));
   // [{ txid, vout, value, status:{confirmed, block_height,...} }]
   return utxos.map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, confirmed: !!u.status?.confirmed }));
 }
 
-export async function getBalance(address, networkName) {
+export async function getBalance(target, networkName) {
   const base = net(networkName).esplora;
-  const info = JSON.parse(await j(`${base}/address/${address}`));
+  const info = JSON.parse(await j(`${base}${locPath(target)}`));
   const c = info.chain_stats, m = info.mempool_stats;
   const confirmed = (c.funded_txo_sum - c.spent_txo_sum);
   const pending = (m.funded_txo_sum - m.spent_txo_sum);
@@ -51,13 +60,16 @@ export async function broadcast(txHex, networkName) {
 }
 
 // Recent transaction history for an address, with the net effect (sats) on it.
-export async function getTxHistory(address, networkName, limit = 15) {
+export async function getTxHistory(target, networkName, limit = 15) {
   const base = net(networkName).esplora;
-  const txs = JSON.parse(await j(`${base}/address/${address}/txs`));
+  const addr = typeof target === 'string' ? target : null; // net-per-address only for addressed types
+  const txs = JSON.parse(await j(`${base}${locPath(target)}/txs`));
   return txs.slice(0, limit).map((t) => {
     let inFromUs = 0, outToUs = 0;
-    for (const vin of t.vin) if (vin.prevout?.scriptpubkey_address === address) inFromUs += vin.prevout.value;
-    for (const vout of t.vout) if (vout.scriptpubkey_address === address) outToUs += vout.value;
+    if (addr) {
+      for (const vin of t.vin) if (vin.prevout?.scriptpubkey_address === addr) inFromUs += vin.prevout.value;
+      for (const vout of t.vout) if (vout.scriptpubkey_address === addr) outToUs += vout.value;
+    }
     return {
       txid: t.txid,
       confirmed: !!t.status?.confirmed,
