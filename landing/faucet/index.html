@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://faucet.olesia.io; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>Testnet Faucet — Olesia</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#0e1116;color:#e6edf3}
+.wrap{max-width:640px;margin:0 auto;padding:36px 20px 90px}
+a{color:#7ee2a8}
+h1{font-size:32px;margin:0 0 4px}h1 span{color:#f0a020}
+.tag{color:#9aa7b4;margin:0 0 22px;font-size:17px}
+.card{background:#161b22;border:1px solid #2b333c;border-radius:12px;padding:20px;margin:16px 0}
+label{display:block;font-weight:600;margin:12px 0 6px}
+input,select{width:100%;padding:10px 12px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;color:#e6edf3;font:inherit;margin-bottom:4px}
+button{background:#f0a020;color:#111;border:0;border-radius:8px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:15px}
+button:disabled{opacity:.5;cursor:default}
+.hint{color:#9aa7b4;font-size:14px}
+.mono{font-family:ui-monospace,monospace;word-break:break-all}
+.edu{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:12px;padding:15px 18px;margin:0 0 20px;line-height:1.6;font-size:14.5px}
+.edu b{color:#e6edf3}
+#out{margin-top:14px;padding:12px;border-radius:8px;display:none;font-size:14.5px}
+.ok{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf}
+.bad{background:#2a1012;border:1px solid #6b2126;color:#ff9ca0}
+.bal{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 2px}
+.bal div{flex:1;min-width:140px;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px 12px;font-size:14px}
+.foot{color:#6b7480;font-size:13px;margin-top:34px}
+</style></head>
+<body><div class="wrap">
+<h1>Testnet Faucet<span>.</span></h1>
+<p class="tag">Free practice coins for the <a href="https://app.olesia.io">Olesia wallet</a>. No sign-up, no value, no risk.</p>
+
+<div class="edu">
+<b>What's a faucet?</b> Testnet bitcoin is worthless by design — it exists so you can learn to send
+and receive with zero risk. A faucet hands you a little to get started. Generate an address in the
+<a href="https://app.olesia.io">wallet</a> (pick <b>Testnet3</b> or <b>Testnet4</b>), paste it below,
+and the coins arrive in a minute or two. New to all this? <a href="https://olesia.io/learn/">Start with the basics →</a>
+</div>
+
+<div class="card">
+<label>Network</label>
+<select id="net">
+<option value="testnet3">Testnet3</option>
+<option value="testnet4">Testnet4</option>
+</select>
+<label>Your testnet address <span class="hint">— starts with <code>tb1…</code>, <code>m…</code> or <code>2…</code></span></label>
+<input id="addr" placeholder="tb1q…" autocomplete="off" spellcheck="false">
+<div id="ts"></div>
+<p class="hint" style="margin:8px 0 12px">You'll get <b id="drip">0.001</b> tBTC. Limit: one claim per address per day, three per IP per hour.</p>
+<button id="go">Get coins</button>
+<div id="out"></div>
+</div>
+
+<div class="card">
+<label style="margin-top:0">Faucet balance</label>
+<div class="bal">
+<div>Testnet3: <b id="b3" class="mono">…</b></div>
+<div>Testnet4: <b id="b4" class="mono">…</b></div>
+</div>
+<p class="hint" id="lowbal" style="display:none;margin:8px 0 0">The faucet is running low — <a href="https://github.com/testnetbtc/BTC_Wallet">let us know</a> and we'll top it up.</p>
+</div>
+
+<p class="foot">Coins come from a shared testnet wallet — please take only what you need so others can learn too. When you're done, <b>send them back</b> to <span class="mono">tb1qv0dh99kcv4vy6zcrf2ppyenfg76nlejs93kw22</span> to refill the faucet. · <a href="https://olesia.io">olesia.io</a> · <a href="https://github.com/testnetbtc/BTC_Wallet">source</a></p>
+</div>
+<script>
+const API = 'https://faucet.olesia.io';
+const $ = (s) => document.querySelector(s);
+const sat = (n) => n == null ? '—' : (n/1e8).toFixed(3) + ' tBTC';
+async function loadInfo() {
+  try {
+    const r = await fetch(API + '/info'); const d = await r.json();
+    $('#drip').textContent = (d.drip/1e8).toFixed(3);
+    $('#b3').textContent = sat(d.balances.testnet3);
+    $('#b4').textContent = sat(d.balances.testnet4);
+    const low = (d.balances.testnet3 ?? 0) < d.drip*5 && (d.balances.testnet4 ?? 0) < d.drip*5;
+    $('#lowbal').style.display = low ? 'block' : 'none';
+  } catch { $('#b3').textContent = $('#b4').textContent = 'offline'; }
+}
+loadInfo();
+$('#go').addEventListener('click', async () => {
+  const out = $('#out'); const btn = $('#go');
+  const address = $('#addr').value.trim(); const network = $('#net').value;
+  if (!address) { out.style.display='block'; out.className='bad'; out.textContent='Enter your testnet address first.'; return; }
+  btn.disabled = true; out.style.display='block'; out.className='hint'; out.textContent='Sending…';
+  try {
+    const r = await fetch(API + '/claim', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ network, address }) });
+    const d = await r.json();
+    if (!r.ok) { out.className='bad'; out.textContent = '✗ ' + (d.error || 'claim failed'); }
+    else {
+      const base = network === 'testnet3' ? 'https://mempool.space/testnet/tx/' : 'https://mempool.space/testnet4/tx/';
+      out.className='ok'; out.innerHTML = '✓ Sent ' + (d.amount/1e8).toFixed(3) + ' tBTC. It will appear in your wallet shortly.<br><a href="'+base+d.txid+'" target="_blank" rel="noopener" class="mono">view transaction ↗</a>';
+      loadInfo();
+    }
+  } catch { out.className='bad'; out.textContent='✗ Network error — the faucet may be offline. Try again shortly.'; }
+  btn.disabled = false;
+});
+</script>
+</body></html>

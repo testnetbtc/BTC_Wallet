@@ -1,0 +1,26 @@
+[Unit]
+Description=Olesia faucet (localhost:8790 -> testnet3/4 drips from the faucet wallet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/faucet/server.mjs
+Restart=on-failure
+RestartSec=10
+# to enable the Cloudflare Turnstile human-check later, drop the secret here:
+# Environment=TURNSTILE_SECRET=0x...
+# No sudo/bitcoind needed (testnet broadcasts go via mempool.space) -> lock it down hard.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/faucet/BTC_Wallet/packages/bitcoin/.secrets
+ProtectHome=false
+PrivateTmp=true
+# DoS containment
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=96
+
+[Install]
+WantedBy=multi-user.target

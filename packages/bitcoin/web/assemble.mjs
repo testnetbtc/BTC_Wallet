@@ -85,7 +85,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <label>Receive address <span class="hint">(P2PK has none — you'll see its script)</span></label>
 <div id="addr" class="mono"></div>
 <img id="qr" alt="receive address QR" style="display:none;margin:8px 0;border-radius:8px">
-<p class="hint">Send testnet coin here, then Refresh. Same BIP-84 derivation as the offline Olesia generator.</p>
+<p class="hint">Send coins to this address, then Refresh. Need some? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener" style="color:#7ee2a8">Get free testnet coins from the faucet →</a></p>
 <label>Balance</label>
 <div id="bal" class="mono"></div>
 <div id="utxos" class="hint"></div>
