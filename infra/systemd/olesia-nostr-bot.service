@@ -1,0 +1,23 @@
+[Unit]
+Description=Olesia Nostr faucet bot (mentions -> testnet3/4 drips via localhost faucet)
+After=network-online.target olesia-faucet.service
+Wants=network-online.target
+Requires=olesia-faucet.service
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/nostr/bot.mjs
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/faucet/BTC_Wallet/packages/bitcoin/.secrets
+ProtectHome=false
+PrivateTmp=true
+MemoryMax=256M
+CPUQuota=40%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -4,7 +4,7 @@
 // per-IP + per-address rate limits, a fixed small drip, a global daily cap, and
 // (when configured) a Cloudflare Turnstile human check.
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as btc from '@scure/btc-signer';
@@ -12,7 +12,12 @@ import { prepareAndSend, statusFor } from '../src/send.js';
 import { net } from '../src/networks.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MNEMONIC = JSON.parse(readFileSync(join(HERE, '..', '.secrets', 'faucet.json'), 'utf8')).mnemonic;
+const secret = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
+const MNEMONIC = secret('faucet.json').mnemonic;
+// Shared secret for trusted local callers (the Nostr bot). A trusted caller skips
+// the per-IP throttle (it IS one IP) but STILL faces per-address + global caps,
+// and enforces its own per-account limit. Absent file -> no internal path.
+const INTERNAL_TOKEN = existsSync(join(HERE, '..', '.secrets', 'internal.json')) ? secret('internal.json').faucetInternalToken : '';
 const PORT = 8790;
 const DRIP = 100_000;                       // 0.001 tBTC per claim
 const NETWORKS = new Set(['testnet3', 'testnet4']);
@@ -72,10 +77,11 @@ const server = http.createServer((req, res) => {
       const address = String(o.address || '').trim();
       if (!NETWORKS.has(network)) return json(res, 400, { error: 'network must be testnet3 or testnet4' });
       try { btc.Address(net(network).btc).decode(address); } catch { return json(res, 400, { error: 'invalid testnet address' }); }
-      if (!(await turnstileOk(o.token, clientIp(req)))) return json(res, 403, { error: 'human check failed' });
+      const internal = INTERNAL_TOKEN && req.headers['x-faucet-internal'] === INTERNAL_TOKEN;
+      if (!internal && !(await turnstileOk(o.token, clientIp(req)))) return json(res, 403, { error: 'human check failed' });
       const now = Date.now();
       if (limited('global', '', now)) return json(res, 429, { error: 'faucet daily cap reached — try tomorrow' });
-      if (limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
+      if (!internal && limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
       if (limited('addr', address, now)) return json(res, 429, { error: 'this address already got coins today' });
       try {
         const r = await prepareAndSend({ source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: 2, broadcast: true, allowUnconfirmed: true });
