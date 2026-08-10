@@ -1,10 +1,18 @@
-# Olesia — a 2014-style Bitcoin wallet, done right
+# Olesia — an educational Bitcoin wallet
 
-**Live (testnet/demo): <https://alea-wallet.pages.dev>**
+**Learn Bitcoin, safely.** Practise with real keys, real transactions and every script type on
+test networks where mistakes cost nothing — we believe it's the first wallet to combine a faucet
+*and* every Bitcoin script type in one open, verifiable place. **Please don't store meaningful
+amounts of Bitcoin here — it's a learning tool, not a bank.** → **[Manifesto](docs/MANIFESTO.md)**
 
-**[Security audit](AUDIT.md)** · **[How to verify this is genuine & untampered](VERIFY.md)**
+**Live:** landing <https://olesia.io> · wallet <https://app.olesia.io> · cold generator
+<https://offline.olesia.io> · node broadcast `https://api.olesia.io`
+(also on `*.pages.dev`).
 
-`index.html` SHA-256: `8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2`
+**[Security audit](AUDIT.md)** · **[Audit brief — run your own](docs/AUDIT_BRIEF.md)** ·
+**[Audits (public)](audits/)** · **[Verify this is genuine](VERIFY.md)** · **[Roadmap](docs/ROADMAP.md)**
+
+`index.html` (cold generator) SHA-256: `8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2`
 
 > The hosted copy is for demonstration and testnet. For a wallet you will fund,
 > **download `index.html` and open it offline** — a hosted key generator means
