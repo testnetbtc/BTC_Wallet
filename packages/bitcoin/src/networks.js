@@ -8,6 +8,9 @@ export const NETWORKS = {
   mainnet:  { coin: 0, btc: btc.NETWORK,      esplora: 'https://mempool.space/api',          explorer: 'https://mempool.space/tx/' },
   testnet3: { coin: 1, btc: btc.TEST_NETWORK, esplora: 'https://mempool.space/testnet/api',  explorer: 'https://mempool.space/testnet/tx/' },
   testnet4: { coin: 1, btc: btc.TEST_NETWORK, esplora: 'https://mempool.space/testnet4/api', explorer: 'https://mempool.space/testnet4/tx/' },
+  // Signet: same address params as testnet (coin type 1, tb1…), separate chain, but
+  // with regular ~10-min blocks — the best network for learning and for a faucet.
+  signet:   { coin: 1, btc: btc.TEST_NETWORK, esplora: 'https://mempool.space/signet/api',   explorer: 'https://mempool.space/signet/tx/' },
 };
 
 export function net(name) {
