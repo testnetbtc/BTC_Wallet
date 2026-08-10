@@ -14,6 +14,7 @@ reproducible, the source is public, and the reviews are public too.
 |------|---------|---------------------|---------|------|
 | 2026-08-06 | Claude (author self-review) | see `AUDIT.md` | no High/Critical in the crypto core | [`../AUDIT.md`](../AUDIT.md) |
 | 2026-08-06 | two independent external AI reviews | `25dda510…` | no High/Critical in the crypto core; corroborated | summarised in `AUDIT.md` (2026-08-06 revision) |
+| 2026-08-10 | Claude (Opus 4.8, author-assisted) | `8873a809…` | whole-platform pass; no High/Critical; 2 backend findings fixed | [`2026-08-10-claude-platform.md`](2026-08-10-claude-platform.md) |
 
 *(New audits append a row and add a file below.)*
 
