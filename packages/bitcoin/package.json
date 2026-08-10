@@ -1,0 +1,21 @@
+{
+  "name": "@olesia/bitcoin",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Olesia/Chainwatch Bitcoin tx build+sign+broadcast (testnet-first)",
+  "scripts": {
+    "test": "node test/tx.test.mjs && node test/psbt.test.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.4.0",
+    "@scure/base": "^1.1.6",
+    "@scure/bip32": "^1.4.0",
+    "@scure/bip39": "^1.3.0",
+    "@scure/btc-signer": "^1.3.2",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
