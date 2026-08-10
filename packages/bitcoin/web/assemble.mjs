@@ -49,9 +49,12 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 </div>
 
 <div class="card" id="recv">
+<label>Script type <span class="hint">— the address format, i.e. how coins are locked</span></label>
+<select id="stype"></select>
+<p id="stype_about" class="hint" style="background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:11px;line-height:1.55;margin:6px 0 14px"></p>
 <label>Wallet label <span class="hint">(optional — saved in this browser only)</span></label>
 <input id="label" placeholder="e.g. testnet spending" autocomplete="off">
-<label>Receive address</label>
+<label>Receive address <span class="hint">(P2PK has none — you'll see its script)</span></label>
 <div id="addr" class="mono"></div>
 <img id="qr" alt="receive address QR" style="display:none;margin:8px 0;border-radius:8px">
 <p class="hint">Send testnet coin here, then Refresh. Same BIP-84 derivation as the offline Olesia generator.</p>
