@@ -32,6 +32,8 @@ export function deriveKey(mnemonic, passphrase, networkName, index = 0) {
     pubkey: child.publicKey,     // 33 bytes compressed
     address: spend.address,      // tb1... / bc1...
     spend,                       // {script, address} used when adding inputs
+    segwit: true,                // P2WPKH — spend needs only witnessUtxo
+    type: 'p2wpkh',
     path: `m/84'/${n.coin}'/0'/0/${index}`,
   };
 }

@@ -14,17 +14,27 @@ export function opReturnScript(message) {
   return btc.Script.encode(['RETURN', data]);
 }
 
+// Build a PSBT input for a UTXO owned by `w` (from deriveKey or deriveScript).
+// SegWit types (P2WPKH/P2SH-P2WPKH/P2TR) need only witnessUtxo; legacy types
+// (P2PKH, P2PK) need the full previous transaction as nonWitnessUtxo (u.prevTxHex).
+function buildInput(u, w) {
+  const inp = { txid: hexToBytes(u.txid), index: u.vout, ...w.spend };
+  if (w.segwit === false) {
+    if (!u.prevTxHex) throw new Error(`spending a legacy input needs its previous transaction (none for ${u.txid}:${u.vout})`);
+    inp.nonWitnessUtxo = hexToBytes(u.prevTxHex);
+  } else {
+    inp.witnessUtxo = { script: w.spend.script, amount: BigInt(u.value) };
+  }
+  return inp;
+}
+
 // Sweep: send the ENTIRE spendable balance (all UTXOs) to one address, minus fee.
 // No change output — the recipient receives total-fee. Validates the destination.
 export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName }) {
   const n = net(networkName);
   if (!utxos?.length) throw new Error('no UTXOs to sweep');
   btc.Address(n.btc).decode(toAddress); // throws on an invalid/wrong-network address
-  const inputs = utxos.map((u) => ({
-    txid: hexToBytes(u.txid), index: u.vout,
-    witnessUtxo: { script: key.spend.script, amount: BigInt(u.value) },
-    ...key.spend,
-  }));
+  const inputs = utxos.map((u) => buildInput(u, key));
   // Empty outputs + changeAddress = destination => everything (minus fee) goes there.
   const sel = btc.selectUTXO(inputs, [], 'all', {
     changeAddress: toAddress, feePerByte: BigInt(feeRate), network: n.btc,
@@ -57,12 +67,7 @@ export function buildSignedTx({ utxos, key, recipients = [], message = null,
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
   if (outputs.length === 0) throw new Error('nothing to send: no recipients and no message');
 
-  const inputs = utxos.map((u) => ({
-    txid: hexToBytes(u.txid),
-    index: u.vout,
-    witnessUtxo: { script: key.spend.script, amount: BigInt(u.value) },
-    ...key.spend, // P2WPKH spend info so the signer knows the input type
-  }));
+  const inputs = utxos.map((u) => buildInput(u, key));
 
   const sel = btc.selectUTXO(inputs, outputs, 'default', {
     changeAddress: changeAddress || key.address,
