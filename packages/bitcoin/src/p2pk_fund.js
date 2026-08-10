@@ -74,3 +74,26 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
     funded: Number(amount), change: Number(change),
   };
 }
+
+// Spend (sweep) a single P2PK output to a destination scriptPubKey, minus fee.
+// P2PK is pre-SegWit: scriptSig is just <push signature>, and the legacy sighash
+// uses the prevout's P2PK script as scriptCode. @noble ECDSA (low-S).
+export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, feeRate = 2 }) {
+  const value = BigInt(utxo.value);
+  const estSize = 4 + 1 + (32 + 4 + 1 + 73 + 4) + 1 + (8 + 1 + destScript.length) + 4; // 1-in 1-out legacy
+  const fee = BigInt(Math.ceil(feeRate * estSize));
+  const sent = value - fee;
+  if (sent <= 0n) throw new Error(`P2PK balance ${value} too small to cover the fee (${fee})`);
+  const nSeq = hexToBytes('ffffffff');
+  const body = (scriptSigField) => concatBytes(
+    u32(2), varint(1), revTxid(utxo.txid), u32(utxo.vout), scriptSigField, nSeq,
+    varint(1), u64(sent), withLen(destScript), u32(0),
+  );
+  // legacy sighash: input's scriptSig slot holds the prevout (P2PK) script, then SIGHASH_ALL
+  const preimage = concatBytes(body(withLen(p2pkScriptBytes)), u32(1));
+  const sig = secp256k1.sign(dsha(preimage), privKey, { lowS: true }).toDERRawBytes();
+  const sigFull = concatBytes(sig, Uint8Array.of(0x01));           // + SIGHASH_ALL
+  const scriptSig = concatBytes(Uint8Array.of(sigFull.length), sigFull); // OP_PUSH(sig)
+  const full = body(withLen(scriptSig));
+  return { txHex: bytesToHex(full), txid: bytesToHex(dsha(full).slice().reverse()), fee: Number(fee), sent: Number(sent) };
+}

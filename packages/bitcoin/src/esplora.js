@@ -19,6 +19,17 @@ export async function getTxHex(txid, networkName) {
   return (await j(`${net(networkName).esplora}/tx/${txid}/hex`)).trim();
 }
 
+// Decoded transaction JSON (used to read a specific P2PK output that explorers
+// don't index by address — we track its outpoint ourselves).
+export async function getTx(txid, networkName) {
+  return JSON.parse(await j(`${net(networkName).esplora}/tx/${txid}`));
+}
+
+// Is a specific output spent? -> { spent: bool, txid?, vin?, status? }
+export async function getOutspend(txid, vout, networkName) {
+  return JSON.parse(await j(`${net(networkName).esplora}/tx/${txid}/outspend/${vout}`));
+}
+
 export async function getUTXOs(target, networkName) {
   const base = net(networkName).esplora;
   const utxos = JSON.parse(await j(`${base}${locPath(target)}/utxo`));

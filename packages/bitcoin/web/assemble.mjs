@@ -115,6 +115,21 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <div id="history" class="hint">—</div>
 </div>
 
+<div class="card" id="p2pklab" style="display:none">
+<label>🧪 P2PK Lab <span class="hint">— Satoshi's original script, hands-on</span></label>
+<p class="hint">P2PK has <b>no address</b>, so no ordinary wallet can pay it and explorers can't show its balance. The trick: fund your <b>SegWit</b> address first, then move coins into P2PK here — Olesia builds the raw <code>&lt;pubkey&gt; OP_CHECKSIG</code> output itself and remembers the exact coin it created. <a href="https://olesia.io/learn/#addresses" target="_blank" rel="noopener">Why? →</a></p>
+<div class="warn" id="p2pk_need" style="display:none">Fund your <b>SegWit (tb1q…)</b> address first — switch <b>Script type</b> to <b>P2WPKH</b>, receive some coins (there's a faucet link there), then come back.</div>
+<label style="margin-top:6px">Move into P2PK (sats)</label>
+<div class="field"><input id="p2pk_amt" placeholder="e.g. 20000" inputmode="numeric"><button type="button" id="p2pk_fundbtn">Fund P2PK</button></div>
+<p class="hint" id="p2pk_srcbal">—</p>
+<label style="margin-top:12px">Your P2PK coins <span class="hint">(tracked in this browser — explorers can't)</span></label>
+<div id="p2pk_list" class="hint">—</div>
+<button type="button" id="p2pk_refresh" class="sec">Refresh</button>
+<label style="margin-top:12px">Spend a P2PK coin out</label>
+<div class="field"><input id="p2pk_to" placeholder="destination address (tb1q… / m…)" autocomplete="off"><button type="button" class="sec paste" data-paste="p2pk_to">Paste</button></div>
+<div id="p2pk_result" class="mono" style="display:none;margin-top:8px"></div>
+</div>
+
 <div class="card" id="actions">
 <label>Send <span class="help" data-target="tip_send">?</span></label>
 <div class="tiptext" id="tip_send">A transaction spends your UTXOs (coins) as inputs and creates outputs: one to the recipient, and usually one back to you as <b>change</b>. You choose the destination address and amount (in sats).</div>

@@ -1,9 +1,11 @@
 // High-level: resolve a wallet (any script type), fetch balance/UTXOs, build+sign a
 // tx (optionally with an OP_RETURN message), and optionally broadcast. Testnet-first.
+import * as btc from '@scure/btc-signer';
 import { deriveKey } from './wallet.js';
 import { deriveScript } from './scripts.js';
-import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast } from './esplora.js';
+import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast, getTx, getOutspend } from './esplora.js';
 import { buildSignedTx, buildSweepTx } from './tx.js';
+import { buildFundP2PK, buildSpendP2PK } from './p2pk_fund.js';
 import { watchOnly, buildUnsignedPSBT, signPSBTOffline, extractTx } from './psbt.js';
 import { net } from './networks.js';
 
@@ -78,6 +80,45 @@ export async function prepareSweep(opts) {
   const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
   return { from: w.address, to: toAddress, ...built, feeRate, broadcast: !!opts.broadcast, broadcastTxid,
            explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null };
+}
+
+// ---- P2PK lab: fund a P2PK output from the seed's SegWit balance, track it, spend it ----
+// P2PK has no address (nothing to paste), and public explorers don't index it, so the
+// wallet moves coins in from its own P2WPKH balance and tracks the outpoint itself.
+export async function fundP2PK({ source, network, amount, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true }) {
+  const src = deriveScript(source, network, 'p2wpkh');
+  const tgt = deriveScript(source, network, 'p2pk');
+  const utxos = (await getUTXOs(src.address, network)).filter((u) => allowUnconfirmed || u.confirmed);
+  if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) — no coins to move into P2PK`);
+  const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
+  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  return { txid, vout: 0, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
+           broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+}
+
+// Annotate tracked P2PK outpoints with live value/confirmed/spent (from /tx + /outspend).
+export async function p2pkOutpoints({ network, outpoints }) {
+  return Promise.all((outpoints || []).map(async (op) => {
+    try {
+      const [tx, spend] = await Promise.all([getTx(op.txid, network), getOutspend(op.txid, op.vout, network)]);
+      const vout = tx.vout[op.vout];
+      return { txid: op.txid, vout: op.vout, value: vout?.value ?? op.amount, type: vout?.scriptpubkey_type,
+               confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
+    } catch (e) { return { txid: op.txid, vout: op.vout, value: op.amount, error: e.message }; }
+  }));
+}
+
+// Sweep one tracked P2PK output to any address (hand-rolled legacy spend).
+export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false }) {
+  const tgt = deriveScript(source, network, 'p2pk');
+  const tx = await getTx(outpoint.txid, network);
+  const vout = tx.vout[outpoint.vout];
+  if (!vout) throw new Error('P2PK output not found on chain');
+  if ((await getOutspend(outpoint.txid, outpoint.vout, network))?.spent) throw new Error('this P2PK coin was already spent');
+  const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
+  const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate) });
+  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
 // ---- air-gap PSBT flow (P2WPKH / xpub watch-only) ----

@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
+  fundP2PK, p2pkOutpoints, spendP2PK,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
@@ -61,4 +62,11 @@ window.OW = {
     }),
   signPsbt: ({ psbt, mnemonic, network, index = 0 }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index }),
   broadcastPsbt: ({ psbt, network }) => broadcastSigned({ psbt: T(psbt), network }),
+
+  // P2PK lab: fund a P2PK from the seed's SegWit balance, track outpoints, spend them out
+  fundP2PK: ({ source, network, amount, feeRate, broadcast = true }) =>
+    fundP2PK({ source: T(source), network, amount: Number(amount), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
+  p2pkStatus: ({ network, outpoints }) => p2pkOutpoints({ network, outpoints }),
+  spendP2PK: ({ source, network, outpoint, toAddress, feeRate, broadcast = true }) =>
+    spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
 };

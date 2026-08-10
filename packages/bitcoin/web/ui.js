@@ -81,7 +81,7 @@
     $('#expxpub').style.display = mode === 'full' ? 'inline-block' : 'none';
     $('#xpubout').style.display = 'none'; $('#copyxpub').style.display = 'none';
     $('#tabs').style.display = 'flex'; showTab('recv');
-    applyGating();
+    applyGating(); showP2PKLab();
     show($('#status'), 'Loaded. Fetching…', 'hint');
     await refreshStatus(); await refreshHistory();
   }
@@ -100,10 +100,77 @@
         : '⚠ Mainnet — REAL bitcoin. Paste a 12- or 24-word seed and press Load to use it as a hot wallet (keep amounts small), or an xpub for watch-only.';
     }
     $('#hotnote').textContent =
-      p2pk ? 'P2PK is receive / museum-display only for now — spending a bare public key is a dedicated follow-up.'
+      p2pk ? 'P2PK has no address — use the 🧪 P2PK Lab below to fund it from your SegWit balance and spend it back out.'
       : hot ? (isMain ? '⚠ mainnet hot wallet — real BTC, small amounts only' : '')
       : (mode === 'watch' ? 'Watch-only: no seed loaded — build an unsigned PSBT, sign it elsewhere.' : '');
   }
+
+  // --- P2PK lab: fund a P2PK from the SegWit balance, track outpoints locally, spend them ---
+  let p2pkScriptHex = '';
+  const p2pkKey = () => `olesia:p2pk:${network}:${p2pkScriptHex}`;
+  const p2pkLoad = () => { try { return JSON.parse(localStorage.getItem(p2pkKey()) || '[]'); } catch { return []; } };
+  const p2pkStore = (list) => { try { localStorage.setItem(p2pkKey(), JSON.stringify(list)); } catch {} };
+
+  async function showP2PKLab() {
+    const on = scriptType === 'p2pk' && mode === 'full';
+    $('#p2pklab').style.display = on ? 'block' : 'none';
+    if (!on) return;
+    p2pkScriptHex = window.OW.info(source, network, 'p2pk').scriptHex || '';
+    try {
+      const st = await window.OW.status(source, network, 'p2wpkh');
+      const bal = st.balance.confirmed;
+      $('#p2pk_srcbal').textContent = 'SegWit balance available to move: ' + fmt(bal);
+      $('#p2pk_need').style.display = bal <= 0 ? 'block' : 'none';
+      $('#p2pk_fundbtn').disabled = bal <= 0;
+    } catch (e) { $('#p2pk_srcbal').textContent = '✗ ' + e.message; }
+    await refreshP2PKList();
+  }
+  async function refreshP2PKList() {
+    const list = p2pkLoad(); const el = $('#p2pk_list');
+    if (!list.length) { el.textContent = '(none yet — fund one above)'; return; }
+    el.textContent = 'loading…';
+    let ann; try { ann = await window.OW.p2pkStatus({ network, outpoints: list }); } catch { ann = list.map((o) => ({ ...o, value: o.amount, error: 'status failed' })); }
+    el.textContent = '';
+    ann.forEach((o) => {
+      const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-top:1px solid #2b333c';
+      const state = o.error ? '⚠ ' + o.error : o.spent ? 'spent' : (o.confirmed ? '✓ confirmed' : '⧗ pending');
+      const head = document.createElement('div'); head.className = 'mono'; head.style.color = o.spent ? '#9aa7b4' : '#e6edf3';
+      head.textContent = `${(o.value / 1e8).toFixed(8)} tBTC · ${state} · ${o.txid.slice(0, 12)}…:${o.vout}`;
+      row.appendChild(head);
+      if (!o.spent && !o.error) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Spend this →'; b.style.marginTop = '6px';
+        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout, amount: o.value }, b));
+        row.appendChild(b);
+      }
+      el.appendChild(row);
+    });
+  }
+  async function spendOneP2PK(outpoint, btn) {
+    const to = $('#p2pk_to').value.trim();
+    if (!to) return show($('#status'), 'enter a destination address to spend the P2PK coin to', 'bad');
+    btn.disabled = true; show($('#status'), 'Spending P2PK…', 'hint');
+    try {
+      const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: true });
+      const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
+      res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
+      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      show($('#status'), '✓ P2PK spent', 'ok'); setTimeout(refreshP2PKList, 1500);
+    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); btn.disabled = false; }
+  }
+  $('#p2pk_fundbtn').addEventListener('click', async () => {
+    const amt = Number($('#p2pk_amt').value);
+    if (!(amt > 0)) return show($('#status'), 'enter an amount (sats) to move into P2PK', 'bad');
+    $('#p2pk_fundbtn').disabled = true; show($('#status'), 'Funding P2PK…', 'hint');
+    try {
+      const r = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: true });
+      const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount }); p2pkStore(list);
+      const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
+      res.textContent = `✓ moved ${r.amount} sat into P2PK (fee ${r.fee})  `;
+      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      show($('#status'), '✓ P2PK funded', 'ok'); $('#p2pk_amt').value = ''; setTimeout(showP2PKLab, 1500);
+    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
+  });
+  $('#p2pk_refresh').addEventListener('click', refreshP2PKList);
 
   $('#expxpub').addEventListener('click', () => {
     try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; $('#copyxpub').style.display = 'inline-block'; }
