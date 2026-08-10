@@ -57,8 +57,8 @@ money you would miss.
 
 <div class="card no-print">
 <label>Network</label>
-<select id="net"><option value="testnet3" selected>Testnet3 (recommended for testing)</option><option value="testnet4">Testnet4</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
-<p class="hint">Testnet3 and Testnet4 derive <b>identical</b> <code>tb1…</code> addresses (both are BIP-44 coin&nbsp;type&nbsp;1); the choice only records which test chain you mean to broadcast on. Mainnet uses <code>bc1…</code>.</p>
+<select id="net"><option value="testnet3" selected>Testnet3 (recommended for testing)</option><option value="testnet4">Testnet4</option><option value="signet">Signet (regular blocks — great for learning)</option><option value="mainnet">Mainnet (real bitcoin)</option></select>
+<p class="hint">Testnet3, Testnet4 and Signet derive <b>identical</b> <code>tb1…</code> addresses (all are BIP-44 coin&nbsp;type&nbsp;1); the choice only records which chain you mean to broadcast on. Mainnet uses <code>bc1…</code>.</p>
 <div id="netwarn" class="danger">⚠ Mainnet selected — this creates a wallet for <b>real bitcoin</b>. For your safety, mainnet generation is <b>blocked while this browser is online</b>: download this page, disconnect from the internet, and reopen it offline. Do not fund a mainnet wallet beyond what you can afford to lose until this code has been independently reviewed.</div>
 </div>
 

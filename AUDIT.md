@@ -2,7 +2,7 @@
 
 **Artifact:** `index.html` (single self-contained page)
 **Version audited:** commit at time of this report
-**SHA-256 of `index.html`:** `b853e1608f3e271d8277cca412dfafcc52109605febbba774f8f0e87f26fef18`
+**SHA-256 of `index.html`:** `8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2`
 **Date:** 2026-08-06
 **Auditor:** Claude (Anthropic) — the same author that wrote the code; plus responses
 to two independent external AI reviews (see the 2026-08-06 revision below).

@@ -1,6 +1,6 @@
 import { makeWallet, deriveFrom } from './app.js';
 const out = {};
-for (const network of ['mainnet', 'testnet3', 'testnet4']) {
+for (const network of ['mainnet', 'testnet3', 'testnet4', 'signet']) {
   const w = makeWallet({ mouseBytes:new Uint8Array([1]), diceString:'', passphrase:'', network });
   const kind = w.descriptorReceive.match(/\](\w{4})/)[1];
   console.log(`${w.network.padEnd(8)} addr=${w.address.slice(0,6)}…  path=${w.path}  extkey=${kind}`);
