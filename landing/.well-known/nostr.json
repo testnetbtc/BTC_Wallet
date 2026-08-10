@@ -1,0 +1,13 @@
+{
+  "names": {
+    "faucet": "a357544309727c02822654344b917b06b95b8f4ec08f75e0d37e91733fd165d2"
+  },
+  "relays": {
+    "a357544309727c02822654344b917b06b95b8f4ec08f75e0d37e91733fd165d2": [
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://relay.primal.net",
+      "wss://relay.nostr.band"
+    ]
+  }
+}

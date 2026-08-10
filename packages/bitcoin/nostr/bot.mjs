@@ -81,9 +81,11 @@ async function handle(pool, ev) {
 
 function publishProfile(pool) {
   const profile = {
-    name: 'olesia_faucet', display_name: 'Olesia · Bitcoin Faucet',
+    name: 'faucet', display_name: 'Olesia · Bitcoin Faucet',
     about: 'Free Bitcoin testnet faucet + learn-by-doing wallet. Mention me with a network and address — e.g. "testnet4 tb1q…" — and I\'ll send practice coins (one per account / 24h). Educational only; testnet coins have no value. https://olesia.io',
-    website: 'https://olesia.io', lud16: '', nip05: '',
+    website: 'https://olesia.io',
+    picture: 'https://olesia.io/olesia-icon.png',
+    nip05: 'faucet@olesia.io',
   };
   pool.publish(finalize({ kind: 0, content: JSON.stringify(profile), tags: [] }, PRIV, now()));
   // NIP-65 relay list

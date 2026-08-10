@@ -1,0 +1,6 @@
+# NIP-05 verification must be fetchable cross-origin by Nostr clients,
+# and must never serve a stale edge copy.
+/.well-known/nostr.json
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json
+  Cache-Control: no-store, must-revalidate
