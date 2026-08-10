@@ -1,10 +1,17 @@
 import { readFileSync, writeFileSync } from 'fs';
 const bundle = readFileSync('web/dist/online.bundle.js', 'utf8');
 const ui = readFileSync('web/ui.js', 'utf8');
+const icon = 'data:image/png;base64,' + readFileSync('web/olesia-icon.png').toString('base64');
 const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://mempool.space https://blockstream.info https://api.olesia.io; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>Olesia Wallet — online (testnet)</title>
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Olesia">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="${icon}">
+<link rel="icon" href="${icon}">
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#0e1116;color:#e6edf3}
@@ -28,7 +35,7 @@ a{color:#7ee2a8}
 </style></head>
 <body><div class="wrap">
 <h1>Olesia Wallet<span>.</span></h1>
-<p class="sub">Online send / receive — <b>testnet</b>. A companion to the offline generator.</p>
+<p class="sub">Online send / receive across every script type — <b>testnet</b>. New to Bitcoin? <a href="https://olesia.io/learn/" style="color:#7ee2a8">Learn the basics →</a></p>
 
 <div class="warn">
 <b>Hot wallet.</b> Your seed is typed into this page and used to sign in your browser. It is

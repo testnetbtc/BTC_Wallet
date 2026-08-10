@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>Learn Bitcoin — Olesia</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 system-ui,sans-serif;background:#0e1116;color:#e6edf3}
+.wrap{max-width:760px;margin:0 auto;padding:34px 20px 90px}
+a{color:#7ee2a8}
+h1{font-size:34px;margin:0 0 6px}h1 span{color:#f0a020}
+.tag{color:#9aa7b4;margin:0 0 10px;font-size:17px}
+.toc{background:#161b22;border:1px solid #2b333c;border-radius:12px;padding:14px 18px;margin:18px 0 8px}
+.toc a{display:inline-block;margin:3px 12px 3px 0;font-size:14px}
+section{border-top:1px solid #2b333c;padding-top:22px;margin-top:26px}
+h2{font-size:23px;margin:0 0 8px}
+h2 .n{color:#f0a020;font-weight:700;margin-right:8px}
+.try{display:inline-block;margin:10px 0 2px;font-size:14px;background:#161b22;border:1px solid #2b333c;border-radius:8px;padding:7px 12px;text-decoration:none}
+.k{color:#f0cd8a}
+code{background:#161b22;border:1px solid #2b333c;border-radius:5px;padding:1px 6px;font-size:14px}
+.tip{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:14.5px}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:14.5px}
+.foot{color:#6b7480;font-size:13px;margin-top:40px}
+.top{font-size:13px}
+</style></head>
+<body><div class="wrap">
+<h1>Learn Bitcoin<span>.</span></h1>
+<p class="tag">Every concept, in plain English — then go try it for real on a testnet where mistakes cost nothing. This is the companion to the <a href="https://app.olesia.io">wallet</a> and the <a href="https://offline.olesia.io">cold generator</a>.</p>
+
+<div class="toc">
+<b>On this page:</b>
+<a href="#entropy">Entropy</a><a href="#seed">Seed phrase</a><a href="#keys">Keys</a>
+<a href="#addresses">Addresses & script types</a><a href="#tx">Transactions & UTXOs</a>
+<a href="#fees">Fees</a><a href="#networks">Networks</a><a href="#security">Hot vs cold & security</a>
+<a href="#backup">Backups</a>
+</div>
+
+<section id="entropy">
+<h2><span class="n">1</span>Entropy — randomness is the whole game</h2>
+<p>A Bitcoin wallet is really just a very large secret number. If that number is <b>random enough</b>, nobody can ever guess it — there are more possible keys (2<sup>256</sup>) than atoms in the observable universe. If it's <b>not</b> random — if it was made with a weak or predictable source — an attacker can regenerate it and take the coins.</p>
+<p>This is exactly how the early browser wallets of ~2014 were broken: they used weak randomness. Olesia draws its 256 bits from your operating system's cryptographic random generator (<code>crypto.getRandomValues</code>) — the vetted source — and optionally stirs in mouse movement and dice as defence-in-depth (a hash of many inputs is strong if <i>any one</i> is strong).</p>
+<a class="try" href="https://offline.olesia.io">Try it: generate a seed & see the raw entropy →</a>
+</section>
+
+<section id="seed">
+<h2><span class="n">2</span>The seed phrase (24 words)</h2>
+<p>That giant random number is encoded as <b>24 English words</b> (the BIP-39 standard, from a fixed list of 2048 words). The words <i>are</i> your wallet — anyone with them controls the coins, and there is no "reset password." The last word includes a <b>checksum</b>, so a typo is usually caught.</p>
+<p>An optional <b>passphrase</b> (the "25th word") is a secret applied on top: you then need both the words <i>and</i> the passphrase. Lose it and the funds are gone — there's no recovery.</p>
+<div class="warn"><b>Save it on paper, in order.</b> Never screenshot it, cloud-sync it, or type it into a website you don't trust. A photo in your camera roll is a photo in someone's cloud.</div>
+</section>
+
+<section id="keys">
+<h2><span class="n">3</span>Private & public keys</h2>
+<p>From the seed, the wallet derives <b>private keys</b>. Each private key has a matching <b>public key</b>, computed by one-way maths (elliptic-curve multiplication on the secp256k1 curve): easy to go private → public, effectively impossible to reverse. You <b>sign</b> a transaction with the private key to prove you own the coins; anyone can check the signature with the public key.</p>
+<p>Signing must use a fresh, unpredictable value each time (a "nonce"). Reusing or predicting it leaks the private key — another classic way wallets were drained. Olesia signs with <b>RFC-6979 deterministic nonces</b>, which makes that mistake impossible.</p>
+</section>
+
+<section id="addresses">
+<h2><span class="n">4</span>Addresses & script types</h2>
+<p>An <b>address</b> is just a friendly encoding of a rule that says "to spend these coins, satisfy this script." Different <b>script types</b> are different rules — and the same seed produces a <i>different address for each type</i>. That's the best way to understand what an address really is: not a place, but a lock.</p>
+<p>The museum, oldest to newest:</p>
+<ul>
+<li><b>P2PK</b> — Satoshi's original. Pays straight to a public key (<code>⟨pubkey⟩ OP_CHECKSIG</code>). It has <b>no address</b> — the output <i>is</i> the key. It's how the genesis block's coins are held, and because the key sits on-chain in the open, it's the classic quantum-resistance talking point.</li>
+<li><b>P2PKH</b> — the classic <code>1…</code> address. Locks to the <i>hash</i> of a public key, so the key only appears when you spend.</li>
+<li><b>P2SH-P2WPKH</b> — SegWit wrapped in a <code>3…</code> address for old-wallet compatibility.</li>
+<li><b>P2WPKH</b> — native SegWit (<code>bc1q…</code>). Cheaper fees; the default.</li>
+<li><b>P2TR</b> — Taproot (<code>bc1p…</code>). Schnorr signatures, better privacy, cheaper multisig.</li>
+</ul>
+<a class="try" href="https://app.olesia.io">Try it: load a seed, switch script types, watch the address change →</a>
+</section>
+
+<section id="tx">
+<h2><span class="n">5</span>Transactions & UTXOs</h2>
+<p>Bitcoin has no "balance" field. Instead you own discrete chunks called <b>UTXOs</b> (unspent transaction outputs) — think of them as coins of odd denominations in your pocket. To pay someone, a transaction <b>consumes</b> some of your UTXOs as inputs and <b>creates</b> new outputs: one to the recipient, and usually one back to yourself as <b>change</b> (like getting change from a £20 note).</p>
+<p>You can also attach a tiny <b>OP_RETURN</b> output — up to ~80 bytes of arbitrary data — to write a permanent message on-chain. Olesia lets you do exactly that.</p>
+<a class="try" href="https://app.olesia.io">Try it: send with an OP_RETURN message →</a>
+</section>
+
+<section id="fees">
+<h2><span class="n">6</span>Fees</h2>
+<p>Miners include transactions that pay them, so you attach a <b>fee</b>, priced in <b>satoshis per virtual byte</b> (sat/vB). A bigger or more complex transaction costs more; a busier network needs a higher rate to confirm quickly. On testnets fees barely matter, which makes them a safe place to learn how fee choice affects confirmation time.</p>
+</section>
+
+<section id="networks">
+<h2><span class="n">7</span>Networks — practise for free</h2>
+<p>Bitcoin has several chains that share the same rules but use worthless coins for testing:</p>
+<ul>
+<li><b>Testnet3 / Testnet4</b> — long-running public test chains (Testnet4 blocks can be erratic).</li>
+<li><b>Signet</b> — a test chain with <b>regular ~10-minute blocks</b> — the smoothest place to learn.</li>
+<li><b>Mainnet</b> — real Bitcoin, real value. Only step here once you understand the rest.</li>
+</ul>
+<div class="tip">Every test network uses the same key maths as mainnet — so a wallet you build to practise is the real thing, just pointed at a playground.</div>
+</section>
+
+<section id="security">
+<h2><span class="n">8</span>Hot vs cold — and the one rule</h2>
+<p>A <b>hot wallet</b> keeps keys on an internet-connected device (a phone, a browser tab). Convenient, fine for small amounts, but a compromised device — or a compromised website — can steal the keys. A <b>cold wallet</b> generates and signs <b>offline</b>, so the keys never touch a networked machine.</p>
+<p>The subtle risk with any <i>web</i> wallet: the code is fetched from a server every visit, so you're trusting whoever runs that server. The defence is to <b>download the cold generator, verify its published hash, disconnect, and run it offline</b> — then you're trusting maths, not a server.</p>
+<div class="warn"><b>The one rule.</b> Don't keep meaningful amounts in a hot/online wallet. For real value: cold-generate offline, verify the hash, back up on paper, and consider a hardware wallet. Olesia's online wallet is for <b>learning and small amounts</b> — on purpose.</div>
+<a class="try" href="https://olesia.io#verify">How to verify the cold generator's hash →</a>
+</section>
+
+<section id="backup">
+<h2><span class="n">9</span>Backups done right</h2>
+<p>Your only real backup is the 24 words. Write them on paper (or steel), store them somewhere safe, and <b>test the backup</b> before you trust it — restore it into independent software and confirm you get the same address. Olesia's cold generator has a built-in check for exactly this. An untested backup is not a backup.</p>
+<p>You can also export an <b>encrypted backup file</b> (scrypt + XChaCha20-Poly1305) and a <b>watch-only descriptor</b> (which can see your balance but cannot spend) — a safe way to monitor funds from an everyday machine.</p>
+</section>
+
+<p class="foot">Olesia is an educational project — open, reproducible, and honest about its limits. It is not financial advice and not a place to store savings. Learn here; hold elsewhere. · <a href="https://github.com/testnetbtc/BTC_Wallet">source & audits</a> · <a href="https://olesia.io">olesia.io</a></p>
+</div>
+</body></html>
