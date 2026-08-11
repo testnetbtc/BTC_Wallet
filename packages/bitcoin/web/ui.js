@@ -238,20 +238,32 @@
   $('#qa_learn').addEventListener('click', () => showPane('learn'));
 
   // ---------- account detail ----------
+  $('#acc_moretog').addEventListener('click', () => {
+    const a = $('#acc_about'); const open = a.style.display !== 'block';
+    a.style.display = open ? 'block' : 'none';
+    $('#acc_moretog').textContent = open ? 'about ▴' : 'about ▾';
+  });
+  $('#acc_addr').addEventListener('click', () => {
+    const t = $('#acc_addr').textContent; if (!t) return;
+    navigator.clipboard.writeText(t).then(() => toast('Address copied ✓', 'ok')).catch(() => {});
+  });
   async function openAccount(type) {
     scriptType = type;
     const t = TYPES.find((x) => x.id === type);
     $('#acc_title').textContent = SHORT[type];
-    $('#acc_about').textContent = t.about;
+    $('#acc_one').textContent = ONELINE[type];
+    $('#acc_about').textContent = t.about; $('#acc_about').style.display = 'none'; $('#acc_moretog').textContent = 'about ▾';
     $('#lab').style.display = type === 'p2pk' && mode === 'full' ? 'block' : 'none';
-    $('#acc_label').parentElement && ($('#acc_label').disabled = type === 'p2pk');
+    $('#acc_label').style.display = type === 'p2pk' ? 'none' : 'block';
     try {
       const info = window.OW.info(source, network, type);
-      $('#acc_addr').textContent = info.address || ('P2PK — no address. scriptPubKey: ' + info.scriptHex);
-      const q = $('#acc_qr');
-      if (info.address) { q.src = await window.OW.qr(info.address); q.style.display = 'block'; } else q.style.display = 'none';
+      $('#acc_addr').textContent = info.address || info.scriptHex;
+      document.querySelector('.qrbox').classList.toggle('noaddr', !info.address);
+      if (info.address) $('#acc_qr').src = await window.OW.qr(info.address);
       $('#acc_label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
-      $('#acc_recvhint').style.display = type === 'p2pk' ? 'none' : 'block';
+      $('#acc_recvhint').innerHTML = type === 'p2pk'
+        ? 'P2PK has no address — this is its raw locking script. Fund it from the Lab below.'
+        : 'Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a>';
     } catch (e) { toast('✗ ' + e.message, 'bad'); return; }
     showPane('account');
     refreshAccount();

@@ -173,6 +173,12 @@ nav button.on{color:var(--accent)}
 #orbody b{color:var(--text)}
 #result,#agresult,#p2pk_result{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px;margin-top:10px;display:none}
 img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
+/* centered receive card */
+.qrbox{display:inline-block;background:#eef2f6;padding:12px;border-radius:16px;margin-bottom:12px;line-height:0}
+.qrbox img{width:172px;height:172px;display:block;border-radius:6px}
+.qrbox.noaddr{display:none}
+#acc_addr{font-size:12px;color:var(--muted);max-width:300px;margin:0 auto;cursor:pointer;line-height:1.5}
+.balstrip{display:flex;align-items:center;gap:12px}
 @media(min-width:600px){main{padding-top:8px}}
 </style></head>
 <body>
@@ -279,26 +285,33 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-account">
   <button class="back" id="back_accounts">‹ Accounts</button>
   <h2 id="acc_title">Account</h2>
-  <p class="sub" id="acc_about"></p>
-  <div class="card">
-    <label style="margin-top:0">Receive address</label>
-    <div class="mono" id="acc_addr" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px"></div>
-    <img id="acc_qr" class="qr" alt="address QR">
-    <div class="row" style="margin-top:8px">
-      <button type="button" class="sec copy" data-copy="acc_addr">Copy address</button>
-      <button type="button" class="sec" id="acc_sendbtn">Send from this account</button>
+  <p class="sub" style="margin-bottom:8px"><span id="acc_one"></span> · <a id="acc_moretog" style="cursor:pointer">about ▾</a></p>
+  <div class="tiptext" id="acc_about" style="margin:0 0 12px"></div>
+
+  <div class="card" style="text-align:center;padding:20px 16px 16px">
+    <div class="qrbox"><img id="acc_qr" alt="address QR"></div>
+    <div class="mono" id="acc_addr" title="tap to copy"></div>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="copy" data-copy="acc_addr">Copy address</button>
+      <button type="button" class="sec" id="acc_sendbtn">Send</button>
     </div>
-    <p class="hint" id="acc_recvhint">Send coins here, then Refresh. Need some? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Get free testnet coins →</a></p>
-    <label>Label <span class="hint" style="display:inline">(saved in this browser only)</span></label>
-    <input id="acc_label" placeholder="e.g. practice account" autocomplete="off">
+    <p class="hint" id="acc_recvhint" style="margin:10px 0 0">Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a></p>
   </div>
+
+  <div class="card balstrip">
+    <div style="flex:1;text-align:left">
+      <div style="font-size:10.5px;letter-spacing:.09em;font-weight:800;color:var(--faint)">BALANCE</div>
+      <div id="acc_bal" style="font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px">—</div>
+      <div class="hint" id="acc_utxos" style="margin:2px 0 0"></div>
+    </div>
+    <button type="button" class="sec" id="acc_refresh" style="min-height:36px;font-size:12.5px">↻ Refresh</button>
+  </div>
+
   <div class="card">
-    <div class="sect" style="margin-top:0"><h3>Balance</h3><a id="acc_refresh">Refresh</a></div>
-    <div class="mono" id="acc_bal">—</div>
-    <div class="hint" id="acc_utxos"></div>
-    <label style="margin-top:12px">Recent transactions</label>
+    <div class="sect" style="margin-top:0"><h3>History</h3></div>
     <div id="acc_hist" class="hint">—</div>
   </div>
+  <input id="acc_label" placeholder="＋ Add a private label (stays on this device)" autocomplete="off" style="background:none;border:1px dashed var(--line);text-align:center;font-size:13.5px">
 
   <!-- P2PK lab -->
   <div id="lab" style="display:none">
