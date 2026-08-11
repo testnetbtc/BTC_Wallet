@@ -314,14 +314,16 @@
       const text = await f.text();
       const { mnemonic, passphraseUsed } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
       if (!window.OW.validate(mnemonic)) throw new Error('decrypted, but the recovered phrase is not valid BIP-39');
-      if (passphraseUsed && !$('#i_pass').value) {
-        $('#bkinfo').className = 'hint bad';
-        $('#bkinfo').textContent = 'This wallet used a passphrase — type it in the Passphrase box above, then Decrypt & open again (it isn’t stored in the file).';
+      if (passphraseUsed && !$('#bkbip39').value) {
+        $('#bkbip39row').style.display = 'block';
+        $('#bkinfo').className = 'hint';
+        $('#bkinfo').textContent = 'This wallet was made with a BIP-39 passphrase — enter it just above (it isn’t stored in the file, by design), then Decrypt & open again.';
+        $('#bkbip39').focus();
         return;
       }
       source = mnemonic; mode = 'full'; scriptType = 'p2wpkh';
-      passphrase = passphraseUsed ? $('#i_pass').value : '';
-      $('#bkpass').value = ''; $('#bkfile').value = ''; $('#i_pass').value = ''; $('#bkinfo').textContent = '';
+      passphrase = passphraseUsed ? $('#bkbip39').value : '';
+      $('#bkpass').value = ''; $('#bkfile').value = ''; $('#bkbip39').value = ''; $('#bkbip39row').style.display = 'none'; $('#bkinfo').textContent = '';
       initWallet();
     } catch (e) { $('#bkinfo').className = 'hint bad'; $('#bkinfo').textContent = '✗ ' + e.message; }
   });

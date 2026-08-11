@@ -360,7 +360,12 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <label style="margin-top:0">Import a cold-generator backup file</label>
     <p class="hint">The encrypted <code>.json</code> you saved from <a href="https://offline.olesia.io" target="_blank" rel="noopener">offline.olesia.io</a> — decrypted here in your browser.</p>
     <input id="bkfile" type="file" accept="application/json,.json" style="padding:9px">
-    <input id="bkpass" type="password" placeholder="file password" autocomplete="off" style="margin-top:6px">
+    <input id="bkpass" type="password" placeholder="file password (unlocks the .json)" autocomplete="off" style="margin-top:6px">
+    <div id="bkbip39row" style="display:none">
+      <label style="font-size:13px;color:var(--muted);margin:8px 0 6px">BIP-39 passphrase — this wallet was made with one <span class="help" data-target="tip_bkpp">?</span></label>
+      <div class="tiptext" id="tip_bkpp">Your <b>BIP-39 passphrase</b> (the “25th word”) is deliberately <b>not</b> stored in the backup file — and that's the whole point. The file is protected by its own password; the passphrase is a <b>separate secret</b> you keep only in your head or on paper. So even if someone steals the file <i>and</i> cracks its password, they still can't open the wallet without it — a true second factor.</div>
+      <input id="bkbip39" type="password" placeholder="the passphrase (25th word)" autocomplete="off">
+    </div>
     <button id="bkimport" class="sec" style="width:100%;margin-top:6px">Decrypt &amp; open</button>
     <p class="hint" id="bkinfo" style="margin:6px 0 0"></p>
   </div>
