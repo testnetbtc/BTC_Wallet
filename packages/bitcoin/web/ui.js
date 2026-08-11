@@ -670,6 +670,19 @@
     sel.value = sendType;
     $('#send_typecard').style.display = types.length > 1 ? 'block' : 'none';
   }
+  // list other accounts that currently hold spendable coins — used to point the
+  // user at a funded account when the one they picked is empty
+  function fundedHint(exclude) {
+    const others = Object.entries(balances).filter(([k, b]) => k !== exclude && b && b.confirmed > 0);
+    if (!others.length) return '';
+    return ' Funded now: ' + others.map(([k, b]) => `${SHORT[k]} (${coins(b.confirmed)} ${unit()})`).join(', ') + '.';
+  }
+  function updateEmptyBanner(b) {
+    const el = $('#send_empty');
+    if (mode === 'watch' || (b && b.confirmed > 0)) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = `This <b>${SHORT[sendType]}</b> account has no confirmed coins to spend${b && b.pending ? ' (some are still pending here)' : ''}. Pick a funded account in the <b>Account</b> selector above.` + fundedHint(sendType);
+  }
   async function selectSendType(type) {
     sendType = type;
     $('#send_from').textContent = SHORT[sendType];
@@ -679,6 +692,7 @@
       let b = balances[sendType];
       if (!b) { const st = await window.OW.status(source, network, sendType, 0, passphrase); balances[sendType] = st.balance; b = st.balance; }
       $('#send_bal').textContent = `${coins(b.confirmed)} ${unit()} available`;
+      updateEmptyBanner(b);
     } catch { $('#send_bal').textContent = 'balance unavailable'; }
   }
   $('#send_type').addEventListener('change', () => selectSendType($('#send_type').value));
@@ -689,6 +703,7 @@
     populateSendTypes();
     const b = balances[sendType];
     $('#send_bal').textContent = b ? `${coins(b.confirmed)} ${unit()} available` : '…';
+    updateEmptyBanner(b);
     $('#send_wo').style.display = mode === 'watch' ? 'block' : 'none';
     $('#send_p2pk').style.display = 'none';
     const canHot = mode === 'full';
@@ -766,7 +781,15 @@
       if (!okGo) return toast('Cancelled — nothing sent.');
       toast('Broadcasting…');
       renderResult(await buildTx(true), true);
-    } catch (e) { toast('✗ ' + e.message, 'bad'); }
+    } catch (e) {
+      let m = e.message;
+      // the most common tripwire: trying to spend from an empty script-type account
+      if (/no UTXOs|insufficient|not enough|no coins/i.test(m)) {
+        m = `The ${SHORT[sendType]} account has no spendable coins here. Switch the Account selector at the top of this screen to a funded one.` + fundedHint(sendType);
+        updateEmptyBanner(balances[sendType]);
+      }
+      toast('✗ ' + m, 'bad');
+    }
   }
   $('#dryrun').addEventListener('click', () => runSend(false));
   $('#send').addEventListener('click', () => runSend(true));

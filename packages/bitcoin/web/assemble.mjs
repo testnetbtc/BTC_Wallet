@@ -479,6 +479,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <div class="tiptext" id="tip_sendtype">Each script type (Legacy, Nested SegWit, Native SegWit, Taproot) is its own account with its own addresses and its own balance, all from the same seed. Switch here to spend from a different one — you can only spend coins that actually sit in the account you pick.</div>
     <select id="send_type"></select>
   </div>
+  <div id="send_empty" class="warn" style="display:none"></div>
   <div id="send_wo" class="warn" style="display:none">Watch-only: this wallet can't sign. Build an unsigned PSBT in <b>Settings → Air-gap tools</b>, sign it offline, broadcast it there.</div>
   <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK account and use <b>Spend a P2PK coin out</b>.</div>
   <div class="card" style="padding:10px 14px">

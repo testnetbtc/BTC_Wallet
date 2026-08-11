@@ -5,7 +5,8 @@
   "private": true,
   "description": "Olesia/Chainwatch Bitcoin tx build+sign+broadcast (testnet-first)",
   "scripts": {
-    "test": "node test/tx.test.mjs && node test/psbt.test.mjs && node test/scripttypes.test.mjs && node test/p2pk.test.mjs && node test/vault.test.mjs && node test/wif.test.mjs"
+    "test": "node test/tx.test.mjs && node test/psbt.test.mjs && node test/scripttypes.test.mjs && node test/p2pk.test.mjs && node test/vault.test.mjs && node test/wif.test.mjs && node test/ui.test.mjs",
+    "test:e2e": "node test/e2e_live.mjs"
   },
   "dependencies": {
     "@noble/hashes": "^1.4.0",
@@ -16,6 +17,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1"
   }
 }
