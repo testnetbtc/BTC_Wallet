@@ -19,7 +19,7 @@ const MNEMONIC = secret('faucet.json').mnemonic;
 // and enforces its own per-account limit. Absent file -> no internal path.
 const INTERNAL_TOKEN = existsSync(join(HERE, '..', '.secrets', 'internal.json')) ? secret('internal.json').faucetInternalToken : '';
 const PORT = 8790;
-const DRIP = 100_000;                       // 0.001 tBTC per claim
+const DRIP = 10_000;                        // 0.0001 tBTC per claim
 const NETWORKS = new Set(['testnet3', 'testnet4']);
 const ALLOW_ORIGIN = new Set(['https://faucet.olesia.io', 'https://olesia.io', 'https://app.olesia.io']);
 // Turnstile secret from a 600 file (preferred) or env. Absent -> human check off.
