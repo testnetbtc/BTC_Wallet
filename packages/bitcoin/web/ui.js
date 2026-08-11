@@ -74,7 +74,10 @@
   function showPane(name) {
     if (!source && ['home', 'accounts', 'account', 'send'].includes(name)) name = 'welcome';
     $$('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
-    $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.nav === name));
+    // onboarding panes (welcome/wizard/import) anchor the Home tab
+    const navName = ['welcome', 'create1', 'create2', 'create3', 'create4', 'import'].includes(name) ? 'home'
+      : name === 'account' ? 'accounts' : name === 'send' ? 'home' : name;
+    $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.nav === navName));
     // never leave the seed on screen or a stale confirm open when navigating
     try { if (typeof hideBackup === 'function') { hideBackup(); $('#backup_body').classList.remove('on'); } } catch {}
     try { closeConfirm(false); } catch {}

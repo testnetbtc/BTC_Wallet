@@ -127,7 +127,8 @@ a{color:var(--mint)}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line);z-index:40}
 .navin{display:flex;width:100%;max-width:560px;padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
 nav button{flex:1;background:none;border:0;color:var(--faint);font-size:10.5px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;min-height:0}
-nav button .ic{font-size:19px;line-height:1.15}
+nav button .ic{display:inline-flex}
+nav button .ic svg{width:21px;height:21px}
 nav button.on{color:var(--accent)}
 /* unlock overlay */
 #unlock{position:fixed;inset:0;z-index:60;background:linear-gradient(180deg,#0b0e12,#0e1116);display:none;align-items:center;justify-content:center;padding:24px}
@@ -512,10 +513,10 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 </main>
 <nav><div class="navin">
-  <button data-nav="home" class="on"><span class="ic">⌂</span>Home</button>
-  <button data-nav="accounts"><span class="ic">▦</span>Accounts</button>
-  <button data-nav="learn"><span class="ic">📖</span>Learn</button>
-  <button data-nav="settings"><span class="ic">⚙</span>Settings</button>
+  <button data-nav="home" class="on"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg></span>Home</button>
+  <button data-nav="accounts"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg></span>Accounts</button>
+  <button data-nav="learn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5zM19 19a2 2 0 01-2 2H6"/><path d="M8 3v14"/></svg></span>Learn</button>
+  <button data-nav="settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3h0a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6h0a1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9v0a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></span>Settings</button>
 </div></nav>
 </div>
 
