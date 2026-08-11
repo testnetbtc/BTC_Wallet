@@ -14,13 +14,13 @@ export const isXpub = (s) => XPUB_RE.test((s || '').trim());
 
 // Unified wallet from a source. A mnemonic -> full wallet at the chosen script type
 // (can sign). An xpub -> watch-only P2WPKH (script-type selection needs the seed).
-export function resolveWallet(source, network, scriptType = 'p2wpkh', index = 0) {
+export function resolveWallet(source, network, scriptType = 'p2wpkh', index = 0, passphrase = '') {
   const s = (source || '').trim();
   if (isXpub(s)) {
     const w = watchOnly(s, network, 0, index);
     return { spend: { script: w.script, address: w.address }, address: w.address, segwit: true, type: 'p2wpkh', watchOnly: true, scripthash: null };
   }
-  const w = deriveScript(s, network, scriptType, index);
+  const w = deriveScript(s, network, scriptType, index, passphrase);
   return { spend: w.spend, privKey: w.privKey, address: w.address, segwit: w.segwit, type: w.type,
            scripthash: w.scripthash, scriptHex: w.scriptHex, about: w.about, label: w.label, watchOnly: false };
 }
@@ -28,21 +28,21 @@ export function resolveWallet(source, network, scriptType = 'p2wpkh', index = 0)
 // esplora lookup target: an address, or { scripthash } for address-less types (P2PK).
 const locatorOf = (w) => (w.address ? w.address : { scripthash: w.scripthash });
 
-export function walletAddress(source, network, scriptType, index = 0) {
-  return resolveWallet(source, network, scriptType, index).address;
+export function walletAddress(source, network, scriptType, index = 0, passphrase = '') {
+  return resolveWallet(source, network, scriptType, index, passphrase).address;
 }
-export function walletInfo(source, network, scriptType, index = 0) {
-  const w = resolveWallet(source, network, scriptType, index);
+export function walletInfo(source, network, scriptType, index = 0, passphrase = '') {
+  const w = resolveWallet(source, network, scriptType, index, passphrase);
   return { address: w.address, scriptHex: w.scriptHex, type: w.type, about: w.about, label: w.label, segwit: w.segwit, watchOnly: w.watchOnly };
 }
-export async function statusFor(source, network, scriptType, index = 0) {
-  const w = resolveWallet(source, network, scriptType, index);
+export async function statusFor(source, network, scriptType, index = 0, passphrase = '') {
+  const w = resolveWallet(source, network, scriptType, index, passphrase);
   const loc = locatorOf(w);
   const [balance, utxos] = await Promise.all([getBalance(loc, network), getUTXOs(loc, network)]);
   return { address: w.address, scriptHex: w.scriptHex, type: w.type, network, balance, utxos, watchOnly: w.watchOnly };
 }
-export function historyFor(source, network, scriptType, index = 0) {
-  return getTxHistory(locatorOf(resolveWallet(source, network, scriptType, index)), network);
+export function historyFor(source, network, scriptType, index = 0, passphrase = '') {
+  return getTxHistory(locatorOf(resolveWallet(source, network, scriptType, index, passphrase)), network);
 }
 
 // legacy (non-segwit) inputs need the full previous tx (nonWitnessUtxo)
@@ -58,8 +58,8 @@ async function spendableUtxos(w, network, allowUnconfirmed) {
 }
 
 export async function prepareAndSend(opts) {
-  const { source, mnemonic, network, scriptType = 'p2wpkh', recipients = [], message = null, index = 0 } = opts;
-  const w = resolveWallet(source ?? mnemonic, network, scriptType, index);
+  const { source, mnemonic, network, scriptType = 'p2wpkh', recipients = [], message = null, index = 0, passphrase = '' } = opts;
+  const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
   if (w.watchOnly) throw new Error('watch-only (xpub) cannot sign — use the air-gap tools');
   if (!w.address) throw new Error('P2PK has no address; spending it is a museum feature (coming soon)');
   const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
@@ -71,8 +71,8 @@ export async function prepareAndSend(opts) {
 }
 
 export async function prepareSweep(opts) {
-  const { source, mnemonic, network, scriptType = 'p2wpkh', toAddress, index = 0 } = opts;
-  const w = resolveWallet(source ?? mnemonic, network, scriptType, index);
+  const { source, mnemonic, network, scriptType = 'p2wpkh', toAddress, index = 0, passphrase = '' } = opts;
+  const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
   if (w.watchOnly || !w.address) throw new Error('cannot sweep from this source/type');
   const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
   const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
@@ -85,9 +85,9 @@ export async function prepareSweep(opts) {
 // ---- P2PK lab: fund a P2PK output from the seed's SegWit balance, track it, spend it ----
 // P2PK has no address (nothing to paste), and public explorers don't index it, so the
 // wallet moves coins in from its own P2WPKH balance and tracks the outpoint itself.
-export async function fundP2PK({ source, network, amount, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true }) {
-  const src = deriveScript(source, network, 'p2wpkh');
-  const tgt = deriveScript(source, network, 'p2pk');
+export async function fundP2PK({ source, network, amount, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true, passphrase = '' }) {
+  const src = deriveScript(source, network, 'p2wpkh', 0, passphrase);
+  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
   const utxos = (await getUTXOs(src.address, network)).filter((u) => allowUnconfirmed || u.confirmed);
   if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) — no coins to move into P2PK`);
   const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
@@ -111,8 +111,8 @@ export async function p2pkOutpoints({ network, outpoints }) {
 // Recover a P2PK coin by its funding txid: verify the output really is THIS
 // wallet's P2PK script (explorers can't look it up by address), then return it
 // so the UI can re-track it after browser data was cleared.
-export async function importP2PK({ source, network, txid, vout = 0 }) {
-  const tgt = deriveScript(source, network, 'p2pk');
+export async function importP2PK({ source, network, txid, vout = 0, passphrase = '' }) {
+  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
   const tx = await getTx(txid, network);
   const out = tx.vout?.[vout];
   if (!out) throw new Error(`no output #${vout} in that transaction`);
@@ -123,8 +123,8 @@ export async function importP2PK({ source, network, txid, vout = 0 }) {
 }
 
 // Sweep one tracked P2PK output to any address (hand-rolled legacy spend).
-export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false }) {
-  const tgt = deriveScript(source, network, 'p2pk');
+export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false, passphrase = '' }) {
+  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
   const tx = await getTx(outpoint.txid, network);
   const vout = tx.vout[outpoint.vout];
   if (!vout) throw new Error('P2PK output not found on chain');
@@ -136,15 +136,15 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
 }
 
 // ---- air-gap PSBT flow (P2WPKH / xpub watch-only) ----
-export function woFrom(source, network, index = 0) {
+export function woFrom(source, network, index = 0, passphrase = '') {
   const s = (source || '').trim();
   if (isXpub(s)) { const w = watchOnly(s, network, 0, index); return { script: w.script, address: w.address, watchOnly: true }; }
-  const k = deriveKey(s, '', network, index);
+  const k = deriveKey(s, passphrase || '', network, index);
   return { script: k.spend.script, address: k.address, key: k, watchOnly: false };
 }
 export async function prepareUnsigned(opts) {
-  const { source, network, recipients = [], message = null, index = 0 } = opts;
-  const wo = woFrom(source, network, index);
+  const { source, network, recipients = [], message = null, index = 0, passphrase = '' } = opts;
+  const wo = woFrom(source, network, index, passphrase);
   const utxos = await getUTXOs(wo.address, network);
   const spendable = opts.allowUnconfirmed ? utxos : utxos.filter((u) => u.confirmed);
   if (!spendable.length) throw new Error(`no spendable UTXOs on ${wo.address}`);
@@ -152,8 +152,8 @@ export async function prepareUnsigned(opts) {
   const built = buildUnsignedPSBT({ utxos: spendable, wo: { script: wo.script, address: wo.address }, recipients, message, changeAddress: wo.address, feeRate, network });
   return { from: wo.address, ...built, feeRate };
 }
-export function signUnsigned({ psbt, mnemonic, network, index = 0 }) {
-  return signPSBTOffline(psbt, (mnemonic || '').trim(), '', network, index);
+export function signUnsigned({ psbt, mnemonic, network, index = 0, passphrase = '' }) {
+  return signPSBTOffline(psbt, (mnemonic || '').trim(), passphrase || '', network, index);
 }
 export async function broadcastSigned({ psbt, network }) {
   const { txHex } = extractTx(psbt);

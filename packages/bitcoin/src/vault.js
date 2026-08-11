@@ -15,7 +15,7 @@ import { base64 } from '@scure/base';
 const KDF = { N: 2 ** 15, r: 8, p: 1, dkLen: 32 };
 
 export function sealSeed(mnemonic, pin) {
-  if (!pin || String(pin).length < 4) throw new Error('choose a PIN or passphrase of at least 4 characters');
+  if (!pin || String(pin).length < 6) throw new Error('choose a PIN or passphrase of at least 6 characters');
   const salt = randomBytes(16);
   const nonce = randomBytes(24);
   const key = scrypt(utf8ToBytes(String(pin)), salt, KDF);

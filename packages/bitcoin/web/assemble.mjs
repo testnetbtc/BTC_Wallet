@@ -262,6 +262,9 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <p class="hint">Don't fully trust any single source? Add your own — everything is <b>hashed together</b>, so the result is strong if <i>any one</i> source is strong. It can only help.</p>
       <label>Dice rolls <span class="hint" style="display:inline">— roll a real die, type the results (1–6)</span></label>
       <input id="dice" placeholder="e.g. 4152663125…  (50+ rolls ≈ 129 bits)" inputmode="numeric" autocomplete="off">
+      <label>Passphrase — the “25th word” <span class="help" data-target="tip_pass">?</span></label>
+      <div class="tiptext" id="tip_pass">An extra secret applied ON TOP of your words (BIP-39). The same 24 words with a different passphrase = a completely different wallet. Powerful — but <b>if you lose it, the coins are gone forever</b>; it is not written on your paper backup and there is no way to recover it. Leave empty unless you understand this.</div>
+      <input id="c_pass" type="password" placeholder="optional — leave empty for none" autocomplete="off">
       <label>Random movement <span class="hint" style="display:inline">— wiggle your mouse or doodle with your finger</span></label>
       <div class="entropad" id="entropad"><canvas id="entrocanvas"></canvas><span class="entrohint" id="entrohint">draw here ✏️</span></div>
       <div class="prog" style="margin:8px 0 2px"><i id="entrobar"></i></div>
@@ -294,10 +297,11 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-create4">
   <h2>Backup confirmed ✓</h2>
   <p class="sub">Step 4 of 4 — how should this device remember your wallet?</p>
+  <div class="warn" id="c_replacenote" style="display:none">This device already has a saved wallet — saving this one <b>replaces</b> it here. (The old wallet's coins are safe on-chain; you can always re-import it from its words.)</div>
   <div class="card">
     <label style="margin-top:0">Keep it on this device (recommended)</label>
     <p class="hint">Saved <b>encrypted</b> behind a PIN (scrypt + XChaCha20-Poly1305). The plaintext seed never touches disk — your PIN decrypts it in memory each time.</p>
-    <div class="field"><input id="c_pin" type="password" placeholder="choose a PIN / passphrase (4+ chars)" autocomplete="off"><button id="c_save">Save &amp; open</button></div>
+    <div class="field"><input id="c_pin" type="password" placeholder="choose a PIN / passphrase (6+ chars)" autocomplete="off"><button id="c_save">Save &amp; open</button></div>
   </div>
   <button id="c_skip" class="sec" style="width:100%">Don't save — open once, ask for the words next time</button>
 </section>
@@ -311,6 +315,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <label style="margin-top:0">Seed or xpub <span class="help" data-target="tip_seed">?</span></label>
     <div class="tiptext" id="tip_seed">Your wallet <i>is</i> its words (BIP-39) — anyone with them controls the coins. An <b>xpub</b> can watch a balance but cannot spend: the safe way to use a cold wallet online. Private-key (WIF) and encrypted-file import are coming next.</div>
     <textarea id="mnemonic" placeholder="word1 word2 … word24   —or—   xpub…/tpub…" autocomplete="off" spellcheck="false"></textarea>
+    <label>Passphrase <span class="hint" style="display:inline">— only if the wallet was made with one</span></label>
+    <input id="i_pass" type="password" placeholder="optional — leave empty for none" autocomplete="off">
     <div class="row">
       <button type="button" class="sec paste" data-paste="mnemonic">Paste</button>
       <button id="load">Open wallet</button>
@@ -350,7 +356,9 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-account">
   <button class="back" id="back_accounts">‹ Accounts</button>
   <h2 id="acc_title">Account</h2>
-  <p class="sub" style="margin-bottom:8px"><span id="acc_one"></span> · <a id="acc_moretog" style="cursor:pointer">about ▾</a></p>
+  <p class="sub" style="margin-bottom:4px"><span id="acc_one"></span> · <a id="acc_moretog" style="cursor:pointer">about ▾</a></p>
+  <p class="hint mono" style="margin:0 0 10px;font-size:11.5px">derivation path <span id="acc_path" style="color:var(--accent)"></span> <span class="help" data-target="tip_path">?</span></p>
+  <div class="tiptext" id="tip_path" style="margin:0 0 10px">The route from your seed to this account's key: <b>m / purpose' / coin' / account' / chain / index</b>. The first number is the script-type standard (44'=legacy, 49'=nested, 84'=SegWit, 86'=Taproot); coin is 0' for mainnet, 1' for test networks. Same seed + same path = same keys, in any BIP-compliant wallet — that's why your seed restores anywhere.</div>
   <div class="tiptext" id="acc_about" style="margin:0 0 12px"></div>
 
   <div class="card" style="text-align:center;padding:20px 16px 16px">
@@ -461,6 +469,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <p class="slbl">Wallet</p>
   <div class="sgroup">
     <div class="srow"><span>🌐</span><span class="t"><b>Network</b></span><select id="set_net" style="width:auto;margin:0;padding:7px 10px;font-size:13px"></select></div>
+    <div class="srow" id="set_addwallet"><span>➕</span><span class="t"><b>Create or import another wallet</b><span>closes the current one first</span></span><span class="val">›</span></div>
     <div class="srow" id="set_xpub"><span>🔎</span><span class="t"><b>Account xpub (SegWit)</b><span>share balances without spend power</span></span><span class="val">›</span></div>
   </div>
   <div class="sbody" id="xpub_body"><div class="mono" id="set_xpub_out"></div><button type="button" class="sec copy" data-copy="set_xpub_out" style="margin-top:8px">Copy xpub</button></div>
@@ -484,7 +493,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   </div>
   <div class="sbody" id="vault_body">
     <p class="hint" style="margin-top:0">Saves your seed <b>encrypted</b> (scrypt + XChaCha20-Poly1305 — the cold generator's own crypto). Plaintext never touches disk; your PIN decrypts it in memory. A weak PIN on a compromised device is still a risk — real money belongs in cold storage.</p>
-    <div class="field"><input id="vsetpin" type="password" placeholder="choose a PIN / passphrase (4+ chars)" autocomplete="off"><button id="vsave" class="sec">Save</button></div>
+    <div class="field"><input id="vsetpin" type="password" placeholder="choose a PIN / passphrase (6+ chars)" autocomplete="off"><button id="vsave" class="sec">Save</button></div>
     <button id="vforget2" class="sec" style="font-size:12px;margin-top:8px">Forget saved wallet…</button>
   </div>
 

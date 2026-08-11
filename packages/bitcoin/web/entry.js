@@ -48,45 +48,49 @@ window.OW = {
     return 'data:image/svg+xml;base64,' + btoa(svg);
   },
 
-  // all take an optional scriptType (default p2wpkh)
-  address: (source, network, scriptType, index = 0) => walletAddress(T(source), network, scriptType, index),
-  info: (source, network, scriptType, index = 0) => walletInfo(T(source), network, scriptType, index),
-  status: (source, network, scriptType, index = 0) => statusFor(T(source), network, scriptType, index),
-  history: (source, network, scriptType, index = 0) => historyFor(T(source), network, scriptType, index),
-  xpub: (mnemonic, network) => accountXpub(T(mnemonic), '', network),
+  // all take an optional scriptType (default p2wpkh) and optional passphrase
+  address: (source, network, scriptType, index = 0, passphrase = '') => walletAddress(T(source), network, scriptType, index, passphrase),
+  info: (source, network, scriptType, index = 0, passphrase = '') => walletInfo(T(source), network, scriptType, index, passphrase),
+  status: (source, network, scriptType, index = 0, passphrase = '') => statusFor(T(source), network, scriptType, index, passphrase),
+  history: (source, network, scriptType, index = 0, passphrase = '') => historyFor(T(source), network, scriptType, index, passphrase),
+  xpub: (mnemonic, network, passphrase = '') => accountXpub(T(mnemonic), passphrase || '', network),
 
-  send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet' }) =>
+  send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
     prepareAndSend({
-      source: T(mnemonic), network, scriptType,
+      source: T(mnemonic), network, scriptType, passphrase,
       recipients: (toAddress && Number(amount) > 0) ? [{ address: T(toAddress), amount: Number(amount) }] : [],
       message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed,
     }),
-  sweep: ({ mnemonic, network, scriptType, toAddress, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet' }) =>
-    prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed }),
+  sweep: ({ mnemonic, network, scriptType, toAddress, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
+    prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed, passphrase }),
 
   // air-gap PSBT flow (P2WPKH)
-  buildUnsigned: ({ source, network, toAddress, amount, message, feeRate, index = 0 }) =>
+  buildUnsigned: ({ source, network, toAddress, amount, message, feeRate, index = 0, passphrase = '' }) =>
     prepareUnsigned({
-      source: T(source), network,
+      source: T(source), network, passphrase,
       recipients: (toAddress && Number(amount) > 0) ? [{ address: T(toAddress), amount: Number(amount) }] : [],
       message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, allowUnconfirmed: true,
     }),
-  signPsbt: ({ psbt, mnemonic, network, index = 0 }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index }),
+  signPsbt: ({ psbt, mnemonic, network, index = 0, passphrase = '' }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index, passphrase }),
   broadcastPsbt: ({ psbt, network }) => broadcastSigned({ psbt: T(psbt), network }),
 
   // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)
   vault: {
     exists: () => { try { return !!localStorage.getItem('olesia:vault'); } catch { return false; } },
-    save: (mnemonic, pin) => localStorage.setItem('olesia:vault', sealSeed(T(mnemonic), pin)),
-    open: (pin) => openSeed(localStorage.getItem('olesia:vault'), pin),
+    save: (mnemonic, pin, passphrase = '') => localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin)),
+    open: (pin) => {
+      const raw = openSeed(localStorage.getItem('olesia:vault'), pin);
+      try { const o = JSON.parse(raw); if (o && o.m) return { m: o.m, p: o.p || '' }; } catch {}
+      return { m: raw, p: '' }; // vaults saved before passphrase support
+    },
     forget: () => localStorage.removeItem('olesia:vault'),
   },
 
   // P2PK lab: fund a P2PK from the seed's SegWit balance, track outpoints, spend them out
-  fundP2PK: ({ source, network, amount, feeRate, broadcast = true }) =>
-    fundP2PK({ source: T(source), network, amount: Number(amount), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
+  fundP2PK: ({ source, network, amount, feeRate, broadcast = true, passphrase = '' }) =>
+    fundP2PK({ source: T(source), network, amount: Number(amount), feeRate: feeRate ? Number(feeRate) : 2, broadcast, passphrase }),
   p2pkStatus: ({ network, outpoints }) => p2pkOutpoints({ network, outpoints }),
-  p2pkImport: ({ source, network, txid, vout }) => importP2PK({ source: T(source), network, txid: T(txid), vout: Number(vout) || 0 }),
-  spendP2PK: ({ source, network, outpoint, toAddress, feeRate, broadcast = true }) =>
-    spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : 2, broadcast }),
+  p2pkImport: ({ source, network, txid, vout, passphrase = '' }) => importP2PK({ source: T(source), network, txid: T(txid), vout: Number(vout) || 0, passphrase }),
+  spendP2PK: ({ source, network, outpoint, toAddress, feeRate, broadcast = true, passphrase = '' }) =>
+    spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : 2, broadcast, passphrase }),
 };

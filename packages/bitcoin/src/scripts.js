@@ -30,11 +30,11 @@ export function scriptTypeList() { return Object.keys(SCRIPT_TYPES); }
 // This is how we look up balances for P2PK, which has no address.
 export function scriptHashOf(scriptBytes) { return bytesToHex(sha256(scriptBytes).slice().reverse()); }
 
-export function deriveScript(mnemonic, network, type, index = 0) {
+export function deriveScript(mnemonic, network, type, index = 0, passphrase = '') {
   const n = net(network);
   const t = SCRIPT_TYPES[type];
   if (!t) throw new Error('unknown script type: ' + type);
-  const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), '');
+  const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || '');
   const path = `m/${t.purpose}'/${n.coin}'/0'/0/${index}`;
   const child = HDKey.fromMasterSeed(seed).derive(path);
   if (!child.privateKey) throw new Error('no private key derived');
