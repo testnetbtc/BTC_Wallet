@@ -663,10 +663,30 @@
 
   // ---------- send ----------
   let sendType = 'p2wpkh', sendMode = 'pay';
+  function populateSendTypes() {
+    const sel = $('#send_type'); sel.innerHTML = '';
+    const types = mode === 'watch' ? TYPES.filter((t) => t.id === 'p2wpkh') : TYPES.filter((t) => !t.noAddress);
+    types.forEach((t) => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.label; sel.appendChild(o); });
+    sel.value = sendType;
+    $('#send_typecard').style.display = types.length > 1 ? 'block' : 'none';
+  }
+  async function selectSendType(type) {
+    sendType = type;
+    $('#send_from').textContent = SHORT[sendType];
+    sweepMode = false; $('#sweepnote').style.display = 'none'; $('#amt').value = ''; $('#amt').placeholder = 'e.g. 10000';
+    $('#send_bal').textContent = '…';
+    try {
+      let b = balances[sendType];
+      if (!b) { const st = await window.OW.status(source, network, sendType, 0, passphrase); balances[sendType] = st.balance; b = st.balance; }
+      $('#send_bal').textContent = `${coins(b.confirmed)} ${unit()} available`;
+    } catch { $('#send_bal').textContent = 'balance unavailable'; }
+  }
+  $('#send_type').addEventListener('change', () => selectSendType($('#send_type').value));
   function openSend(fromType) {
     sendType = fromType && fromType !== 'p2pk' ? fromType : 'p2wpkh';
     if (mode === 'watch') sendType = 'p2wpkh';
     $('#send_from').textContent = SHORT[sendType];
+    populateSendTypes();
     const b = balances[sendType];
     $('#send_bal').textContent = b ? `${coins(b.confirmed)} ${unit()} available` : '…';
     $('#send_wo').style.display = mode === 'watch' ? 'block' : 'none';
@@ -706,9 +726,9 @@
     $('#orchev').textContent = open ? 'Hide ▴' : "What's this? ▾";
   }
   // fee presets — Auto ('') = engine asks the network for an estimate
-  const setFeeActive = () => $$('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
+  const setFeeActive = () => $$('#fee_presets .feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
   $('#fee').value = '';
-  $$('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
+  $$('#fee_presets .feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
   $('#fee').addEventListener('input', setFeeActive);
 
   // message-only = a sweep back to your own address carrying the OP_RETURN, so
@@ -883,18 +903,27 @@
 
   // ---------- vault unlock (startup): PIN keypad + passphrase fallback ----------
   let pinBuf = '', padMode = true;
+  // auto-submit once the PIN reaches its known length (default 6). If length was
+  // never stored (older vault) and a 6-digit auto-attempt fails, fall back to
+  // manual so a longer PIN can still be typed.
+  const storedLen = (() => { try { return localStorage.getItem('olesia:pinlen'); } catch { return null; } })();
+  let pinLen = storedLen ? +storedLen : 6, autoOn = true, lenKnown = !!storedLen;
   function renderDots() {
     const d = $('#pindots'); d.textContent = '';
-    const n = Math.max(pinBuf.length, 6);
+    const n = Math.max(pinBuf.length, autoOn ? pinLen : 6);
     for (let i = 0; i < n; i++) { const s = document.createElement('i'); if (i < pinBuf.length) s.className = 'fill'; d.appendChild(s); }
   }
   renderDots();
-  $('#pad').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
-    if (b.dataset.k === 'back') pinBuf = pinBuf.slice(0, -1);
-    else if (pinBuf.length < 12) pinBuf += b.dataset.k;
+  const pinDigit = (k) => {
+    if (k === 'back') pinBuf = pinBuf.slice(0, -1);
+    else if (pinBuf.length < 12) pinBuf += k;
     $('#vmsg').textContent = '';
     renderDots();
+    if (autoOn && padMode && k !== 'back' && pinBuf.length >= pinLen) unlockVault();
+  };
+  $('#pad').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
+    pinDigit(b.dataset.k);
   });
   $('#pad_abc').addEventListener('click', () => {
     padMode = !padMode;
@@ -905,9 +934,12 @@
     pinBuf = ''; renderDots();
     if (!padMode) $('#vpin').focus();
   });
+  let unlocking = false;
   async function unlockVault() {
+    if (unlocking) return;
     const pin = padMode ? pinBuf : $('#vpin').value;
     if (!pin) return ($('#vmsg').textContent = padMode ? 'tap your PIN digits first' : 'enter your passphrase');
+    unlocking = true;
     $('#vmsg').textContent = 'Unlocking…';
     await new Promise((r) => setTimeout(r, 30));
     try {
@@ -916,15 +948,22 @@
       source = v.m; passphrase = v.p || ''; mode = 'full'; scriptType = 'p2wpkh';
       $('#unlock').classList.remove('on');
       initWallet();
-    } catch (e) { $('#vmsg').textContent = '✗ ' + e.message; pinBuf = ''; renderDots(); }
+    } catch (e) {
+      // a failed auto-submit on a vault with no stored length means the real PIN is
+      // probably longer than 6 — stop auto-submitting so the rest can be typed
+      if (autoOn && padMode && !lenKnown) { autoOn = false; $('#vmsg').textContent = 'longer PIN? type it all, then tap Unlock'; }
+      else { $('#vmsg').textContent = '✗ ' + e.message; }
+      pinBuf = ''; renderDots();
+    }
+    unlocking = false;
   }
   $('#vunlock').addEventListener('click', unlockVault);
   $('#vpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockVault(); });
   // physical keyboard works on the keypad too
   document.addEventListener('keydown', (e) => {
     if (!$('#unlock').classList.contains('on') || !padMode) return;
-    if (/^[0-9]$/.test(e.key) && pinBuf.length < 12) { pinBuf += e.key; renderDots(); }
-    else if (e.key === 'Backspace') { pinBuf = pinBuf.slice(0, -1); renderDots(); }
+    if (/^[0-9]$/.test(e.key)) pinDigit(e.key);
+    else if (e.key === 'Backspace') pinDigit('back');
     else if (e.key === 'Enter') unlockVault();
   });
 

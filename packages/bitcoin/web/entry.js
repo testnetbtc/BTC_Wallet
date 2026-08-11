@@ -79,7 +79,12 @@ window.OW = {
   // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)
   vault: {
     exists: () => { try { return !!localStorage.getItem('olesia:vault'); } catch { return false; } },
-    save: (mnemonic, pin, passphrase = '') => localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin)),
+    save: (mnemonic, pin, passphrase = '') => {
+      localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin));
+      // remember the PIN length (not the PIN) so unlock can auto-submit at the right
+      // digit — only meaningful for all-numeric PINs; harmless for passphrase unlocks
+      try { if (/^[0-9]+$/.test(String(pin))) localStorage.setItem('olesia:pinlen', String(String(pin).length)); else localStorage.removeItem('olesia:pinlen'); } catch {}
+    },
     open: (pin) => {
       const raw = openSeed(localStorage.getItem('olesia:vault'), pin);
       try { const o = JSON.parse(raw); if (o && o.m) return { m: o.m, p: o.p || '' }; } catch {}

@@ -145,8 +145,8 @@ nav button.on{color:var(--accent)}
 .pindots{display:flex;gap:12px;margin:18px 0 6px;justify-content:center;min-height:14px}
 .pindots i{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line)}
 .pindots i.fill{background:var(--accent);border-color:var(--accent)}
-.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:280px;margin:14px auto 0}
-.pad button{background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:50%;aspect-ratio:1;font-size:22px;font-weight:600;min-height:0;padding:0}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:100%;max-width:236px;margin:12px auto 0}
+.pad button{background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:50%;aspect-ratio:1;width:100%;max-width:64px;justify-self:center;font-size:19px;font-weight:600;min-height:0;padding:0}
 .pad button:active{border-color:var(--accent)}
 .pad button.ghost{background:none;border:0;font-size:17px;color:var(--muted)}
 /* confirm sheet */
@@ -474,6 +474,11 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <button class="back" id="back_home">‹ Home</button>
   <h2>Send</h2>
   <p class="sub">From <b id="send_from" style="color:var(--text)">—</b> · <span id="send_bal">—</span></p>
+  <div class="card" id="send_typecard" style="padding:10px 14px">
+    <label style="margin:0 0 6px;font-size:13px;color:var(--muted)">Account — the script type you spend from <span class="help" data-target="tip_sendtype">?</span></label>
+    <div class="tiptext" id="tip_sendtype">Each script type (Legacy, Nested SegWit, Native SegWit, Taproot) is its own account with its own addresses and its own balance, all from the same seed. Switch here to spend from a different one — you can only spend coins that actually sit in the account you pick.</div>
+    <select id="send_type"></select>
+  </div>
   <div id="send_wo" class="warn" style="display:none">Watch-only: this wallet can't sign. Build an unsigned PSBT in <b>Settings → Air-gap tools</b>, sign it offline, broadcast it there.</div>
   <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK account and use <b>Spend a P2PK coin out</b>.</div>
   <div class="card" style="padding:10px 14px">
@@ -508,7 +513,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <div class="card">
     <label style="margin-top:0">Network fee <span class="help" data-target="tip_fee">?</span></label>
     <div class="tiptext" id="tip_fee">Miners include transactions that pay them, priced in <b>sat/vB</b>. <b>Auto</b> asks the network for a live estimate — the safe default. Higher = confirms faster.</div>
-    <div class="feeps">
+    <div class="feeps" id="fee_presets">
       <button type="button" class="feep active" data-fee="">✨ Auto</button>
       <button type="button" class="feep" data-fee="1">🐢 1</button>
       <button type="button" class="feep" data-fee="2">🚶 2</button>
