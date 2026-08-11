@@ -6,6 +6,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(cd .. && pwd)"
 
+# Cloudflare creds live in a gitignored file (never in crontab)
+CREDS="$ROOT/packages/bitcoin/.secrets/cloudflare.env"
+[ -f "$CREDS" ] && set -a && . "$CREDS" && set +a
+
 node build.mjs
 
 # publish the landing site (includes /p2pk) to production
