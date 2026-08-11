@@ -64,18 +64,23 @@ button:disabled{opacity:.45;cursor:default}
 .help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--line);color:var(--text);font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;user-select:none;vertical-align:middle}
 .tiptext{display:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:7px 0;font-size:12.5px;color:var(--muted);line-height:1.55}
 a{color:var(--mint)}
-/* balance card */
-.balcard{background:linear-gradient(180deg,var(--surface) 0%,#12171f 100%);border:1px solid var(--line);border-radius:16px;padding:17px;margin-bottom:12px}
-.balrow{display:flex;align-items:center;color:var(--muted);font-size:11.5px;letter-spacing:.06em;font-weight:700}
-.eye{margin-left:auto;cursor:pointer;color:var(--faint);background:none;border:0;padding:2px;min-height:0}
-.bal{font-size:31px;font-weight:800;letter-spacing:-.02em;margin:5px 0 2px;font-variant-numeric:tabular-nums}
-.bal .u{font-size:16px;color:var(--muted);font-weight:600;margin-left:3px}
-.balsub{font-size:12px;color:var(--faint);margin-bottom:8px}
-/* quick actions */
-.qa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
-.qa button{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px 4px;color:var(--text);font-size:11.5px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px}
-.qa button:hover{border-color:var(--accent)}
-.qa .ic{font-size:19px;line-height:1}
+/* hero balance card (the one vivid element on Home) */
+.hero{position:relative;overflow:hidden;background:linear-gradient(135deg,#f6b53f 0%,#ef9d1a 55%,#d97e0e 100%);border-radius:20px;padding:22px 20px 18px;margin:6px 0 22px;color:#1a1205;box-shadow:0 18px 40px -18px rgba(240,160,32,.45)}
+.hero .wm{position:absolute;right:-26px;bottom:-34px;width:150px;height:150px;border:22px solid rgba(26,18,5,.10);border-radius:50%;pointer-events:none}
+.hero .wm::after{content:"";position:absolute;right:-16px;bottom:16px;width:26px;height:26px;border-radius:50%;background:rgba(26,18,5,.16)}
+.balrow{display:flex;align-items:center;font-size:11px;letter-spacing:.1em;font-weight:800;opacity:.75}
+.eye{margin-left:auto;cursor:pointer;color:inherit;background:none;border:0;padding:2px;min-height:0;opacity:.75;font-size:15px}
+.bal{font-size:36px;font-weight:800;letter-spacing:-.02em;margin:7px 0 2px;font-variant-numeric:tabular-nums}
+.bal .u{font-size:17px;font-weight:700;margin-left:4px;opacity:.7}
+.balsub{font-size:12px;font-weight:600;opacity:.65;margin-bottom:10px}
+.hero .practice{background:rgba(26,18,5,.14);border:0;color:#1a1205;font-weight:700}
+.hero .practice.main{background:#2a1012;color:#ffb4b8;border:0}
+/* round quick actions */
+.qa{display:flex;justify-content:space-around;margin:0 4px 22px}
+.qa button{background:none;border:0;color:var(--muted);font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:8px;min-height:0;padding:0}
+.qa .ic{width:58px;height:58px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:21px;line-height:1;color:var(--text);transition:border-color .15s,transform .1s}
+.qa button:hover .ic{border-color:var(--accent)}
+.qa button:active .ic{transform:scale(.94)}
 .sect{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 8px}
 .sect h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
 .sect a{font-size:12.5px;font-weight:600;text-decoration:none;color:var(--accent);cursor:pointer}
@@ -95,7 +100,8 @@ a{color:var(--mint)}
 .acct .amt b{font-size:13.5px}.acct .amt span{display:block;font-size:10.5px;color:var(--faint)}
 .tag{font-size:9px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;padding:2px 6px;border-radius:6px;background:#241016;color:var(--bad);border:1px solid #5c2126}
 /* tx rows */
-.tx{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line-soft);font-size:13px}
+.tx{display:flex;align-items:center;gap:11px;padding:10px 2px;border-bottom:1px solid var(--line-soft);font-size:13px}
+.tx .ti{width:34px;height:34px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;font-size:14px;flex:0 0 auto}
 .tx:last-child{border-bottom:0}
 .tx a{text-decoration:none;font-size:12px}
 .tx .v{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
@@ -202,26 +208,21 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ HOME ============ -->
 <section class="pane" id="pane-home">
-  <div class="balcard">
+  <div class="hero">
+    <span class="wm"></span>
     <div class="balrow">TOTAL BALANCE <button class="eye" id="bal_eye" title="hide">👁</button></div>
     <div class="bal" id="bal_total">—<span class="u" id="bal_unit">tBTC</span></div>
-    <div class="balsub" id="bal_sub">across your accounts</div>
+    <div class="balsub" id="bal_sub"></div>
     <span class="practice" id="chip_net"></span>
   </div>
   <div class="qa">
-    <button id="qa_recv"><span class="ic">↓</span>Receive</button>
-    <button id="qa_send"><span class="ic">↑</span>Send</button>
+    <button id="qa_send"><span class="ic">↗</span>Send</button>
+    <button id="qa_recv"><span class="ic">↙</span>Receive</button>
     <button id="qa_faucet"><span class="ic">🚰</span>Faucet</button>
-    <button id="qa_learn"><span class="ic">📚</span>Learn</button>
+    <button id="qa_learn"><span class="ic">🎓</span>Learn</button>
   </div>
-  <div class="sect"><h3>Your accounts</h3><a id="home_seeall">See all →</a></div>
-  <div id="home_accounts"></div>
-  <div class="sect"><h3>Recent activity</h3><a id="home_refresh">Refresh</a></div>
+  <div class="sect" style="margin-top:0"><h3>History</h3><a id="home_refresh">Refresh</a></div>
   <div class="card" id="home_activity" style="padding:4px 14px"><div class="hint" style="padding:8px 0">—</div></div>
-  <div class="card" style="display:flex;gap:11px;align-items:flex-start;cursor:pointer" id="nudge_learn">
-    <span style="font-size:20px">🎓</span>
-    <div><b style="font-size:14px">What actually is an address?</b><p class="hint" style="margin:3px 0 0">Not a place — a lock. See how one seed makes five different ones. <span style="color:var(--accent);font-weight:600">Learn →</span></p></div>
-  </div>
 </section>
 
 <!-- ============ ACCOUNTS ============ -->

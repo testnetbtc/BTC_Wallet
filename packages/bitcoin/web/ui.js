@@ -147,7 +147,8 @@
     const total = sum(balances);
     const pend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
     $('#bal_total').innerHTML = (hideBal ? '••••' : coins(total)) + `<span class="u">${unit()}</span>`;
-    $('#bal_sub').textContent = `across ${typesFor().length} accounts · ${network}` + (pend ? ` · ${hideBal ? '•' : coins(pend)} pending` : '');
+    $('#bal_sub').textContent = pend ? `+ ${hideBal ? '•' : coins(pend)} pending` : '';
+    $('#bal_sub').style.display = pend ? 'block' : 'none';
   }
   $('#bal_eye').addEventListener('click', () => { hideBal = !hideBal; renderTotal(); renderAccountRows(); });
 
@@ -164,11 +165,7 @@
   function renderAccountRows() {
     const list = $('#acct_list'); list.textContent = '';
     typesFor().forEach((t) => list.appendChild(acctRow(t)));
-    const home = $('#home_accounts'); home.textContent = '';
-    const top = [...typesFor()].sort((a, b2) => (balances[b2.id]?.confirmed || 0) - (balances[a.id]?.confirmed || 0)).slice(0, 2);
-    top.forEach((t) => home.appendChild(acctRow(t)));
   }
-  $('#home_seeall').addEventListener('click', () => showPane('accounts'));
 
   async function refreshHomeActivity(g) {
     try {
@@ -180,8 +177,9 @@
       txs.slice(0, 5).forEach((t) => {
         const d = document.createElement('div'); d.className = 'tx';
         const dir = t.net >= 0;
-        d.innerHTML = `<span>${dir ? '↓' : '↑'}</span><span>${dir ? 'Received' : 'Sent'} <a href="${base}${t.txid}" target="_blank" rel="noopener">${t.confirmed ? 'confirmed' : 'pending'} ↗</a></span>
-          <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--bad)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
+        d.innerHTML = `<span class="ti" style="color:${dir ? 'var(--mint)' : 'var(--accent)'}">${dir ? '↙' : '↗'}</span>
+          <span><b>${dir ? 'Received' : 'Sent'}</b><br><a href="${base}${t.txid}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--faint)">${t.confirmed ? 'confirmed' : 'pending'} · ${t.txid.slice(0, 8)}… ↗</a></span>
+          <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--text)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
         box.appendChild(d);
       });
     } catch { /* home activity is best-effort */ }
@@ -193,7 +191,6 @@
   $('#qa_send').addEventListener('click', () => openSend(scriptType === 'p2pk' ? 'p2wpkh' : scriptType));
   $('#qa_faucet').addEventListener('click', () => window.open('https://olesia.io/faucet/', '_blank', 'noopener'));
   $('#qa_learn').addEventListener('click', () => showPane('learn'));
-  $('#nudge_learn').addEventListener('click', () => showPane('learn'));
 
   // ---------- account detail ----------
   async function openAccount(type) {
