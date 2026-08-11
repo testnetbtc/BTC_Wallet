@@ -1,5 +1,7 @@
 # Olesia audit — 2026-08-10 — Claude (Opus 4.8), author-assisted
 
+> **Update 2026-08-11:** the cold generator was revised (backup-confirmation now requires the full 24 words; added a guided next-steps handoff). The current served hash is `6b8b5fa8a8a516fc0804256cacb48b7b243604c82c79e9870f8e58c296655d04`, which post-dates this audit and warrants re-verification. The hash below is the revision audited on 2026-08-10.
+
 - Commit: `ced4f43`
 - Cold-generator `index.html` SHA-256 reviewed: `8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2`
 - Scope: **whole platform** — cold generator, online wallet (`packages/bitcoin`),

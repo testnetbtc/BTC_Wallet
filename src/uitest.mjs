@@ -6,7 +6,7 @@ const mk = () => ({ textContent:'', value:'', className:'', disabled:false,
   scrollIntoView(){}, });
 for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset','net','dice',
                   'pass','pass2','passshow','passwarn','gen','out','words','addr','meta','entropy',
-                  'advtoggle','adv','ehex','vq1','vq2','va1','va2',
+                  'advtoggle','adv','ehex','vall','vallpass','nextsteps','copydesc2',
                   'vcheck','vresult','wipe','dr','fpass','fpass2','genpw','fpstrength','fpwarn','savebk','savedesc',
                   'saveinfo','bkfile','rpass','rbip39','restore','rinfo','rout','rwords','raddr','netwarn'])
   els['#'+id] = mk();
@@ -89,17 +89,15 @@ if (!w3.path.startsWith("m/84'/1'/") || !w4.path.startsWith("m/84'/1'/")) fail('
 if (!wm.path.startsWith("m/84'/0'/")) fail('mainnet must use coin type 0');
 console.log('testnet3/4/main  : ✓ tb1/tb1/bc1, coin 1/1/0');
 
-// 4. backup verification: wrong answer rejected, right answer accepted
-const n1 = parseInt(els['#vq1'].textContent.replace(/\D/g,''),10);
-const n2 = parseInt(els['#vq2'].textContent.replace(/\D/g,''),10);
-els['#va1'].value='wrongword'; els['#va2'].value=words[n2-1];
-els['#vcheck'].onclick();
-if (els['#vresult'].className !== 'badge bad') fail('wrong backup answer was accepted!');
-console.log('wrong answer     : rejected ✓');
-els['#va1'].value=words[n1-1].toUpperCase(); els['#va2'].value=' '+words[n2-1]+' ';
-els['#vcheck'].onclick();
-if (els['#vresult'].className !== 'badge ok') fail('correct backup answer was rejected');
-console.log('right answer     : accepted ✓ (case/space tolerant)');
+// 4. backup confirmation: full 24-word re-entry; wrong rejected, exact match accepted
+els['#vall'].value = words.slice(0,23).join(' ')+' wrongword'; els['#vcheck'].onclick();
+if (els['#vresult'].className !== 'badge bad') fail('wrong full phrase was accepted!');
+if (els['#nextsteps'].style.display === 'block') fail('next-steps shown after a wrong phrase');
+console.log('wrong phrase     : rejected ✓ (', els['#vresult'].textContent.slice(0,22),'…)');
+els['#vall'].value = '  '+words.join('   ').toUpperCase()+'  '; els['#vcheck'].onclick();  // case/space tolerant
+if (els['#vresult'].className !== 'badge ok') fail('correct full phrase was rejected');
+if (els['#nextsteps'].style.display !== 'block') fail('next-steps not revealed after correct phrase');
+console.log('full phrase      : accepted ✓ (all 24, case/space tolerant, handoff shown)');
 
 // 5. wipe clears secrets
 els['#wipe']._h.click();

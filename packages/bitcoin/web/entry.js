@@ -13,6 +13,7 @@ import {
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { sealSeed, openSeed } from '../src/vault.js';
+import { decryptColdBackup } from '../src/coldbackup.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
 import { NETWORKS } from '../src/networks.js';
 
@@ -85,6 +86,9 @@ window.OW = {
     },
     forget: () => localStorage.removeItem('olesia:vault'),
   },
+
+  // import an encrypted backup .json exported by the cold generator (offline.olesia.io)
+  importBackup: ({ json, password }) => decryptColdBackup(json, password),
 
   // P2PK lab: fund a P2PK from the seed's SegWit balance, track outpoints, spend them out
   fundP2PK: ({ source, network, amount, feeRate, broadcast = true, passphrase = '' }) =>

@@ -150,24 +150,41 @@
     $('#out').scrollIntoView({behavior:'smooth'});
   });
 
-  // --- backup verification: prove you wrote the words down correctly -------
+  // --- backup confirmation: type ALL 24 words (+ passphrase) from paper -----
   function setupVerify(mn){
-    const words = mn.split(' ');
-    const r = new Uint32Array(2); crypto.getRandomValues(r);
-    const i1 = r[0]%24; let i2 = r[1]%24; if(i2===i1) i2=(i2+1)%24;
-    $('#vq1').textContent = 'word #'+(i1+1);
-    $('#vq2').textContent = 'word #'+(i2+1);
-    $('#va1').value=''; $('#va2').value='';
+    $('#vall').value=''; $('#vallpass').value='';
     $('#vresult').textContent=''; $('#vresult').className='';
+    $('#nextsteps').style.display='none';
+    const expected = mn.trim().toLowerCase().split(' ');
     $('#vcheck').onclick = ()=>{
-      const ok = $('#va1').value.trim().toLowerCase()===words[i1]
-              && $('#va2').value.trim().toLowerCase()===words[i2];
-      $('#vresult').textContent = ok
-        ? '✓ the 2 sampled words match — but 2 of 24 is only a spot-check; do a full test restore below before trusting this backup'
-        : '✗ does not match — re-check what you wrote down';
-      $('#vresult').className = 'badge '+(ok?'ok':'bad');
+      const typed = $('#vall').value.trim().toLowerCase().replace(/\s+/g,' ').split(' ').filter(Boolean);
+      const passOk = $('#vallpass').value === ($('#pass').value||'');
+      let firstBad = -1;
+      for (let i=0;i<Math.max(typed.length,expected.length);i++){ if(typed[i]!==expected[i]){ firstBad=i+1; break; } }
+      if (firstBad===-1 && passOk){
+        $('#vresult').textContent = '✓ all 24 words'+($('#pass').value?' and your passphrase':'')
+          +' match — well done. Now do the full test-restore below before trusting this with real funds.';
+        $('#vresult').className = 'badge ok';
+        $('#nextsteps').style.display='block';
+        $('#nextsteps').scrollIntoView({behavior:'smooth'});
+      } else if (firstBad!==-1){
+        $('#vresult').textContent = '✗ word #'+firstBad+' does not match'
+          +(typed.length!==expected.length ? ' (you typed '+typed.length+' words, expected '+expected.length+')' : '')
+          +' — re-check your paper.';
+        $('#vresult').className = 'badge bad';
+        $('#nextsteps').style.display='none';
+      } else {
+        $('#vresult').textContent = '✗ the 24 words match, but the passphrase does not. The passphrase is part of your wallet — it must be exact.';
+        $('#vresult').className = 'badge bad';
+        $('#nextsteps').style.display='none';
+      }
     };
   }
+  // copy the watch-only descriptor from the handoff panel
+  if ($('#copydesc2')) $('#copydesc2').addEventListener('click', ()=>{
+    const d = $('#dr').textContent; if(!d) return;
+    navigator.clipboard.writeText(d).then(()=>{ const b=$('#copydesc2'); b.textContent='Copied ✓'; setTimeout(()=>{b.textContent='Copy watch-only descriptor';},1400); }).catch(()=>{});
+  });
 
   // --- save encrypted backup / descriptor -----------------------------------
   function filePassOk(){ const a=$('#fpass').value, b=$('#fpass2').value; return a.length>0 && a===b; }
@@ -258,7 +275,8 @@
     ['#words','#addr','#meta','#vresult','#entropy','#ehex','#rngresult','#fpstrength'].forEach(s=>{ $(s).textContent=''; });
     $('#rngresult').className='';
     $('#vresult').className='';
-    ['#va1','#va2','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
+    $('#nextsteps').style.display='none';
+    ['#vall','#vallpass','#pass','#pass2','#dice','#fpass','#fpass2','#rpass','#rbip39'].forEach(s=>{ $(s).value=''; });
     ['#rwords','#raddr','#saveinfo','#rinfo','#dr'].forEach(s=>{ $(s).textContent=''; });
     $('#saveinfo').className=''; $('#rinfo').className='';
     // reset secret-field visibility + the advanced entropy panel

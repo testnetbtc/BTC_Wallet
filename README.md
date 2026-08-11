@@ -12,7 +12,7 @@ amounts of Bitcoin here — it's a learning tool, not a bank.** → **[Manifesto
 **[Security audit](AUDIT.md)** · **[Audit brief — run your own](docs/AUDIT_BRIEF.md)** ·
 **[Audits (public)](audits/)** · **[Verify this is genuine](VERIFY.md)** · **[Roadmap](docs/ROADMAP.md)**
 
-`index.html` (cold generator) SHA-256: `8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2`
+`index.html` (cold generator) SHA-256: `6b8b5fa8a8a516fc0804256cacb48b7b243604c82c79e9870f8e58c296655d04`
 
 > The hosted copy is for demonstration and testnet. For a wallet you will fund,
 > **download `index.html` and open it offline** — a hosted key generator means
@@ -154,7 +154,7 @@ source tree produces, with nothing inserted.
 
 ```
 sha256sum index.html
-# expected: 8873a809524ba65a424902c0b592bd15a7888b3e587244ee04b1ce5caf963ef2
+# expected: 6b8b5fa8a8a516fc0804256cacb48b7b243604c82c79e9870f8e58c296655d04
 ```
 
 Or rebuild it yourself and compare:

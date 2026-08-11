@@ -6,7 +6,7 @@ const mk = () => ({ textContent:'', value:'', className:'', disabled:false, styl
   _h:{}, addEventListener(k,f){this._h[k]=f;}, onclick:null, scrollIntoView(){} });
 for (const id of ['selfcheck','offline','rngtest','rngresult','pad','mousebar','mousestat','mousereset',
   'net','dice','pass','pass2','passshow','passwarn',
-  'gen','out','words','addr','meta','entropy','advtoggle','adv','ehex','vq1','vq2','va1','va2','vcheck','vresult','wipe','dr',
+  'gen','out','words','addr','meta','entropy','advtoggle','adv','ehex','vall','vallpass','nextsteps','copydesc2','vcheck','vresult','wipe','dr',
   'fpass','fpass2','genpw','fpstrength','fpwarn','savebk','savedesc','saveinfo','bkfile','rpass','rbip39','restore',
   'rinfo','rout','rwords','raddr','netwarn']) els['#'+id] = mk();
 els['#net'].value='testnet3';

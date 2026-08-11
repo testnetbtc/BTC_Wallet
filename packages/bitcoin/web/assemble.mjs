@@ -57,6 +57,11 @@ button:disabled{opacity:.45;cursor:default}
 .copy,.paste{font-size:12px;padding:6px 12px;min-height:0}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
 .warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:11px;padding:11px 13px;font-size:13px;margin:10px 0}
+.netpills{display:flex;gap:8px;flex-wrap:wrap}
+.netpill{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:9px 15px;font-size:13.5px;font-weight:600;cursor:pointer;min-height:0}
+.netpill .nd{width:8px;height:8px;border-radius:50%;background:var(--violet)}
+.netpill[data-net="mainnet"] .nd{background:var(--bad)}
+.netpill.on{border-color:var(--accent);color:var(--text);background:var(--surface)}
 .practice{display:inline-flex;align-items:center;gap:6px;color:var(--info);background:#0f2231;border:1px solid #1d4763;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600}
 .practice.main{color:var(--bad);background:#2a1012;border-color:#5c2126}
 .help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--line);color:var(--text);font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;user-select:none;vertical-align:middle}
@@ -263,9 +268,10 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   </div>
   <div class="card">
     <label style="margin-top:0">Network <span class="help" data-target="tip_net">?</span></label>
-    <div class="tiptext" id="tip_net">Bitcoin has several chains sharing the same rules. <b>Testnet3/4</b> and <b>Signet</b> use free, worthless coins for practice. <b>Mainnet</b> is real money — learn on a testnet first.</div>
-    <select id="net"></select>
-    <div id="mainwarn" class="warn" style="display:none"></div>
+    <div class="tiptext" id="tip_net">Bitcoin has several chains sharing the same rules. <b>Testnet 3/4</b> and <b>Signet</b> use free, worthless coins for practice. <b>Mainnet</b> is real money — learn on a testnet first.</div>
+    <div id="netpills" class="netpills"></div>
+    <select id="net" style="display:none"></select>
+    <div id="mainwarn" class="warn" style="margin-top:12px;display:none"></div>
   </div>
   <button id="w_create" style="width:100%;font-size:15.5px;padding:15px">＋ Create a new wallet</button>
   <button id="w_import" class="sec" style="width:100%;margin-top:8px;font-size:15px;padding:14px">↓ Import an existing wallet</button>
@@ -346,6 +352,16 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     </div>
   </div>
   <p class="hint">Made your seed with the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a>? Pasting the words here makes it a <b>hot</b> wallet — fine for practice/small amounts. For real funds, import its <b>xpub</b> instead and sign offline (Settings → Air-gap).</p>
+
+  <div style="text-align:center;color:var(--faint);font-size:12px;margin:8px 0">— or —</div>
+  <div class="card">
+    <label style="margin-top:0">Import a cold-generator backup file</label>
+    <p class="hint">The encrypted <code>.json</code> you saved from <a href="https://offline.olesia.io" target="_blank" rel="noopener">offline.olesia.io</a> — decrypted here in your browser.</p>
+    <input id="bkfile" type="file" accept="application/json,.json" style="padding:9px">
+    <input id="bkpass" type="password" placeholder="file password" autocomplete="off" style="margin-top:6px">
+    <button id="bkimport" class="sec" style="width:100%;margin-top:6px">Decrypt &amp; open</button>
+    <p class="hint" id="bkinfo" style="margin:6px 0 0"></p>
+  </div>
 </section>
 
 <!-- ============ HOME ============ -->
@@ -467,7 +483,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <b>Where we stand:</b> people disagree about what data belongs on Bitcoin. Olesia is neutral — it's part of the protocol, so it's here, explained, for you to use thoughtfully. <span style="color:var(--faint)">(No NFTs or inscriptions.)</span>
     </div>
     <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px" onclick="event.stopPropagation()">
-    <div class="msgtools" onclick="event.stopPropagation()"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>
+    <div class="msgtools"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>
   </div>
   <div class="card">
     <label style="margin-top:0">Network fee <span class="help" data-target="tip_fee">?</span></label>

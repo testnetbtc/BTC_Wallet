@@ -165,16 +165,23 @@
   });
 
   // ---------- network ----------
+  const NETLABEL = { testnet3: 'Testnet 3', testnet4: 'Testnet 4', signet: 'Signet', mainnet: 'Mainnet' };
+  const netpills = $('#netpills');
   window.OW.networks.forEach((n) => {
-    for (const sel of [$('#net'), $('#set_net')]) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
+    for (const sel of [$('#net'), $('#set_net')]) { const o = document.createElement('option'); o.value = n; o.textContent = NETLABEL[n] || n; sel.appendChild(o); }
+    const p = document.createElement('button'); p.type = 'button'; p.className = 'netpill'; p.dataset.net = n;
+    p.innerHTML = `<span class="nd"></span>${NETLABEL[n] || n}`;
+    p.addEventListener('click', () => setNetwork(n));
+    if (netpills) netpills.appendChild(p);
   });
   $('#net').value = network; $('#set_net').value = network;
   function updateChips() {
-    $('#netname').textContent = network;
+    $('#netname').textContent = NETLABEL[network] || network;
+    $$('#netpills .netpill').forEach((p) => p.classList.toggle('on', p.dataset.net === network));
     $('#netchip').classList.toggle('main', network === 'mainnet');
     const c = $('#chip_net');
     if (network === 'mainnet') { c.className = 'practice main'; c.textContent = '⚠ REAL bitcoin — small amounts only'; }
-    else { c.className = 'practice'; c.textContent = `Practice mode — ${network} coins have no value`; }
+    else { c.className = 'practice'; c.textContent = `Practice mode — ${NETLABEL[network] || network} coins have no value`; }
     $('#bal_unit').textContent = unit();
     $('#mainwarn').style.display = network === 'mainnet' ? 'block' : 'none';
     $('#mainwarn').textContent = '⚠ Mainnet — REAL bitcoin. A seed opens as a hot wallet (keep amounts small); an xpub opens watch-only. For meaningful funds use the cold generator + air-gap tools.';
@@ -299,6 +306,27 @@
     $('#mnemonic').value = ''; $('#i_pass').value = '';
     initWallet();
   }
+  // import an encrypted cold-generator backup file
+  $('#bkimport').addEventListener('click', async () => {
+    const f = $('#bkfile').files && $('#bkfile').files[0];
+    if (!f) return ($('#bkinfo').textContent = 'Choose your backup .json file first.', $('#bkinfo').className = 'hint bad');
+    $('#bkinfo').className = 'hint'; $('#bkinfo').textContent = 'Decrypting… (key stretching takes a moment)';
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const text = await f.text();
+      const { mnemonic, passphraseUsed } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
+      if (!window.OW.validate(mnemonic)) throw new Error('decrypted, but the recovered phrase is not valid BIP-39');
+      if (passphraseUsed && !$('#i_pass').value) {
+        $('#bkinfo').className = 'hint bad';
+        $('#bkinfo').textContent = 'This wallet used a passphrase — type it in the Passphrase box above, then Decrypt & open again (it isn’t stored in the file).';
+        return;
+      }
+      source = mnemonic; mode = 'full'; scriptType = 'p2wpkh';
+      passphrase = passphraseUsed ? $('#i_pass').value : '';
+      $('#bkpass').value = ''; $('#bkfile').value = ''; $('#i_pass').value = ''; $('#bkinfo').textContent = '';
+      initWallet();
+    } catch (e) { $('#bkinfo').className = 'hint bad'; $('#bkinfo').textContent = '✗ ' + e.message; }
+  });
 
   function initWallet() {
     $('#lockbtn').style.display = 'inline-block';
@@ -343,9 +371,11 @@
     const total = sum(balances);
     const pend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
     $('#bal_total').innerHTML = (hideBal ? '••••' : coins(total)) + `<span class="u">${unit()}</span>`;
-    $('#bal_sub').textContent = pend ? `+ ${hideBal ? '•' : coins(pend)} pending` : '';
+    $('#bal_sub').textContent = pend ? `+ ${hideBal ? '•' : coins(pend)} pending  ›  view` : '';
     $('#bal_sub').style.display = pend ? 'block' : 'none';
+    $('#bal_sub').style.cursor = pend ? 'pointer' : 'default';
   }
+  $('#bal_sub').addEventListener('click', () => { const a = $('#home_activity'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   $('#bal_eye').addEventListener('click', () => { hideBal = !hideBal; renderTotal(); renderAccountRows(); });
 
   function acctRow(t) {
@@ -370,12 +400,13 @@
       const box = $('#home_activity'); box.textContent = '';
       if (!txs.length) { box.innerHTML = '<div class="hint" style="padding:8px 0">No transactions yet — get coins from the faucet to start.</div>'; return; }
       const base = window.OW.explorer(network);
-      txs.slice(0, 5).forEach((t) => {
-        const d = document.createElement('div'); d.className = 'tx';
+      txs.slice(0, 6).forEach((t) => {
+        const d = document.createElement('div'); d.className = 'tx'; d.style.cursor = 'pointer';
         const dir = t.net >= 0;
         d.innerHTML = `<span class="ti" style="color:${dir ? 'var(--mint)' : 'var(--accent)'}">${dir ? '↙' : '↗'}</span>
-          <span><b>${dir ? 'Received' : 'Sent'}</b><br><a href="${base}${t.txid}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--faint)">${t.confirmed ? 'confirmed' : 'pending'} · ${t.txid.slice(0, 8)}… ↗</a></span>
+          <span><b>${dir ? 'Received' : 'Sent'}</b><br><span style="font-size:11.5px;color:var(--faint)">${t.confirmed ? '✓ confirmed' : '⧗ pending'} · ${t.txid.slice(0, 10)}… · open ↗</span></span>
           <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--text)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
+        d.addEventListener('click', () => window.open(base + t.txid, '_blank', 'noopener'));
         box.appendChild(d);
       });
     } catch { /* home activity is best-effort */ }
@@ -612,12 +643,18 @@
   });
   $('#amt').addEventListener('input', () => { if ($('#amt').value) { sweepMode = false; $('#sweepnote').style.display = 'none'; } });
   // OP_RETURN explainer expand/collapse
+  // only the header toggles; clicks inside the explainer body, the message input,
+  // or the tools row never collapse it (so you can select/copy the text)
+  $('#orchev').addEventListener('click', (e) => { e.stopPropagation(); toggleOr(); });
   $('#ormore').addEventListener('click', (e) => {
-    if (e.target.id === 'msg') return;
+    if (e.target.id === 'msg' || (e.target.closest && (e.target.closest('.msgtools') || e.target.closest('#orbody')))) return;
+    toggleOr();
+  });
+  function toggleOr() {
     const open = $('#orbody').style.display !== 'block';
     $('#orbody').style.display = open ? 'block' : 'none';
     $('#orchev').textContent = open ? 'Hide ▴' : "What's this? ▾";
-  });
+  }
   // fee presets — Auto ('') = engine asks the network for an estimate
   const setFeeActive = () => $$('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
   $('#fee').value = '';

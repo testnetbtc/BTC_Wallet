@@ -113,15 +113,24 @@ money you would miss.
 </div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
-<label>Verify your backup</label>
-<p class="hint">From your <b>paper copy</b> (not the screen), type these two words to confirm you recorded them correctly.</p>
-<div class="row">
-<div><p class="hint" id="vq1">word #—</p><input id="va1" autocomplete="off"></div>
-<div><p class="hint" id="vq2">word #—</p><input id="va2" autocomplete="off"></div>
-</div>
-<button id="vcheck" class="sec">Check my backup</button>
+<label>Confirm your backup</label>
+<p class="hint">From your <b>paper</b> (not the screen), type <b>all 24 words</b> in order — and your passphrase, if you set one. This is your proof you recorded everything correctly.</p>
+<textarea id="vall" autocomplete="off" spellcheck="false" placeholder="word1 word2 … word24" style="width:100%;min-height:78px;font-family:ui-monospace,monospace;background:#0e1116;border:1px solid #2b333c;border-radius:8px;color:#e6edf3;padding:10px;box-sizing:border-box"></textarea>
+<input id="vallpass" type="password" autocomplete="off" placeholder="passphrase (only if you set one)" style="margin-top:8px">
+<button id="vcheck" class="sec">Confirm backup</button>
 <div style="margin-top:8px"><span id="vresult"></span></div>
 <button id="wipe" class="sec" style="margin-top:14px">Wipe screen</button>
+</div>
+
+<div id="nextsteps" class="no-print" style="display:none;margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
+<label style="color:#7ee2a8">✓ Backup confirmed — you're set. What now?</label>
+<div style="background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:8px;padding:11px 13px;font-size:13px;margin:10px 0;line-height:1.55">
+<b>The final security check (for real funds):</b> send a small amount in, <b>wipe this screen</b>, then restore your wallet from your <b>written words alone</b>, from scratch. If the same first address comes back, your backup truly works. An untested backup is not a backup.
+</div>
+<p class="hint"><b>Recommended — watch it safely (keeps your keys cold):</b> paste the <b>watch-only descriptor</b> into the Olesia wallet or Sparrow. You'll see the balance and can sign offline; the private keys never touch the internet.</p>
+<button id="copydesc2" class="sec" style="width:auto;padding:6px 12px;font-size:13px">Copy watch-only descriptor</button>
+<p class="hint" style="margin-top:14px"><b>Or use it as a hot wallet (small amounts only):</b> open <a href="https://app.olesia.io" target="_blank" rel="noopener">app.olesia.io</a> → <b>Import an existing wallet</b> → type your words. Typing your words online makes this a <b>hot</b> wallet — never do that with a seed that holds real value.</p>
+<p class="hint" style="margin-top:12px">Already have a wallet instead? <a href="https://app.olesia.io" target="_blank" rel="noopener">Open the wallet app and import it →</a></p>
 </div>
 
 <div class="no-print" style="margin-top:18px;border-top:1px solid #2b333c;padding-top:14px">
