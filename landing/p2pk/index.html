@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olesia · P2PK Explorer — every bare public-key transaction, from Satoshi on</title>
+<meta name="description" content="The block explorer for P2PK (pay-to-public-key) transactions — the ones normal explorers can't find. Decoded public keys, from the Genesis block onward.">
+<link rel="icon" href="/olesia-icon.png">
+<style>
+:root{color-scheme:dark;--bg:#0e1116;--panel:#161b22;--panel2:#1b222c;--line:#2b333c;--text:#e6edf3;--muted:#9aa7b4;--faint:#6b7480;--orange:#f0a020;--gold:#ffd57a;--green:#7ee2a8;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:940px;margin:0 auto;padding:26px 18px 60px}
+a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.brand{font-size:30px;font-weight:800;letter-spacing:-.02em}.brand span{color:var(--orange)}
+.sub{font-size:19px;color:var(--muted);font-weight:600}
+.lead{color:var(--muted);font-size:15.5px;margin:8px 0 20px;max-width:70ch}
+.lead b{color:var(--text)}
+.edu{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:12px;padding:14px 16px;margin:0 0 20px;font-size:14.5px;line-height:1.6}
+.edu b{color:#e6edf3}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.stat{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+.stat .n{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.backfill{background:#221a08;border:1px solid #5c4512;color:var(--gold);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:0 0 18px}
+.tools{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 8px}
+input{flex:1;min-width:220px;background:#0c0f13;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:11px 13px;font:14px var(--mono)}
+input:focus{outline:none;border-color:var(--orange)}
+button{background:var(--orange);border:0;color:#111;font-weight:700;border-radius:9px;padding:11px 16px;cursor:pointer;font-size:14px}
+button.sec{background:var(--panel);color:var(--text);border:1px solid var(--line)}
+.hint{color:var(--faint);font-size:12.5px;margin:2px 0 18px}
+h2{font-size:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-top:1px solid var(--line);padding-top:18px;margin:24px 0 12px}
+.row{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 10px;cursor:pointer;transition:border-color .15s}
+.row:hover{border-color:#3a4653}
+.row.pin{border-color:#5c4512}
+.rhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.rtitle{font-weight:600;font-size:15.5px}
+.badge{font-size:11px;color:var(--gold);border:1px solid #5c4512;border-radius:20px;padding:1px 8px;margin-left:8px;vertical-align:middle}
+.rmeta{color:var(--muted);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;font-variant-numeric:tabular-nums}
+.val{color:var(--gold);font-weight:600}
+.txid{font-family:var(--mono);font-size:12px;color:var(--faint);word-break:break-all;margin-top:6px}
+.detail{margin-top:12px;border-top:1px dashed var(--line);padding-top:12px;display:none}
+.detail.on{display:block}
+.out{background:#0c0f13;border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:8px 0;font-size:13px}
+.out .lab{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.pk{font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--green);margin:3px 0}
+.pill{display:inline-block;font-size:11px;border-radius:20px;padding:1px 9px;border:1px solid var(--line);color:var(--muted)}
+.pill.unspent{color:var(--green);border-color:#1c5c3a}
+.pill.spent{color:#f2a9be;border-color:#3a2732}
+.pill.k{color:var(--gold);border-color:#5c4512}
+.foot{color:var(--faint);font-size:12.5px;margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
+.empty{color:var(--muted);padding:20px 0}
+mark{background:#3a2f08;color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Olesia<span>.</span></div>
+    <div class="sub">P2PK Explorer</div>
+  </header>
+  <p class="lead"><b>Pay-to-Public-Key</b> was Bitcoin's original way to lock coins — straight to a raw public key, with no address. Ordinary explorers can't <i>find</i> these (there's no address to search), so they stay hidden. This is the explorer for them: the <b>actual public keys</b>, decoded, starting with the coins Satoshi mined.</p>
+
+  <div class="edu">
+    <b>How to read it.</b> A P2PK output is literally <code>&lt;public key&gt; OP_CHECKSIG</code>. Whoever holds the matching private key can spend it by signing — no address, no hashing. The very first Bitcoin transaction (Satoshi → Hal Finney, block 170) was P2PK, and nearly every early coinbase was too. Search by txid, public key, or block below.
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div class="backfill" id="backfill"></div>
+
+  <div class="tools">
+    <input id="q" placeholder="search: txid · public key · block · label" autocomplete="off">
+  </div>
+  <div class="tools">
+    <input id="look" placeholder="…or paste any mainnet txid to decode its P2PK outputs live" autocomplete="off">
+    <button id="lookbtn">Look up</button>
+  </div>
+  <p class="hint" id="lookmsg">The public API returns P2PK when you ask by <b>txid</b> — that's how this works without a special index.</p>
+
+  <h2 id="nothead">★ Notable — where it all began</h2>
+  <div id="notable"></div>
+
+  <h2 id="listhead">All indexed P2PK transactions</h2>
+  <div id="list"></div>
+
+  <div class="foot">
+    Built and updated daily by Olesia's own node. Full genesis→today backfill in progress. Cross-check any entry on
+    <a href="https://mempool.space" target="_blank" rel="noopener">mempool.space</a>.
+    Part of <a href="/">Olesia</a> — learn Bitcoin by doing.
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const sat = (v) => (v/1e8).toLocaleString(undefined,{maximumFractionDigits:8}) + ' BTC';
+const dt = (t) => t ? new Date(t*1000).toISOString().slice(0,10) : '—';
+const esc = (s) => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const shorten = (h) => h.slice(0,10)+'…'+h.slice(-8);
+let DB = [], META = {};
+
+function stats(){
+  const s = [
+    ['n', META.count, 'transactions'],
+    ['o', META.totalOutputs, 'P2PK outputs'],
+    ['v', (META.totalValue/1e8).toLocaleString(undefined,{maximumFractionDigits:0}), 'BTC locked in them'],
+    ['h', (META.tipHeight||0).toLocaleString(), 'chain tip'],
+  ];
+  $('#stats').innerHTML = s.map(([_,n,l])=>`<div class="stat"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join('');
+  $('#backfill').innerHTML = `⛏ <b>Historical backfill in progress.</b> Right now this shows a curated seed of the famous early P2PK transactions plus every new one our node sees. The complete genesis→today index is being imported. Last updated ${esc((META.updatedAt||'').slice(0,16).replace('T',' '))} UTC.`;
+}
+
+function outRow(o){
+  const spent = o.spentBy ? `<a class="pill spent" href="https://mempool.space/tx/${esc(o.spentBy)}" target="_blank" rel="noopener">spent →</a>` : `<span class="pill unspent">unspent</span>`;
+  const kind = o.bits===33 ? 'compressed' : o.bits===65 ? 'uncompressed' : 'key';
+  return `<div class="out"><div class="lab">output #${o.vout} · <span class="val">${sat(o.value)}</span> · <span class="pill k">${esc(kind)} public key</span> ${spent}</div>
+    <div class="pk">${o.pubkey?esc(o.pubkey):'(key not decoded)'}</div></div>`;
+}
+
+function card(r, q){
+  const pin = r.pinned ? ' pin' : '';
+  const badge = r.pinned ? '<span class="badge">★ notable</span>' : '';
+  const title = r.label || (r.coinbase ? 'Coinbase P2PK' : 'P2PK transaction');
+  const hl = (t) => q ? esc(t).replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig'),'<mark>$1</mark>') : esc(t);
+  return `<div class="row${pin}" data-txid="${esc(r.txid)}">
+    <div class="rhead"><div class="rtitle">${hl(title)}${badge}</div><div class="val">${sat(r.totalValue)}</div></div>
+    <div class="rmeta"><span>block ${r.block!=null?r.block.toLocaleString():'—'}</span><span>${dt(r.time)}</span><span>${r.outputs.length} P2PK output${r.outputs.length>1?'s':''}</span>${r.coinbase?'<span>coinbase</span>':''}</div>
+    <div class="txid">${hl(r.txid)}</div>
+    <div class="detail">${r.outputs.map(outRow).join('')}
+      <div class="hint" style="margin:8px 0 0">↳ <a href="https://mempool.space/tx/${esc(r.txid)}" target="_blank" rel="noopener">view the whole transaction on mempool.space</a></div></div>
+  </div>`;
+}
+
+function wireCards(container){
+  container.querySelectorAll('.row').forEach(el=>el.addEventListener('click',(e)=>{ if(e.target.closest('a'))return; el.querySelector('.detail').classList.toggle('on'); }));
+}
+function render(rows, q){
+  const list = $('#list');
+  if(!rows.length){ list.innerHTML = '<div class="empty">No P2PK transactions match that.</div>'; return; }
+  list.innerHTML = rows.slice(0,300).map(r=>card(r,q)).join('');
+  if(rows.length>300) list.innerHTML += `<div class="hint">showing first 300 of ${rows.length}</div>`;
+  wireCards(list);
+}
+function renderNotable(){
+  const pinned = DB.filter(r=>r.pinned).sort((a,b)=>(a.block??0)-(b.block??0)); // oldest first — genesis leads
+  const show = !!pinned.length;
+  $('#nothead').style.display = show?'block':'none';
+  const c = $('#notable'); c.style.display = show?'block':'none';
+  c.innerHTML = pinned.map(r=>card(r)).join('');
+  wireCards(c);
+}
+function setSectioned(on){ // hide the Notable strip while searching / looking up
+  $('#nothead').style.display = on?'none':($('#notable').innerHTML?'block':'none');
+  $('#notable').style.display = on?'none':($('#notable').innerHTML?'block':'none');
+}
+
+function search(){
+  const q = $('#q').value.trim().toLowerCase();
+  if(!q){ setSectioned(false); $('#listhead').textContent='All indexed P2PK transactions'; return render(DB); }
+  setSectioned(true);
+  const rows = DB.filter(r => r.txid.includes(q) || String(r.block)===q || (r.label||'').toLowerCase().includes(q) || r.outputs.some(o=>(o.pubkey||'').includes(q)));
+  $('#listhead').textContent = `Matches for “${$('#q').value.trim()}”`;
+  render(rows, q);
+}
+
+// live lookup: decode P2PK straight from the public API by txid (no index needed)
+const p2pkKey = (h)=>{ h=(h||'').toLowerCase(); if(!h.endsWith('ac'))return null; const b=h.startsWith('21')?33:h.startsWith('41')?65:0; if(!b)return null; const pk=h.slice(2,2+b*2); return pk.length===b*2?{pubkey:pk,bits:b}:null; };
+async function lookup(){
+  const id = $('#look').value.trim().toLowerCase();
+  if(!/^[0-9a-f]{64}$/.test(id)) return ($('#lookmsg').innerHTML='<span style="color:#f2a9be">Enter a 64-character transaction id.</span>');
+  $('#lookmsg').textContent='Fetching…';
+  try{
+    const [tx, spends] = await Promise.all([
+      fetch('https://mempool.space/api/tx/'+id).then(r=>r.ok?r.json():Promise.reject(new Error('not found on mainnet'))),
+      fetch('https://mempool.space/api/tx/'+id+'/outspends').then(r=>r.ok?r.json():[]).catch(()=>[]),
+    ]);
+    const outputs=[]; tx.vout.forEach((o,vout)=>{ if(o.scriptpubkey_type!=='p2pk')return; const k=p2pkKey(o.scriptpubkey); outputs.push({vout,pubkey:k?.pubkey||null,bits:k?.bits||null,value:o.value,spentBy:spends[vout]?.spent?spends[vout].txid:null}); });
+    if(!outputs.length){ $('#lookmsg').innerHTML='<span style="color:#f2a9be">That transaction has no P2PK outputs.</span>'; return; }
+    const rec={txid:id,label:'Looked up',block:tx.status?.block_height??null,time:tx.status?.block_time??null,coinbase:!!tx.vin?.[0]?.is_coinbase,outputs,totalValue:outputs.reduce((a,o)=>a+o.value,0)};
+    $('#lookmsg').textContent='';
+    setSectioned(true); $('#listhead').textContent='Live lookup';
+    render([rec]); $('#list').querySelector('.detail').classList.add('on'); window.scrollTo({top:$('#listhead').offsetTop-10,behavior:'smooth'});
+  }catch(e){ $('#lookmsg').innerHTML='<span style="color:#f2a9be">'+esc(e.message)+'</span>'; }
+}
+
+$('#q').addEventListener('input', ()=>{ if(!$('#q').value.trim()) $('#listhead').textContent='Indexed P2PK transactions'; search(); });
+$('#lookbtn').addEventListener('click', lookup);
+$('#look').addEventListener('keydown', e=>{ if(e.key==='Enter') lookup(); });
+
+Promise.all([
+  fetch('data/p2pk.json').then(r=>r.json()),
+  fetch('data/meta.json').then(r=>r.json()),
+]).then(([db,meta])=>{ DB=db; META=meta; stats(); renderNotable(); render(DB); })
+ .catch(()=>{ $('#list').innerHTML='<div class="empty">Could not load the dataset.</div>'; });
+</script>
+</body>
+</html>
