@@ -100,4 +100,8 @@ setTimeout(() => publishProfile(pool), 2500);
 // only react to fresh mentions (avoid replaying history); refresh subscription window periodically
 pool.subscribe('mentions', { kinds: [1], '#p': [PUB], since: now() - 120 });
 setInterval(saveState, 60000).unref();
+// liveness heartbeat for the health monitor (file mtime = last-alive)
+const HEARTBEAT = join(HERE, '..', '.secrets', 'nostr-heartbeat.json');
+const beat = () => { try { writeFileSync(HEARTBEAT, JSON.stringify({ t: Date.now(), npub: npub(PUB), relays: DEFAULT_RELAYS.length })); } catch {} };
+beat(); setInterval(beat, 60000).unref();
 process.on('SIGTERM', () => { saveState(); pool.close(); process.exit(0); });

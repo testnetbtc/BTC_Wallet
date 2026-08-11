@@ -1,0 +1,8 @@
+[Unit]
+Description=Olesia health monitor (faucet + Nostr bot self-heal)
+After=olesia-faucet.service olesia-nostr-bot.service
+
+[Service]
+Type=oneshot
+# runs as root so it can systemctl restart the units if they're unhealthy
+ExecStart=/bin/bash /home/faucet/BTC_Wallet/infra/monitor/healthcheck.sh

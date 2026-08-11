@@ -22,3 +22,4 @@ hs_ed25519_secret_key
 hs_ed25519_public_key
 # stray audit tooling that doesn't belong in this repo
 check_bridge.mjs
+infra/monitor/health.log
