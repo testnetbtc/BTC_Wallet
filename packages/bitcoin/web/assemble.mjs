@@ -156,6 +156,12 @@ nav button.on{color:var(--accent)}
 .entropad{position:relative;height:150px;background:var(--panel);border:1px dashed var(--line);border-radius:12px;overflow:hidden;touch-action:none;cursor:crosshair}
 .entropad canvas{width:100%;height:100%;display:block}
 .entrohint{position:absolute;inset:0;display:grid;place-items:center;color:var(--faint);font-size:13px;pointer-events:none}
+/* message tools */
+.msgtools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.msgex{font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--panel)}
+.msgex:hover{border-color:var(--accent)}
+.msgcount{font-size:11px;color:var(--faint);margin-left:auto;font-variant-numeric:tabular-nums}
+.msgcount.over{color:var(--bad)}
 /* confirm quiz */
 .qrow{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin-bottom:8px}
 .qrow .qk{font-size:13px;font-weight:700;margin-bottom:8px}
@@ -402,8 +408,9 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <div class="field"><input id="p2pk_import" placeholder="txid  (or txid:vout)" autocomplete="off" spellcheck="false"><button type="button" id="p2pk_importbtn" class="sec">Add</button></div>
     <label style="margin-top:12px">Spend a P2PK coin out</label>
     <div class="field"><input id="p2pk_to" placeholder="destination address" autocomplete="off"><button type="button" class="sec paste" data-paste="p2pk_to">Paste</button></div>
-    <input id="p2pk_msg" placeholder="optional OP_RETURN message (≤80 bytes)" autocomplete="off" style="margin-top:6px">
-    <p class="hint" style="margin:2px 0 0">✨ A message spent <i>from Satoshi's own script type</i> — the closest thing to the genesis-block headline.</p>
+    <input id="p2pk_msg" placeholder="optional message written on-chain (≤80 bytes)" autocomplete="off" style="margin-top:6px">
+    <div class="msgtools"><span class="msgex" data-fill="p2pk_msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="p2pk_msgcount">0 / 80 bytes</span></div>
+    <p class="hint" style="margin:6px 0 0">✨ A message written on-chain while spending <i>Satoshi's own script type</i> — the closest a modern user gets to the genesis-block headline.</p>
     <div id="p2pk_result" class="mono"></div>
   </div>
   </div>
@@ -443,6 +450,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <b>Where we stand:</b> people disagree about what data belongs on Bitcoin. Olesia is neutral — it's part of the protocol, so it's here, explained, for you to use thoughtfully. <span style="color:var(--faint)">(No NFTs or inscriptions.)</span>
     </div>
     <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px" onclick="event.stopPropagation()">
+    <div class="msgtools" onclick="event.stopPropagation()"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>
   </div>
   <div class="card">
     <label style="margin-top:0">Network fee <span class="help" data-target="tip_fee">?</span></label>

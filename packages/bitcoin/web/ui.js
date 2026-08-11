@@ -508,6 +508,25 @@
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
 
+  // ---------- OP_RETURN message helpers (example fill + live byte count) ----------
+  // Satoshi's genesis message — technically it lived in the genesis COINBASE, not
+  // OP_RETURN (which didn't exist until 2014); OP_RETURN is today's equivalent.
+  const SATOSHI = 'The Times 03/Jan/2009 Chancellor on brink of second bailout for banks';
+  const byteLen = (s) => new TextEncoder().encode(s || '').length;
+  function wireMsg(inputId, countId) {
+    const inp = $('#' + inputId), cnt = $('#' + countId);
+    if (!inp || !cnt) return;
+    const upd = () => { const n = byteLen(inp.value); cnt.textContent = `${n} / 80 bytes`; cnt.classList.toggle('over', n > 80); };
+    inp.addEventListener('input', upd); upd();
+  }
+  document.addEventListener('click', (e) => {
+    const ex = e.target.closest && e.target.closest('.msgex'); if (!ex) return;
+    const inp = $('#' + ex.dataset.fill); if (!inp) return;
+    inp.value = SATOSHI; inp.dispatchEvent(new Event('input'));
+    toast('Filled Satoshi’s 2009 headline (68 bytes). Satoshi wrote it in the genesis coinbase; OP_RETURN is today’s way.');
+  });
+  wireMsg('msg', 'msgcount'); wireMsg('p2pk_msg', 'p2pk_msgcount');
+
   // ---------- send ----------
   let sendType = 'p2wpkh', sendMode = 'pay';
   function openSend(fromType) {
