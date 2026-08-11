@@ -356,8 +356,19 @@
   $('#p2pk_fundbtn').addEventListener('click', async () => {
     const amt = Number($('#p2pk_amt').value);
     if (!(amt > 0)) return toast('enter an amount (sats) to move into P2PK', 'bad');
-    $('#p2pk_fundbtn').disabled = true; toast('Funding P2PK…');
+    $('#p2pk_fundbtn').disabled = true;
     try {
+      toast('Building…');
+      const dry = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: false });
+      const px = await usdPrice();
+      const okGo = await confirmSheet('Move coins into P2PK?', [
+        ['To', 'your own P2PK (bare public key — no address)'],
+        ['Amount', `${amt.toLocaleString()} sat`, `${coins(amt)} ${unit()}${px ? ' · ' + fmtUsd(amt, px) : ''}`],
+        ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
+        ['From', 'Native SegWit · ' + network],
+      ]);
+      if (!okGo) { $('#p2pk_fundbtn').disabled = false; return toast('Cancelled — nothing sent.'); }
+      toast('Funding P2PK…');
       const r = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: true });
       const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount }); p2pkStore(list);
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
