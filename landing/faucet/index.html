@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://faucet.olesia.io; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://challenges.cloudflare.com; connect-src https://faucet.olesia.io https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>Testnet Faucet — Olesia</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
@@ -74,8 +74,21 @@ and the coins arrive in a minute or two. New to all this? <a href="https://olesi
 </div>
 <script>
 const API = 'https://faucet.olesia.io';
+const TURNSTILE_SITEKEY = ''; // set to the Cloudflare Turnstile site key to enable the human check
 const $ = (s) => document.querySelector(s);
 const sat = (n) => n == null ? '—' : (n/1e8).toFixed(3) + ' tBTC';
+
+// Optional Cloudflare Turnstile "are you human" check — off until a site key is set.
+let tsToken = '';
+if (TURNSTILE_SITEKEY) {
+  window._tsCb = (t) => { tsToken = t; };
+  const w = document.createElement('div');
+  w.className = 'cf-turnstile'; w.dataset.sitekey = TURNSTILE_SITEKEY; w.dataset.callback = '_tsCb'; w.dataset.theme = 'dark';
+  w.style.margin = '10px 0';
+  $('#ts').appendChild(w);
+  const s = document.createElement('script'); s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'; s.async = true; s.defer = true;
+  document.head.appendChild(s);
+}
 async function loadInfo() {
   try {
     const r = await fetch(API + '/info'); const d = await r.json();
@@ -91,10 +104,14 @@ $('#go').addEventListener('click', async () => {
   const out = $('#out'); const btn = $('#go');
   const address = $('#addr').value.trim(); const network = $('#net').value;
   if (!address) { out.style.display='block'; out.className='bad'; out.textContent='Enter your testnet address first.'; return; }
+  if (TURNSTILE_SITEKEY && !tsToken) { out.style.display='block'; out.className='bad'; out.textContent='Please complete the "I\'m human" check first.'; return; }
   btn.disabled = true; out.style.display='block'; out.className='hint'; out.textContent='Sending…';
   try {
-    const r = await fetch(API + '/claim', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ network, address }) });
+    const body = { network, address };
+    if (TURNSTILE_SITEKEY) body.token = tsToken;
+    const r = await fetch(API + '/claim', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
     const d = await r.json();
+    if (TURNSTILE_SITEKEY && window.turnstile) { window.turnstile.reset(); tsToken = ''; } // tokens are single-use
     if (!r.ok) { out.className='bad'; out.textContent = '✗ ' + (d.error || 'claim failed'); }
     else {
       const base = network === 'testnet3' ? 'https://mempool.space/testnet/tx/' : 'https://mempool.space/testnet4/tx/';

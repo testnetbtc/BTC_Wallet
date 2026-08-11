@@ -22,7 +22,8 @@ const PORT = 8790;
 const DRIP = 100_000;                       // 0.001 tBTC per claim
 const NETWORKS = new Set(['testnet3', 'testnet4']);
 const ALLOW_ORIGIN = new Set(['https://faucet.olesia.io', 'https://olesia.io', 'https://app.olesia.io']);
-const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET || ''; // set later to enable captcha
+// Turnstile secret from a 600 file (preferred) or env. Absent -> human check off.
+const TURNSTILE_SECRET = (existsSync(join(HERE, '..', '.secrets', 'turnstile.json')) ? secret('turnstile.json').secret : '') || process.env.TURNSTILE_SECRET || '';
 const MAX_BODY = 4000;
 
 // rate limits (sliding window)
