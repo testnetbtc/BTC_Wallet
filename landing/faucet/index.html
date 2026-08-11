@@ -50,6 +50,16 @@ and the coins arrive in a minute or two. New to all this? <a href="https://olesi
 <div id="out"></div>
 </div>
 
+<div class="card" style="border-color:#3a2f66">
+<label style="margin-top:0">🟣 Signet — help us stock it</label>
+<p class="hint" style="margin:2px 0 10px">Signet is the smoothest network to learn on (regular ~10-min blocks), but its coins are hard to come by. <b>We're looking for a stash of Signet coins</b> to hand out free to builders and learners. Sitting on some? Sending even a little would keep a whole new faucet running:</p>
+<div style="display:flex;gap:8px;align-items:center">
+<span class="mono" id="signetaddr" style="flex:1;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:12.5px">tb1qeq5tcdqmusje32r8rtzqrksqdzdzm20mrzgdp2</span>
+<button id="copysignet" style="background:#2b333c;color:#e6edf3;font-weight:600;padding:10px 14px">Copy</button>
+</div>
+<p class="hint" style="margin:8px 0 0">The moment coins arrive, Signet goes live here for everyone. 🙏</p>
+</div>
+
 <div class="card">
 <label style="margin-top:0">Faucet balance</label>
 <div class="bal">
@@ -132,6 +142,11 @@ $('#go').addEventListener('click', async () => {
     }
   } catch { out.className='bad'; out.textContent='✗ Network error — the faucet may be offline. Try again shortly.'; }
   btn.disabled = false;
+});
+document.getElementById('copysignet').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('signetaddr').textContent.trim()).then(() => {
+    const b = document.getElementById('copysignet'); b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = 'Copy'; }, 1400);
+  }).catch(() => {});
 });
 document.getElementById('copyreturn').addEventListener('click', () => {
   navigator.clipboard.writeText(document.getElementById('returnaddr').textContent.trim()).then(() => {
