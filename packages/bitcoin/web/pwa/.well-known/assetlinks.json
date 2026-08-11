@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.olesia.wallet",
+      "sha256_cert_fingerprints": [
+        "B9:9C:37:55:DA:6E:CD:16:37:E0:20:28:B5:65:BB:4B:1D:F2:DC:13:7F:69:12:A6:47:23:0D:4A:89:5F:CB:24"
+      ]
+    }
+  }
+]
