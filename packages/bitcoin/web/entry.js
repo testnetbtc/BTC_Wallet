@@ -1,8 +1,10 @@
 // Browser entry for the online Olesia wallet. Exposes window.OW.
 // A "source" is a 24-word mnemonic (full wallet, any script type) or an account
 // xpub (watch-only P2WPKH). Mainnet spending stays behind explicit opt-in.
-import { generateMnemonic, validateMnemonic } from '@scure/bip39';
+import { generateMnemonic, validateMnemonic, entropyToMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
+import { sha256 } from '@noble/hashes/sha256';
+import { concatBytes, utf8ToBytes } from '@noble/hashes/utils';
 import QRCode from 'qrcode';
 import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
@@ -18,6 +20,14 @@ const T = (s) => (s || '').trim();
 
 window.OW = {
   generate: () => generateMnemonic(wordlist, 256),
+  // 256 bits from the OS CSPRNG, optionally stirred with user entropy (dice
+  // rolls, key mashing). A hash of many sources is strong if ANY ONE is strong,
+  // so extra entropy can only help — the CSPRNG floor is always there.
+  generateFrom: (extra) => {
+    const rnd = crypto.getRandomValues(new Uint8Array(32));
+    if (!extra || !String(extra).trim()) return entropyToMnemonic(rnd, wordlist);
+    return entropyToMnemonic(sha256(concatBytes(rnd, utf8ToBytes(String(extra)))), wordlist);
+  },
   validate: (m) => { try { return validateMnemonic(normalizeMnemonic(m), wordlist); } catch { return false; } },
   isXpub: (s) => isXpub(s),
   diagnose: (s) => {

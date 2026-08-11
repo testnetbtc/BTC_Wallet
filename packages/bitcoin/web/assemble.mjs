@@ -151,6 +151,13 @@ nav button.on{color:var(--accent)}
 .sheet .crow .k{color:var(--muted);flex:0 0 auto}
 .sheet .crow .v{text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
 .sheet .crow .v small{display:block;color:var(--faint);font-size:11.5px}
+/* confirm quiz */
+.qrow{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin-bottom:8px}
+.qrow .qk{font-size:13px;font-weight:700;margin-bottom:8px}
+.qrow .qk i{color:var(--accent);font-style:normal}
+.qchips{display:flex;gap:8px}
+.qchip{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 4px;font-family:var(--mono);font-size:13px;font-weight:600;min-height:0}
+.qchip.sel{background:#243447;border-color:#4a7fb5;color:#cfe6ff}
 /* seed backup grid */
 .seedgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}
 .seedgrid span{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:12.5px}
@@ -222,31 +229,87 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ WELCOME ============ -->
 <section class="pane" id="pane-welcome">
-  <h2>Learn Bitcoin by doing<span style="color:var(--accent)">.</span></h2>
-  <p class="sub">A real wallet on practice networks where mistakes cost nothing — every address type, free coins, and plain-English explainers as you go. <a href="https://olesia.io/learn/" target="_blank" rel="noopener">Start with the basics →</a></p>
+  <div style="text-align:center;padding:26px 0 8px">
+    <div style="font-size:40px;font-weight:800;letter-spacing:-.02em">Olesia<span class="ldot">.</span></div>
+    <p class="sub" style="margin:6px auto 0;max-width:34ch">Learn Bitcoin by doing — a real wallet on practice networks where mistakes cost nothing.</p>
+  </div>
   <div class="card">
-    <label>Network <span class="help" data-target="tip_net">?</span></label>
-    <div class="tiptext" id="tip_net">Bitcoin has several chains sharing the same rules. <b>Testnet3/4</b> and <b>Signet</b> use free, worthless coins for practice. <b>Mainnet</b> is real money — this wallet allows it for small amounts, but learn on a testnet first.</div>
+    <label style="margin-top:0">Network <span class="help" data-target="tip_net">?</span></label>
+    <div class="tiptext" id="tip_net">Bitcoin has several chains sharing the same rules. <b>Testnet3/4</b> and <b>Signet</b> use free, worthless coins for practice. <b>Mainnet</b> is real money — learn on a testnet first.</div>
     <select id="net"></select>
     <div id="mainwarn" class="warn" style="display:none"></div>
-    <label>Your seed <span class="help" data-target="tip_seed">?</span><span class="hint" style="display:inline"> — 12/24 words, or an xpub for watch-only</span></label>
-    <div class="tiptext" id="tip_seed">Your wallet <i>is</i> these words (BIP-39). Anyone with them controls the coins — there is no reset. Write them on paper, in order; never screenshot them. An <b>xpub</b> can watch a balance but cannot spend.</div>
+  </div>
+  <button id="w_create" style="width:100%;font-size:15.5px;padding:15px">＋ Create a new wallet</button>
+  <button id="w_import" class="sec" style="width:100%;margin-top:8px;font-size:15px;padding:14px">↓ Import an existing wallet</button>
+  <p class="hint" style="text-align:center;margin-top:16px">Storing meaningful funds? Generate fully offline with the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a> and use this app watch-only.</p>
+  <p class="hint" style="text-align:center;margin-top:10px">Non-custodial · open source · <a href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener">verify everything</a> · <a href="https://olesia.io/learn/" target="_blank" rel="noopener">learn the basics</a></p>
+</section>
+
+<!-- ============ CREATE 1: ENTROPY ============ -->
+<section class="pane" id="pane-create1">
+  <button class="back" id="c_back0">‹ Back</button>
+  <h2>Create your wallet</h2>
+  <p class="sub">Step 1 of 4 — randomness</p>
+  <div class="card">
+    <p class="hint" style="margin-top:0">Your wallet is a giant secret number. Olesia always draws <b>256 bits from your device's cryptographic random generator</b> — that alone is unguessable (more possible keys than atoms in the universe).</p>
+    <p class="hint"><a id="extra_tog" style="cursor:pointer">＋ Add your own entropy (optional) ▾</a></p>
+    <div id="extra_body" style="display:none">
+      <p class="hint">Don't fully trust any single source? Add your own — everything is <b>hashed together</b>, so the result is strong if <i>any one</i> source is strong. It can only help.</p>
+      <label>Dice rolls <span class="hint" style="display:inline">— roll a real die, type the results (1–6)</span></label>
+      <input id="dice" placeholder="e.g. 4152663125…  (50+ rolls ≈ 129 bits)" inputmode="numeric" autocomplete="off">
+      <label>Keyboard mash <span class="hint" style="display:inline">— smash keys, whatever comes out</span></label>
+      <input id="mash" placeholder="e.g. jd82jfk29dk3…" autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+  <button id="c_gen" style="width:100%;font-size:15px;padding:14px">Generate my 24 words</button>
+</section>
+
+<!-- ============ CREATE 2: WRITE DOWN ============ -->
+<section class="pane" id="pane-create2">
+  <button class="back" id="c_back1">‹ Start over</button>
+  <h2>Write these down</h2>
+  <p class="sub">Step 2 of 4 — your seed phrase</p>
+  <div class="warn">These 24 words <b>are</b> your wallet — anyone who has them controls the coins, and there is no reset. Write them on <b>paper</b>, in order. Never screenshot or cloud-sync them.</div>
+  <div class="seedgrid" id="c_words"></div>
+  <button id="c_wrote" style="width:100%;font-size:15px;padding:14px;margin-top:6px">I've written them down →</button>
+</section>
+
+<!-- ============ CREATE 3: CONFIRM ============ -->
+<section class="pane" id="pane-create3">
+  <button class="back" id="q_back">‹ Show the words again</button>
+  <h2>Prove it 😉</h2>
+  <p class="sub">Step 3 of 4 — tap the right word for each position</p>
+  <div id="q_box"></div>
+  <button id="q_check" style="width:100%;font-size:15px;padding:14px;margin-top:6px" disabled>Check my answers</button>
+</section>
+
+<!-- ============ CREATE 4: DONE / SAVE ============ -->
+<section class="pane" id="pane-create4">
+  <h2>Backup confirmed ✓</h2>
+  <p class="sub">Step 4 of 4 — how should this device remember your wallet?</p>
+  <div class="card">
+    <label style="margin-top:0">Keep it on this device (recommended)</label>
+    <p class="hint">Saved <b>encrypted</b> behind a PIN (scrypt + XChaCha20-Poly1305). The plaintext seed never touches disk — your PIN decrypts it in memory each time.</p>
+    <div class="field"><input id="c_pin" type="password" placeholder="choose a PIN / passphrase (4+ chars)" autocomplete="off"><button id="c_save">Save &amp; open</button></div>
+  </div>
+  <button id="c_skip" class="sec" style="width:100%">Don't save — open once, ask for the words next time</button>
+</section>
+
+<!-- ============ IMPORT ============ -->
+<section class="pane" id="pane-import">
+  <button class="back" id="i_back">‹ Back</button>
+  <h2>Import a wallet</h2>
+  <p class="sub">Paste a seed phrase (12/24 words) — or an account xpub to watch a balance without spend power.</p>
+  <div class="card">
+    <label style="margin-top:0">Seed or xpub <span class="help" data-target="tip_seed">?</span></label>
+    <div class="tiptext" id="tip_seed">Your wallet <i>is</i> its words (BIP-39) — anyone with them controls the coins. An <b>xpub</b> can watch a balance but cannot spend: the safe way to use a cold wallet online. Private-key (WIF) and encrypted-file import are coming next.</div>
     <textarea id="mnemonic" placeholder="word1 word2 … word24   —or—   xpub…/tpub…" autocomplete="off" spellcheck="false"></textarea>
     <div class="row">
       <button type="button" class="sec paste" data-paste="mnemonic">Paste</button>
-      <button id="gen" class="sec">Generate new</button>
       <button id="load">Open wallet</button>
     </div>
   </div>
-  <div class="card">
-    <b style="font-size:14px">New here? Three steps 👋</b>
-    <ol class="hint" style="margin:8px 0 0;padding-left:20px;line-height:1.8;font-size:13px">
-    <li>Tap <b>Generate new</b>, then <b>Open wallet</b>. Write the words on paper.</li>
-    <li><b>Receive:</b> copy your address, get free coins from the <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">faucet</a>.</li>
-    <li><b>Send</b> anywhere — then explore every address type in Accounts.</li>
-    </ol>
-  </div>
-  <p class="hint" style="text-align:center">Non-custodial · open source · <a href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener">verify everything</a></p>
+  <p class="hint">Made your seed with the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a>? Pasting the words here makes it a <b>hot</b> wallet — fine for practice/small amounts. For real funds, import its <b>xpub</b> instead and sign offline (Settings → Air-gap).</p>
 </section>
 
 <!-- ============ HOME ============ -->

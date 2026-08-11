@@ -132,11 +132,78 @@
   $('#netchip').addEventListener('click', () => showPane(source ? 'settings' : 'welcome'));
   updateChips();
 
-  // ---------- welcome: generate / load ----------
-  $('#gen').addEventListener('click', () => {
-    $('#mnemonic').value = window.OW.generate();
-    toast('New 24-word seed generated. Write it on paper, then press Open wallet.');
+  // ---------- create wizard ----------
+  let wizMnemonic = '', quiz = [];
+  $('#w_create').addEventListener('click', () => showPane('create1'));
+  $('#w_import').addEventListener('click', () => showPane('import'));
+  $('#c_back0').addEventListener('click', () => showPane('welcome'));
+  $('#i_back').addEventListener('click', () => showPane('welcome'));
+  $('#extra_tog').addEventListener('click', () => {
+    const b = $('#extra_body'); const open = b.style.display !== 'block';
+    b.style.display = open ? 'block' : 'none';
+    $('#extra_tog').textContent = open ? '－ Add your own entropy ▴' : '＋ Add your own entropy (optional) ▾';
   });
+  $('#c_gen').addEventListener('click', () => {
+    const dice = $('#dice').value.trim();
+    if (dice && /[^1-6\s]/.test(dice)) return toast('Dice rolls can only contain digits 1–6.', 'bad');
+    wizMnemonic = window.OW.generateFrom(dice + $('#mash').value);
+    const box = $('#c_words'); box.textContent = '';
+    wizMnemonic.split(' ').forEach((w, i) => {
+      const s = document.createElement('span'); const n = document.createElement('i');
+      n.textContent = i + 1; s.append(n, w); box.appendChild(s);
+    });
+    showPane('create2');
+  });
+  $('#c_back1').addEventListener('click', () => { wizMnemonic = ''; $('#c_words').textContent = ''; showPane('create1'); });
+  $('#c_wrote').addEventListener('click', () => { buildQuiz(); showPane('create3'); });
+  $('#q_back').addEventListener('click', () => showPane('create2'));
+  function buildQuiz() {
+    const words = wizMnemonic.split(' ');
+    // 4 distinct random positions; each gets the right word + 2 decoys
+    const picks = new Set();
+    while (picks.size < 4) picks.add(Math.floor(Math.random() * words.length));
+    quiz = [...picks].sort((a, b) => a - b).map((idx) => {
+      const opts = new Set([words[idx]]);
+      while (opts.size < 3) { const d = words[Math.floor(Math.random() * words.length)]; if (d !== words[idx]) opts.add(d); }
+      return { idx, answer: words[idx], opts: [...opts].sort(() => Math.random() - 0.5), chosen: null };
+    });
+    const box = $('#q_box'); box.textContent = '';
+    quiz.forEach((q, qi) => {
+      const row = document.createElement('div'); row.className = 'qrow';
+      const k = document.createElement('div'); k.className = 'qk'; k.innerHTML = `Word <i>#${q.idx + 1}</i>`;
+      const chips = document.createElement('div'); chips.className = 'qchips';
+      q.opts.forEach((w) => {
+        const c = document.createElement('button'); c.type = 'button'; c.className = 'qchip'; c.textContent = w;
+        c.addEventListener('click', () => {
+          q.chosen = w;
+          chips.querySelectorAll('.qchip').forEach((x) => x.classList.toggle('sel', x === c));
+          $('#q_check').disabled = quiz.some((x) => !x.chosen);
+        });
+        chips.appendChild(c);
+      });
+      row.append(k, chips); box.appendChild(row);
+    });
+    $('#q_check').disabled = true;
+  }
+  $('#q_check').addEventListener('click', () => {
+    const wrong = quiz.filter((q) => q.chosen !== q.answer);
+    if (wrong.length) {
+      toast(`Not quite — word #${wrong[0].idx + 1} is wrong. Check your paper and try again.`, 'bad');
+      buildQuiz(); // fresh positions each attempt
+      return;
+    }
+    showPane('create4');
+  });
+  function openCreated() { source = wizMnemonic; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; $('#c_words').textContent = ''; $('#dice').value = ''; $('#mash').value = ''; initWallet(); }
+  $('#c_save').addEventListener('click', async () => {
+    const pin = $('#c_pin').value;
+    toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
+    try { window.OW.vault.save(wizMnemonic, pin); $('#c_pin').value = ''; openCreated(); }
+    catch (e) { toast('✗ ' + e.message, 'bad'); }
+  });
+  $('#c_skip').addEventListener('click', () => { openCreated(); toast('Not saved — keep that paper safe; you’ll need the words next time.'); });
+
+  // ---------- import ----------
   $('#load').addEventListener('click', loadFromInput);
   $('#mnemonic').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); loadFromInput(); } });
   function loadFromInput() {
