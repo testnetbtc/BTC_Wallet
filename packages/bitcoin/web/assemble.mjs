@@ -152,6 +152,10 @@ nav button.on{color:var(--accent)}
 .sheet .crow .k{color:var(--muted);flex:0 0 auto}
 .sheet .crow .v{text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
 .sheet .crow .v small{display:block;color:var(--faint);font-size:11.5px}
+/* entropy pad */
+.entropad{position:relative;height:150px;background:var(--panel);border:1px dashed var(--line);border-radius:12px;overflow:hidden;touch-action:none;cursor:crosshair}
+.entropad canvas{width:100%;height:100%;display:block}
+.entrohint{position:absolute;inset:0;display:grid;place-items:center;color:var(--faint);font-size:13px;pointer-events:none}
 /* confirm quiz */
 .qrow{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin-bottom:8px}
 .qrow .qk{font-size:13px;font-weight:700;margin-bottom:8px}
@@ -258,8 +262,10 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <p class="hint">Don't fully trust any single source? Add your own — everything is <b>hashed together</b>, so the result is strong if <i>any one</i> source is strong. It can only help.</p>
       <label>Dice rolls <span class="hint" style="display:inline">— roll a real die, type the results (1–6)</span></label>
       <input id="dice" placeholder="e.g. 4152663125…  (50+ rolls ≈ 129 bits)" inputmode="numeric" autocomplete="off">
-      <label>Keyboard mash <span class="hint" style="display:inline">— smash keys, whatever comes out</span></label>
-      <input id="mash" placeholder="e.g. jd82jfk29dk3…" autocomplete="off" spellcheck="false">
+      <label>Random movement <span class="hint" style="display:inline">— wiggle your mouse or doodle with your finger</span></label>
+      <div class="entropad" id="entropad"><canvas id="entrocanvas"></canvas><span class="entrohint" id="entrohint">draw here ✏️</span></div>
+      <div class="prog" style="margin:8px 0 2px"><i id="entrobar"></i></div>
+      <p class="hint" id="entromsg" style="margin:2px 0 0">0% — every wiggle adds randomness</p>
     </div>
   </div>
   <button id="c_gen" style="width:100%;font-size:15px;padding:14px">Generate my 24 words</button>

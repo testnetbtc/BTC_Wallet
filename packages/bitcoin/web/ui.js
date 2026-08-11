@@ -146,10 +146,36 @@
     b.style.display = open ? 'block' : 'none';
     $('#extra_tog').textContent = open ? '－ Add your own entropy ▴' : '＋ Add your own entropy (optional) ▾';
   });
+  // movement entropy: pointer position + timing jitter, drawn as a fading trail.
+  // Mixed into the hash with the CSPRNG — it can only add, never weaken.
+  let moveEntropy = '', moveSamples = 0;
+  const MOVE_TARGET = 180;
+  (() => {
+    const pad = $('#entropad'), cv = $('#entrocanvas'), ctx = cv.getContext('2d');
+    let drawing = false, last = null, sized = false;
+    function size() { const r = pad.getBoundingClientRect(); cv.width = r.width * 2; cv.height = r.height * 2; ctx.scale(2, 2); ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#f0a020'; sized = true; }
+    function sample(e) {
+      const r = pad.getBoundingClientRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top;
+      moveEntropy += `${x.toFixed(2)},${y.toFixed(2)},${performance.now().toFixed(3)};`;
+      moveSamples++;
+      const pct = Math.min(100, Math.round(moveSamples / MOVE_TARGET * 100));
+      $('#entrobar').style.width = pct + '%';
+      $('#entromsg').textContent = pct >= 100 ? '100% — plenty collected (keep going if you like)' : pct + '% — every wiggle adds randomness';
+      if (moveSamples > 3) $('#entrohint').style.display = 'none';
+      if (last) { ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(x, y); ctx.stroke(); }
+      last = { x, y };
+      if (moveSamples % 40 === 0) { ctx.fillStyle = 'rgba(14,17,22,0.35)'; ctx.globalAlpha = 1; ctx.fillRect(0, 0, cv.width, cv.height); } // fade old trail
+    }
+    pad.addEventListener('pointerdown', (e) => { if (!sized) size(); drawing = true; last = null; sample(e); });
+    pad.addEventListener('pointermove', (e) => { if (!sized) size(); if (drawing || e.pointerType === 'mouse') sample(e); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => pad.addEventListener(ev, () => { drawing = false; last = null; }));
+  })();
+
   $('#c_gen').addEventListener('click', () => {
     const dice = $('#dice').value.trim();
     if (dice && /[^1-6\s]/.test(dice)) return toast('Dice rolls can only contain digits 1–6.', 'bad');
-    wizMnemonic = window.OW.generateFrom(dice + $('#mash').value);
+    wizMnemonic = window.OW.generateFrom(dice + moveEntropy);
     const box = $('#c_words'); box.textContent = '';
     wizMnemonic.split(' ').forEach((w, i) => {
       const s = document.createElement('span'); const n = document.createElement('i');
@@ -197,7 +223,7 @@
     }
     showPane('create4');
   });
-  function openCreated() { source = wizMnemonic; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; $('#c_words').textContent = ''; $('#dice').value = ''; $('#mash').value = ''; initWallet(); }
+  function openCreated() { source = wizMnemonic; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; moveEntropy = ''; moveSamples = 0; $('#c_words').textContent = ''; $('#dice').value = ''; initWallet(); }
   $('#c_save').addEventListener('click', async () => {
     const pin = $('#c_pin').value;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
