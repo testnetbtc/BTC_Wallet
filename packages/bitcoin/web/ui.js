@@ -448,17 +448,20 @@
     btn.disabled = true;
     try {
       toast('Building…');
-      const dry = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: false, passphrase });
+      const msg = $('#p2pk_msg').value.trim();
+      const dry = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, message: msg, broadcast: false, passphrase });
       const px = await usdPrice();
-      const okGo = await confirmSheet('Spend this P2PK coin?', [
+      const rows = [
         ['To', to],
         ['Amount', `${dry.sent.toLocaleString()} sat`, `${coins(dry.sent)} ${unit()}${px ? ' · ' + fmtUsd(dry.sent, px) : ''}`],
         ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
-        ['From', 'P2PK (bare public key) · ' + network],
-      ]);
+      ];
+      if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'a note from Satoshi’s own script type']);
+      rows.push(['From', 'P2PK (bare public key) · ' + network]);
+      const okGo = await confirmSheet('Spend this P2PK coin?', rows);
       if (!okGo) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Spending P2PK…');
-      const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: true, passphrase });
+      const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, message: msg, broadcast: true, passphrase });
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
       res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
       const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
@@ -506,7 +509,7 @@
   });
 
   // ---------- send ----------
-  let sendType = 'p2wpkh';
+  let sendType = 'p2wpkh', sendMode = 'pay';
   function openSend(fromType) {
     sendType = fromType && fromType !== 'p2pk' ? fromType : 'p2wpkh';
     if (mode === 'watch') sendType = 'p2wpkh';
@@ -518,8 +521,18 @@
     const canHot = mode === 'full';
     $('#send').disabled = !canHot; $('#dryrun').disabled = !canHot; $('#maxbtn').disabled = !canHot;
     sweepMode = false; $('#sweepnote').style.display = 'none';
+    setSendMode('pay');
     showPane('send');
   }
+  function setSendMode(m) {
+    sendMode = m;
+    $$('#send_mode .feep').forEach((x) => x.classList.toggle('active', x.dataset.mode === m));
+    $('#send_pay').style.display = m === 'pay' ? 'block' : 'none';
+    $('#send').textContent = m === 'msg' ? 'Write on the chain' : 'Send';
+    // in message-only mode the note becomes required and the explainer opens
+    if (m === 'msg') { $('#orbody').style.display = 'block'; $('#orchev').textContent = 'Hide ▴'; $('#msg').focus(); }
+  }
+  $$('#send_mode .feep').forEach((b) => b.addEventListener('click', () => setSendMode(b.dataset.mode)));
   $('#maxbtn').addEventListener('click', () => {
     sweepMode = true; $('#sweepnote').style.display = 'block';
     const b = balances[sendType]; $('#amt').value = ''; $('#amt').placeholder = b ? `~${b.confirmed.toLocaleString()} sat minus fee` : 'everything minus fee';
@@ -539,30 +552,38 @@
   $$('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
   $('#fee').addEventListener('input', setFeeActive);
 
-  const buildTx = (broadcast) => sweepMode
-    ? window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, feeRate: $('#fee').value, broadcast, passphrase })
-    : window.OW.send({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value, broadcast, passphrase });
+  // message-only = a sweep back to your own address carrying the OP_RETURN, so
+  // no coins leave the wallet — the purest "just write on the chain".
+  const buildTx = (broadcast) => {
+    const msg = $('#msg').value;
+    if (sendMode === 'msg') return window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: myAddress(), message: msg, feeRate: $('#fee').value, broadcast, passphrase });
+    if (sweepMode) return window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, message: msg, feeRate: $('#fee').value, broadcast, passphrase });
+    return window.OW.send({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, amount: $('#amt').value, message: msg, feeRate: $('#fee').value, broadcast, passphrase });
+  };
+  const myAddress = () => window.OW.info(source, network, sendType, 0, passphrase).address;
 
   async function runSend(broadcast) {
-    const to = $('#to').value.trim();
+    const msgOnly = sendMode === 'msg';
+    const to = msgOnly ? myAddress() : $('#to').value.trim();
     if (!to) return toast('enter a destination address', 'bad');
+    if (msgOnly && !$('#msg').value.trim()) return toast('type the message you want to write on the chain', 'bad');
     try {
       toast('Building…');
-      // Always dry-run first: the confirmation shows the REAL fee and amounts
-      // from the actual transaction, never an estimate.
-      const dry = await buildTx(false);
+      const dry = await buildTx(false);        // dry-run first -> real fee shown
       if (!broadcast) return renderResult(dry, false);
       const px = await usdPrice();
-      const amount = sweepMode ? dry.swept : Number($('#amt').value);
+      const amount = (sweepMode || msgOnly) ? dry.swept : Number($('#amt').value);
       const msg = $('#msg').value.trim();
-      const rows = [
-        ['To', to],
-        [sweepMode ? 'Amount (sweep)' : 'Amount', `${amount.toLocaleString()} sat`, `${coins(amount)} ${unit()}${px ? ' · ' + fmtUsd(amount, px) : ''}`],
-        ['Network fee', `${dry.fee.toLocaleString()} sat`, `${dry.feeRate} sat/vB${px ? ' · ' + fmtUsd(dry.fee, px) : ''}`],
-      ];
-      if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'permanent public message']);
+      const rows = [];
+      if (msgOnly) rows.push(['Message', `“${msg.slice(0, 48)}${msg.length > 48 ? '…' : ''}”`, 'written permanently on-chain']);
+      else {
+        rows.push(['To', to]);
+        rows.push([sweepMode ? 'Amount (sweep)' : 'Amount', `${amount.toLocaleString()} sat`, `${coins(amount)} ${unit()}${px ? ' · ' + fmtUsd(amount, px) : ''}`]);
+        if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'permanent public message']);
+      }
+      rows.push(['Network fee', `${dry.fee.toLocaleString()} sat`, `${dry.feeRate} sat/vB${px ? ' · ' + fmtUsd(dry.fee, px) : ''}`]);
       rows.push(['From', SHORT[sendType] + ' · ' + network]);
-      const okGo = await confirmSheet(sweepMode ? 'Sweep everything?' : 'Send this?', rows);
+      const okGo = await confirmSheet(msgOnly ? 'Write this on the chain?' : sweepMode ? 'Sweep everything?' : 'Send this?', rows, msgOnly ? 'Write it' : 'Confirm & send');
       if (!okGo) return toast('Cancelled — nothing sent.');
       toast('Broadcasting…');
       renderResult(await buildTx(true), true);

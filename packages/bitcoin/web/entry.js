@@ -61,8 +61,8 @@ window.OW = {
       recipients: (toAddress && Number(amount) > 0) ? [{ address: T(toAddress), amount: Number(amount) }] : [],
       message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed,
     }),
-  sweep: ({ mnemonic, network, scriptType, toAddress, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
-    prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed, passphrase }),
+  sweep: ({ mnemonic, network, scriptType, toAddress, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
+    prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed, passphrase }),
 
   // air-gap PSBT flow (P2WPKH)
   buildUnsigned: ({ source, network, toAddress, amount, message, feeRate, index = 0, passphrase = '' }) =>
@@ -91,6 +91,6 @@ window.OW = {
     fundP2PK({ source: T(source), network, amount: Number(amount), feeRate: feeRate ? Number(feeRate) : 2, broadcast, passphrase }),
   p2pkStatus: ({ network, outpoints }) => p2pkOutpoints({ network, outpoints }),
   p2pkImport: ({ source, network, txid, vout, passphrase = '' }) => importP2PK({ source: T(source), network, txid: T(txid), vout: Number(vout) || 0, passphrase }),
-  spendP2PK: ({ source, network, outpoint, toAddress, feeRate, broadcast = true, passphrase = '' }) =>
-    spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), feeRate: feeRate ? Number(feeRate) : 2, broadcast, passphrase }),
+  spendP2PK: ({ source, network, outpoint, toAddress, message, feeRate, broadcast = true, passphrase = '' }) =>
+    spendP2PK({ source: T(source), network, outpoint, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : 2, broadcast, passphrase }),
 };

@@ -6,7 +6,7 @@
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { secp256k1 } from '@noble/curves/secp256k1';
-import { hexToBytes, bytesToHex, concatBytes } from '@noble/hashes/utils';
+import { hexToBytes, bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
 
 const dsha = (b) => sha256(sha256(b));
 const hash160 = (b) => ripemd160(sha256(b));
@@ -78,16 +78,28 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
 // Spend (sweep) a single P2PK output to a destination scriptPubKey, minus fee.
 // P2PK is pre-SegWit: scriptSig is just <push signature>, and the legacy sighash
 // uses the prevout's P2PK script as scriptCode. @noble ECDSA (low-S).
-export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, feeRate = 2 }) {
+// Optional `message` adds an OP_RETURN output — writing a note while spending
+// Satoshi's own script type, the closest thing to the genesis headline.
+export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, feeRate = 2, message = null }) {
   const value = BigInt(utxo.value);
-  const estSize = 4 + 1 + (32 + 4 + 1 + 73 + 4) + 1 + (8 + 1 + destScript.length) + 4; // 1-in 1-out legacy
+  let orScript = null;
+  if (message != null && String(message).length) {
+    const data = utf8ToBytes(String(message));
+    if (data.length > 80) throw new Error(`OP_RETURN message is ${data.length} bytes (> 80)`);
+    orScript = concatBytes(Uint8Array.of(0x6a), data.length <= 75 ? Uint8Array.of(data.length) : Uint8Array.of(0x4c, data.length), data);
+  }
+  const orSize = orScript ? 8 + 1 + orScript.length : 0;
+  const estSize = 4 + 1 + (32 + 4 + 1 + 73 + 4) + 1 + (8 + 1 + destScript.length) + orSize + 4;
   const fee = BigInt(Math.ceil(feeRate * estSize));
   const sent = value - fee;
   if (sent <= 0n) throw new Error(`P2PK balance ${value} too small to cover the fee (${fee})`);
+  const outs = [concatBytes(u64(sent), withLen(destScript))];
+  if (orScript) outs.push(concatBytes(u64(0), withLen(orScript)));
+  const outsSer = concatBytes(varint(outs.length), ...outs);
   const nSeq = hexToBytes('ffffffff');
   const body = (scriptSigField) => concatBytes(
     u32(2), varint(1), revTxid(utxo.txid), u32(utxo.vout), scriptSigField, nSeq,
-    varint(1), u64(sent), withLen(destScript), u32(0),
+    outsSer, u32(0),
   );
   // legacy sighash: input's scriptSig slot holds the prevout (P2PK) script, then SIGHASH_ALL
   const preimage = concatBytes(body(withLen(p2pkScriptBytes)), u32(1));
@@ -95,5 +107,5 @@ export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, fee
   const sigFull = concatBytes(sig, Uint8Array.of(0x01));           // + SIGHASH_ALL
   const scriptSig = concatBytes(Uint8Array.of(sigFull.length), sigFull); // OP_PUSH(sig)
   const full = body(withLen(scriptSig));
-  return { txHex: bytesToHex(full), txid: bytesToHex(dsha(full).slice().reverse()), fee: Number(fee), sent: Number(sent) };
+  return { txHex: bytesToHex(full), txid: bytesToHex(dsha(full).slice().reverse()), fee: Number(fee), sent: Number(sent), message: message || null };
 }

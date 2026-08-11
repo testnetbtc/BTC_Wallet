@@ -30,13 +30,14 @@ function buildInput(u, w) {
 
 // Sweep: send the ENTIRE spendable balance (all UTXOs) to one address, minus fee.
 // No change output — the recipient receives total-fee. Validates the destination.
-export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName }) {
+export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, message = null }) {
   const n = net(networkName);
   if (!utxos?.length) throw new Error('no UTXOs to sweep');
   btc.Address(n.btc).decode(toAddress); // throws on an invalid/wrong-network address
   const inputs = utxos.map((u) => buildInput(u, key));
-  // Empty outputs + changeAddress = destination => everything (minus fee) goes there.
-  const sel = btc.selectUTXO(inputs, [], 'all', {
+  // OP_RETURN rides along if given; changeAddress = destination => rest goes there.
+  const outs = message != null && String(message).length ? [{ script: opReturnScript(message), amount: 0n }] : [];
+  const sel = btc.selectUTXO(inputs, outs, 'all', {
     changeAddress: toAddress, feePerByte: BigInt(feeRate), network: n.btc,
     createTx: true, dust: 546n, allowUnknownOutputs: true,
   });

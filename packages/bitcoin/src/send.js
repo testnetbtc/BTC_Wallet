@@ -71,12 +71,12 @@ export async function prepareAndSend(opts) {
 }
 
 export async function prepareSweep(opts) {
-  const { source, mnemonic, network, scriptType = 'p2wpkh', toAddress, index = 0, passphrase = '' } = opts;
+  const { source, mnemonic, network, scriptType = 'p2wpkh', toAddress, index = 0, passphrase = '', message = null } = opts;
   const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
   if (w.watchOnly || !w.address) throw new Error('cannot sweep from this source/type');
   const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
   const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
-  const built = buildSweepTx({ utxos: spendable, key: w, toAddress, feeRate, networkName: network });
+  const built = buildSweepTx({ utxos: spendable, key: w, toAddress, feeRate, networkName: network, message });
   const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
   return { from: w.address, to: toAddress, ...built, feeRate, broadcast: !!opts.broadcast, broadcastTxid,
            explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null };
@@ -123,14 +123,14 @@ export async function importP2PK({ source, network, txid, vout = 0, passphrase =
 }
 
 // Sweep one tracked P2PK output to any address (hand-rolled legacy spend).
-export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false, passphrase = '' }) {
+export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false, passphrase = '', message = null }) {
   const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
   const tx = await getTx(outpoint.txid, network);
   const vout = tx.vout[outpoint.vout];
   if (!vout) throw new Error('P2PK output not found on chain');
   if ((await getOutspend(outpoint.txid, outpoint.vout, network))?.spent) throw new Error('this P2PK coin was already spent');
   const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
-  const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate) });
+  const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
   const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
   return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }

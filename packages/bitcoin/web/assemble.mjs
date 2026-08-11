@@ -402,6 +402,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <div class="field"><input id="p2pk_import" placeholder="txid  (or txid:vout)" autocomplete="off" spellcheck="false"><button type="button" id="p2pk_importbtn" class="sec">Add</button></div>
     <label style="margin-top:12px">Spend a P2PK coin out</label>
     <div class="field"><input id="p2pk_to" placeholder="destination address" autocomplete="off"><button type="button" class="sec paste" data-paste="p2pk_to">Paste</button></div>
+    <input id="p2pk_msg" placeholder="optional OP_RETURN message (≤80 bytes)" autocomplete="off" style="margin-top:6px">
+    <p class="hint" style="margin:2px 0 0">✨ A message spent <i>from Satoshi's own script type</i> — the closest thing to the genesis-block headline.</p>
     <div id="p2pk_result" class="mono"></div>
   </div>
   </div>
@@ -414,7 +416,14 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <p class="sub">From <b id="send_from" style="color:var(--text)">—</b> · <span id="send_bal">—</span></p>
   <div id="send_wo" class="warn" style="display:none">Watch-only: this wallet can't sign. Build an unsigned PSBT in <b>Settings → Air-gap tools</b>, sign it offline, broadcast it there.</div>
   <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK account and use <b>Spend a P2PK coin out</b>.</div>
-  <div class="card">
+  <div class="card" style="padding:10px 14px">
+    <label style="margin:0 0 8px;font-size:13px;color:var(--muted)">What do you want to do?</label>
+    <div class="feeps" id="send_mode">
+      <button type="button" class="feep active" data-mode="pay">💸 Pay someone</button>
+      <button type="button" class="feep" data-mode="msg">✍️ Just write a message</button>
+    </div>
+  </div>
+  <div class="card" id="send_pay">
     <label style="margin-top:0">To</label>
     <div class="field"><input id="to" placeholder="destination address" autocomplete="off" spellcheck="false"><button type="button" class="sec paste" data-paste="to">Paste</button></div>
     <label>Amount (sats) <span class="help" data-target="tip_send">?</span></label>
