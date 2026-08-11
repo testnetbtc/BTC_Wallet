@@ -272,7 +272,6 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <p class="netlabel">Network<span class="ldot">.</span></p>
   <div id="netpills" class="netpills"></div>
   <select id="net" style="display:none"></select>
-  <div id="mainwarn" class="warn" style="margin:12px 0 0;display:none"></div>
 
   <button id="w_create" style="width:100%;font-size:15.5px;padding:15px;margin-top:18px">＋ Create a new wallet</button>
   <button id="w_import" class="sec" style="width:100%;margin-top:8px;font-size:15px;padding:14px">↓ Import an existing wallet</button>

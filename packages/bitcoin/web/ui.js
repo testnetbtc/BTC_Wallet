@@ -183,8 +183,6 @@
     if (network === 'mainnet') { c.className = 'practice main'; c.textContent = '⚠ REAL bitcoin — small amounts only'; }
     else { c.className = 'practice'; c.textContent = `Practice mode — ${NETLABEL[network] || network} coins have no value`; }
     $('#bal_unit').textContent = unit();
-    $('#mainwarn').style.display = network === 'mainnet' ? 'block' : 'none';
-    $('#mainwarn').textContent = '⚠ Mainnet — REAL bitcoin. A seed opens as a hot wallet (keep amounts small); an xpub opens watch-only. For meaningful funds use the cold generator + air-gap tools.';
   }
   function setNetwork(n) {
     network = n; $('#net').value = n; $('#set_net').value = n; updateChips();
