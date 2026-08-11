@@ -6,6 +6,7 @@ import { deriveScript } from './scripts.js';
 import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast, getTx, getOutspend } from './esplora.js';
 import { buildSignedTx, buildSweepTx } from './tx.js';
 import { buildFundP2PK, buildSpendP2PK } from './p2pk_fund.js';
+import { wifKey, wifAddresses } from './wif.js';
 import { watchOnly, buildUnsignedPSBT, signPSBTOffline, extractTx } from './psbt.js';
 import { net } from './networks.js';
 
@@ -133,6 +134,42 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
   const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
   const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
   return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+}
+
+// ---- single private key (WIF): inspect all formats, sweep any funded one ----
+export async function inspectWIF({ wif, network }) {
+  const rows = wifAddresses(wif, network);
+  return Promise.all(rows.map(async (r) => {
+    const loc = r.address ? r.address : { scripthash: r.scripthash };
+    try {
+      const [balance, utxos] = await Promise.all([getBalance(loc, network), getUTXOs(loc, network)]);
+      return { ...r, balance, utxos: utxos.length };
+    } catch (e) { return { ...r, balance: { confirmed: 0, pending: 0 }, utxos: 0, error: e.message }; }
+  }));
+}
+
+export async function sweepWIF({ wif, network, scriptType, toAddress, message = null, broadcast: doBroadcast = false }) {
+  const key = wifKey(wif, network, scriptType);
+  const loc = key.address ? key.address : { scripthash: key.scripthash };
+  const utxos = await getUTXOs(loc, network);
+  if (!utxos.length) throw new Error('no coins at this address to sweep');
+  if (scriptType === 'p2pk') {
+    // bare-pubkey UTXOs use the hand-rolled spender — one tx per UTXO
+    const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
+    const feeRate = await getFeeRate(network, 6);
+    const txids = []; let sent = 0;
+    for (const u of utxos) {
+      const built = buildSpendP2PK({ utxo: { txid: u.txid, vout: u.vout, value: u.value }, privKey: key.privKey, p2pkScriptBytes: key.spend.script, destScript, message, feeRate });
+      const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+      txids.push(txid); sent += built.sent;
+    }
+    return { txid: txids[0], txids, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
+  }
+  const withPrev = await attachPrevTxs(utxos, network, key);
+  const feeRate = await getFeeRate(network, 6);
+  const built = buildSweepTx({ utxos: withPrev, key, toAddress: (toAddress || '').trim(), feeRate, networkName: network, message });
+  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  return { txid, swept: built.swept, fee: built.fee, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
 // ---- air-gap PSBT flow (P2WPKH / xpub watch-only) ----

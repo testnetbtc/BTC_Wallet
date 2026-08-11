@@ -364,6 +364,19 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <button id="bkimport" class="sec" style="width:100%;margin-top:6px">Decrypt &amp; open</button>
     <p class="hint" id="bkinfo" style="margin:6px 0 0"></p>
   </div>
+
+  <div style="text-align:center;color:var(--faint);font-size:12px;margin:8px 0">— or —</div>
+  <div class="card">
+    <label style="margin-top:0">Inspect a single private key (WIF)</label>
+    <p class="hint">A private key is <b>one keypair</b> — not an HD wallet. That one key maps to the <b>same coins in every address format</b>. Paste a WIF to see them all, and sweep any that hold a balance. A lovely lesson in what an address really is.</p>
+    <div class="field"><input id="wif" placeholder="private key (WIF)" autocomplete="off" spellcheck="false"><button type="button" class="sec paste" data-paste="wif">Paste</button></div>
+    <button id="wifinspect" class="sec" style="width:100%">Inspect key</button>
+    <div id="wifout" style="margin-top:8px"></div>
+    <div id="wifswrow" style="display:none;margin-top:10px">
+      <label>Sweep destination</label>
+      <div class="field"><input id="wifto" placeholder="address to sweep the coins to" autocomplete="off" spellcheck="false"><button type="button" class="sec paste" data-paste="wifto">Paste</button></div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ HOME ============ -->

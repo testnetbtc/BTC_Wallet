@@ -10,6 +10,7 @@ import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
   fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
+  inspectWIF, sweepWIF,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { sealSeed, openSeed } from '../src/vault.js';
@@ -89,6 +90,11 @@ window.OW = {
 
   // import an encrypted backup .json exported by the cold generator (offline.olesia.io)
   importBackup: ({ json, password }) => decryptColdBackup(json, password),
+
+  // single private key (WIF): inspect every address format + sweep any funded one
+  wifInspect: ({ wif, network }) => inspectWIF({ wif: T(wif), network }),
+  wifSweep: ({ wif, network, scriptType, toAddress, message, broadcast = true }) =>
+    sweepWIF({ wif: T(wif), network, scriptType, toAddress: T(toAddress), message: message || null, broadcast }),
 
   // P2PK lab: fund a P2PK from the seed's SegWit balance, track outpoints, spend them out
   fundP2PK: ({ source, network, amount, feeRate, broadcast = true, passphrase = '' }) =>

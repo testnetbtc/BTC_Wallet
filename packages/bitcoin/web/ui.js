@@ -326,6 +326,56 @@
     } catch (e) { $('#bkinfo').className = 'hint bad'; $('#bkinfo').textContent = '✗ ' + e.message; }
   });
 
+  // --- WIF inspect & sweep (educational: one key -> every address format) ---
+  $('#wifinspect').addEventListener('click', async () => {
+    const wif = $('#wif').value.trim();
+    if (!wif) return toast('paste a private key (WIF) first', 'bad');
+    const out = $('#wifout'); out.textContent = 'Looking up every address format…';
+    try {
+      const rows = await window.OW.wifInspect({ wif, network });
+      out.textContent = ''; let anyFunded = false;
+      rows.forEach((r) => {
+        const total = r.balance.confirmed + r.balance.pending;
+        const funded = total > 0 && r.type !== 'p2pk';
+        if (funded) anyFunded = true;
+        const d = document.createElement('div'); d.style.cssText = 'padding:9px 0;border-top:1px solid var(--line-soft)';
+        const balTxt = r.type === 'p2pk' ? 'no address — explorers can’t show P2PK balances' : `${coins(total)} ${unit()}${total ? '' : ' (empty)'}`;
+        d.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--muted)">${SHORT[r.type]}</div>
+          <div class="mono" style="font-size:11px;color:var(--faint)">${r.address || '(bare public key)'}</div>
+          <div style="font-size:12.5px;margin-top:2px;color:${funded ? 'var(--mint)' : 'var(--text)'}">${balTxt}</div>`;
+        if (funded) {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Sweep this →'; b.style.marginTop = '6px';
+          b.addEventListener('click', () => sweepWif(r.type, b));
+          d.appendChild(b);
+        }
+        out.appendChild(d);
+      });
+      $('#wifswrow').style.display = anyFunded ? 'block' : 'none';
+      if (!anyFunded) { const p = document.createElement('p'); p.className = 'hint'; p.style.marginTop = '8px'; p.textContent = 'This key holds no balance in any spendable format. (P2PK balances are invisible to explorers by design.)'; out.appendChild(p); }
+    } catch (e) { out.textContent = ''; toast('✗ ' + e.message, 'bad'); }
+  });
+  async function sweepWif(type, btn) {
+    const to = $('#wifto').value.trim();
+    if (!to) return toast('enter a destination address to sweep to', 'bad');
+    btn.disabled = true;
+    try {
+      toast('Building…');
+      const dry = await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: false });
+      const px = await usdPrice();
+      const ok = await confirmSheet('Sweep this key?', [
+        ['To', to],
+        ['Amount', `${dry.swept.toLocaleString()} sat`, `${coins(dry.swept)} ${unit()}${px ? ' · ' + fmtUsd(dry.swept, px) : ''}`],
+        ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
+        ['From', SHORT[type] + ' (imported key) · ' + network],
+      ], 'Sweep');
+      if (!ok) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
+      toast('Sweeping…');
+      const s = await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: true });
+      const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${s.swept} sat — explorer ↗`;
+      btn.replaceWith(a); toast('✓ swept', 'ok');
+    } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
+  }
+
   function initWallet() {
     $('#lockbtn').style.display = 'inline-block';
     $('#vault_state').textContent = window.OW.vault.exists() ? 'saved encrypted on this device' : 'not saved — seed lives in this tab only';
