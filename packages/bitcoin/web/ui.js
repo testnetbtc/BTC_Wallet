@@ -1,136 +1,272 @@
+// Olesia app shell — Home · Accounts · Learn · Settings. All signing/derivation
+// lives in window.OW (entry.js); this file is pure UI state + wiring.
 (function () {
   const $ = (s) => document.querySelector(s);
-  const show = (el, msg, cls) => { el.textContent = msg; el.className = cls || ''; };
-  const fmt = (sats) => (sats / 1e8).toFixed(8) + ' tBTC (' + Number(sats).toLocaleString() + ' sat)';
-  let source = '', mode = '', network = 'testnet4', scriptType = 'p2wpkh'; // mode: 'full'|'watch'
+  const $$ = (s) => [...document.querySelectorAll(s)];
 
-  // populate networks (incl. mainnet)
-  window.OW.networks.forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = n; $('#net').appendChild(o); });
-  $('#net').value = 'testnet4';
-  $('#net').addEventListener('change', () => { network = $('#net').value; applyGating(); if (source) loadWallet(); });
+  // ---------- state ----------
+  let source = '', mode = '', network = 'testnet4', scriptType = 'p2wpkh';
+  let gen = 0;                 // stale-response guard
+  let hideBal = false, sweepMode = false, forgetArmed = false;
+  const balances = {};         // scriptType -> {confirmed, pending}
+  const TYPES = window.OW.scriptTypes();
+  const BADGE = { p2wpkh: 'bc1q', p2tr: 'bc1p', 'p2sh-p2wpkh': '3···', p2pkh: '1···', p2pk: 'pk' };
+  const SHORT = { p2wpkh: 'Native SegWit', p2tr: 'Taproot', 'p2sh-p2wpkh': 'Nested SegWit', p2pkh: 'Legacy', p2pk: 'P2PK' };
+  const ONELINE = {
+    p2wpkh: 'Cheapest fees · the modern default', p2tr: 'Schnorr signatures · better privacy',
+    'p2sh-p2wpkh': 'Wrapped · old-wallet compatible', p2pkh: 'The classic “1…” address',
+    p2pk: 'Satoshi’s original · no address at all',
+  };
+  const unit = () => (network === 'mainnet' ? 'BTC' : 'tBTC');
+  const coins = (sats) => (sats / 1e8).toFixed(8).replace(/0{3}$/, '');
+  const sum = (o) => Object.values(o).reduce((a, b) => a + (b?.confirmed || 0), 0);
 
-  // populate script types + show the explainer for the selected one
-  window.OW.scriptTypes().forEach((t) => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.label; $('#stype').appendChild(o); });
-  $('#stype').value = 'p2wpkh';
-  function showAbout() { const t = window.OW.scriptTypes().find((x) => x.id === scriptType); $('#stype_about').textContent = t ? t.about : ''; }
-  showAbout();
-  $('#stype').addEventListener('change', () => { scriptType = $('#stype').value; showAbout(); applyGating(); if (source) loadWallet(); });
+  // ---------- toast ----------
+  let toastT;
+  function toast(msg, cls) {
+    const t = $('#toast'); t.textContent = msg; t.className = cls || ''; t.style.display = 'block';
+    clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, cls === 'bad' ? 6000 : 3200);
+  }
 
-  // inline "?" tooltips + onboarding dismiss
+  // ---------- panes / nav ----------
+  function showPane(name) {
+    if (!source && ['home', 'accounts', 'account', 'send'].includes(name)) name = 'welcome';
+    $$('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
+    $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.nav === name));
+    window.scrollTo(0, 0);
+  }
+  $$('nav button').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
+  $('#back_accounts').addEventListener('click', () => showPane('accounts'));
+  $('#back_home').addEventListener('click', () => showPane('home'));
+
+  // ---------- global helpers: tooltips, copy, paste ----------
   document.addEventListener('click', (e) => {
     if (e.target.classList && e.target.classList.contains('help')) {
       const t = document.getElementById(e.target.dataset.target);
       if (t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
+      e.stopPropagation();
     }
   });
-  try { if (localStorage.getItem('olesia:onboard') === 'done' && $('#onboard')) $('#onboard').style.display = 'none'; } catch {}
-  if ($('#onboard_x')) $('#onboard_x').addEventListener('click', () => { $('#onboard').style.display = 'none'; try { localStorage.setItem('olesia:onboard', 'done'); } catch {} });
-
-  // tabs (Receive / Send / Advanced)
-  function showTab(name) {
-    ['recv', 'actions', 'airgap'].forEach((n) => { const el = $('#' + n); if (el) el.style.display = n === name ? 'block' : 'none'; });
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
-  }
-  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
-
-  // fee presets. Auto ('') = the engine asks the network for an estimate — the
-  // safe default everywhere (a hardcoded low rate could stall a mainnet tx).
-  const setFeeActive = () => document.querySelectorAll('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
-  $('#fee').value = '';
-  document.querySelectorAll('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
-  $('#fee').addEventListener('input', setFeeActive);
-
-  // copy-to-clipboard buttons (data-copy = element id)
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('.copy'); if (!b || !b.dataset.copy) return;
-    const el = $('#' + b.dataset.copy); if (!el) return;
-    const text = ('value' in el) ? el.value : el.textContent;
-    if (!text) return;
+    const el = document.getElementById(b.dataset.copy); if (!el) return;
+    const text = ('value' in el) ? el.value : el.textContent; if (!text) return;
     navigator.clipboard.writeText(text).then(() => { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = o; }, 1200); }).catch(() => {});
   });
-
-  // paste-from-clipboard buttons (data-paste = element id) — mobile-friendly
   document.addEventListener('click', async (e) => {
     const b = e.target.closest && e.target.closest('.paste'); if (!b || !b.dataset.paste) return;
-    const el = $('#' + b.dataset.paste); if (!el) return;
+    const el = document.getElementById(b.dataset.paste); if (!el) return;
     try {
-      const t = await navigator.clipboard.readText();
-      if (!t) return;
+      const t = await navigator.clipboard.readText(); if (!t) return;
       el.value = t.trim(); el.dispatchEvent(new Event('input'));
       const o = b.textContent; b.textContent = 'Pasted ✓'; setTimeout(() => { b.textContent = o; }, 1200);
-    } catch { show($('#status'), "Couldn't read clipboard — paste manually (long-press the field)", 'bad'); }
+    } catch { toast("Couldn't read clipboard — long-press the field to paste manually", 'bad'); }
   });
+
+  // ---------- network ----------
+  window.OW.networks.forEach((n) => {
+    for (const sel of [$('#net'), $('#set_net')]) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
+  });
+  $('#net').value = network; $('#set_net').value = network;
+  function updateChips() {
+    $('#netname').textContent = network;
+    $('#netchip').classList.toggle('main', network === 'mainnet');
+    const c = $('#chip_net');
+    if (network === 'mainnet') { c.className = 'practice main'; c.textContent = '⚠ REAL bitcoin — small amounts only'; }
+    else { c.className = 'practice'; c.textContent = `Practice mode — ${network} coins have no value`; }
+    $('#bal_unit').textContent = unit();
+    $('#mainwarn').style.display = network === 'mainnet' ? 'block' : 'none';
+    $('#mainwarn').textContent = '⚠ Mainnet — REAL bitcoin. A seed opens as a hot wallet (keep amounts small); an xpub opens watch-only. For meaningful funds use the cold generator + air-gap tools.';
+  }
+  function setNetwork(n) {
+    network = n; $('#net').value = n; $('#set_net').value = n; updateChips();
+    if (source) { Object.keys(balances).forEach((k) => delete balances[k]); initWallet(); }
+  }
+  $('#net').addEventListener('change', () => setNetwork($('#net').value));
+  $('#set_net').addEventListener('change', () => setNetwork($('#set_net').value));
+  $('#netchip').addEventListener('click', () => showPane(source ? 'settings' : 'welcome'));
+  updateChips();
+
+  // ---------- welcome: generate / load ----------
   $('#gen').addEventListener('click', () => {
     $('#mnemonic').value = window.OW.generate();
-    show($('#status'), 'New 24-word seed generated. Write it down, then press Load.', 'hint');
+    toast('New 24-word seed generated. Write it on paper, then press Open wallet.');
   });
-
-  // stale-response guard: switching network/script type mid-fetch must not let
-  // an older response overwrite a newer one
-  let gen = 0;
-
-  $('#load').addEventListener('click', loadWallet);
-  $('#mnemonic').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); loadWallet(); } });
-  async function loadWallet() {
+  $('#load').addEventListener('click', loadFromInput);
+  $('#mnemonic').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); loadFromInput(); } });
+  function loadFromInput() {
     const s = $('#mnemonic').value.trim();
     if (window.OW.validate(s)) mode = 'full';
     else if (window.OW.isXpub(s)) mode = 'watch';
-    else { show($('#status'), '✗ ' + window.OW.diagnose(s), 'bad'); return; }
-    source = s; network = $('#net').value;
-    // xpub watch-only supports P2WPKH only
-    if (mode === 'watch' && scriptType !== 'p2wpkh') { $('#stype').value = 'p2wpkh'; scriptType = 'p2wpkh'; showAbout(); }
-    const info = window.OW.info(source, network, scriptType);
-    show($('#addr'), info.address || ('P2PK — no address. scriptPubKey: ' + info.scriptHex), 'mono');
-    try { const q = $('#qr'); if (info.address) { q.src = await window.OW.qr(info.address); q.style.display = 'inline-block'; } else q.style.display = 'none'; } catch {}
-    $('#label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
-    show($('#mode'), (mode === 'full' ? 'full wallet (can sign)' : 'watch-only (xpub)') + ' · ' + scriptType, 'hint');
-    $('#expxpub').style.display = mode === 'full' ? 'inline-block' : 'none';
-    $('#xpubout').style.display = 'none'; $('#copyxpub').style.display = 'none';
-    $('#tabs').style.display = 'flex'; showTab('recv');
-    applyGating(); showP2PKLab();
-    if (mode === 'full') $('#vaultoffer').style.display = window.OW.vault.exists() ? 'none' : 'block';
-    show($('#status'), 'Loaded. Fetching…', 'hint');
-    await refreshStatus(); await refreshHistory();
+    else return toast('✗ ' + window.OW.diagnose(s), 'bad');
+    source = s; scriptType = 'p2wpkh';
+    $('#mnemonic').value = '';
+    initWallet();
   }
 
-  function applyGating() {
-    const isMain = network === 'mainnet';
-    $('#mainwarn').style.display = isMain ? 'block' : 'none';
-    const p2pk = scriptType === 'p2pk';
-    const hot = mode === 'full' && !p2pk;  // seed => hot send/sweep; P2PK is receive-only for now
-    [['#send', hot], ['#dryrun', hot], ['#sweep', hot], ['#sweepdry', hot],
-     ['#signbtn', mode === 'full']].forEach(([id, on]) => { const el = $(id); if (el) el.disabled = !on; });
-    if (isMain) {
-      $('#mainwarn').textContent =
-        mode === 'full' ? '⚠ Mainnet HOT WALLET — REAL bitcoin. Your seed is in this browser tab (never stored, never sent); Send/Sweep broadcast immediately via your own node. Keep only small amounts you would accept losing. For larger sums, load an xpub (watch-only) and use the offline air-gap tools below.'
-        : mode === 'watch' ? '⚠ Mainnet, watch-only (xpub) — build an unsigned PSBT below, sign it offline, then broadcast the signed PSBT here.'
-        : '⚠ Mainnet — REAL bitcoin. Paste a 12- or 24-word seed and press Load to use it as a hot wallet (keep amounts small), or an xpub for watch-only.';
+  function initWallet() {
+    $('#lockbtn').style.display = 'inline-block';
+    $('#vault_state').textContent = window.OW.vault.exists() ? 'saved encrypted on this device' : 'not saved — seed lives in this tab only';
+    $('#acct_watchnote').style.display = mode === 'watch' ? 'block' : 'none';
+    renderAccountRows();
+    showPane('home');
+    toast(mode === 'watch' ? 'Watch-only wallet opened (xpub).' : '✓ Wallet open', 'ok');
+    refreshAll();
+  }
+
+  function lock() { location.reload(); } // hard reset clears the seed from memory
+  $('#lockbtn').addEventListener('click', lock);
+  $('#set_lock').addEventListener('click', lock);
+
+  // ---------- balances / accounts ----------
+  const typesFor = () => (mode === 'watch' ? TYPES.filter((t) => t.id === 'p2wpkh') : TYPES);
+
+  async function refreshAll() {
+    const g = ++gen;
+    const jobs = typesFor().map(async (t) => {
+      try {
+        if (t.id === 'p2pk') {
+          const list = p2pkLoad();
+          if (!list.length) { balances.p2pk = { confirmed: 0, pending: 0 }; return; }
+          const ann = await window.OW.p2pkStatus({ network, outpoints: list });
+          const live = ann.filter((o) => !o.spent && !o.error);
+          balances.p2pk = { confirmed: live.filter((o) => o.confirmed).reduce((a, o) => a + o.value, 0),
+                            pending: live.filter((o) => !o.confirmed).reduce((a, o) => a + o.value, 0) };
+        } else {
+          const st = await window.OW.status(source, network, t.id);
+          balances[t.id] = st.balance;
+        }
+      } catch { balances[t.id] = balances[t.id] || null; }
+    });
+    await Promise.allSettled(jobs);
+    if (g !== gen) return;
+    renderAccountRows(); renderTotal();
+    refreshHomeActivity(g);
+  }
+  function renderTotal() {
+    const total = sum(balances);
+    const pend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
+    $('#bal_total').innerHTML = (hideBal ? '••••' : coins(total)) + `<span class="u">${unit()}</span>`;
+    $('#bal_sub').textContent = `across ${typesFor().length} accounts · ${network}` + (pend ? ` · ${hideBal ? '•' : coins(pend)} pending` : '');
+  }
+  $('#bal_eye').addEventListener('click', () => { hideBal = !hideBal; renderTotal(); renderAccountRows(); });
+
+  function acctRow(t) {
+    const b = balances[t.id];
+    const row = document.createElement('div'); row.className = 'acct';
+    row.innerHTML = `<span class="badge b-${t.id}">${BADGE[t.id]}</span>
+      <span class="meta"><span class="name">${SHORT[t.id]}${t.id === 'p2pk' ? ' <span class="tag">museum</span>' : ''}</span>
+      <span class="d">${ONELINE[t.id]}</span></span>
+      <span class="amt"><b>${b == null ? '…' : hideBal ? '••' : coins(b.confirmed)}</b><span>${unit()}</span></span>`;
+    row.addEventListener('click', () => openAccount(t.id));
+    return row;
+  }
+  function renderAccountRows() {
+    const list = $('#acct_list'); list.textContent = '';
+    typesFor().forEach((t) => list.appendChild(acctRow(t)));
+    const home = $('#home_accounts'); home.textContent = '';
+    const top = [...typesFor()].sort((a, b2) => (balances[b2.id]?.confirmed || 0) - (balances[a.id]?.confirmed || 0)).slice(0, 2);
+    top.forEach((t) => home.appendChild(acctRow(t)));
+  }
+  $('#home_seeall').addEventListener('click', () => showPane('accounts'));
+
+  async function refreshHomeActivity(g) {
+    try {
+      const txs = await window.OW.history(source, network, 'p2wpkh');
+      if (g !== gen) return;
+      const box = $('#home_activity'); box.textContent = '';
+      if (!txs.length) { box.innerHTML = '<div class="hint" style="padding:8px 0">No transactions yet — get coins from the faucet to start.</div>'; return; }
+      const base = window.OW.explorer(network);
+      txs.slice(0, 5).forEach((t) => {
+        const d = document.createElement('div'); d.className = 'tx';
+        const dir = t.net >= 0;
+        d.innerHTML = `<span>${dir ? '↓' : '↑'}</span><span>${dir ? 'Received' : 'Sent'} <a href="${base}${t.txid}" target="_blank" rel="noopener">${t.confirmed ? 'confirmed' : 'pending'} ↗</a></span>
+          <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--bad)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
+        box.appendChild(d);
+      });
+    } catch { /* home activity is best-effort */ }
+  }
+  $('#home_refresh').addEventListener('click', () => refreshAll());
+
+  // quick actions
+  $('#qa_recv').addEventListener('click', () => showPane('accounts'));
+  $('#qa_send').addEventListener('click', () => openSend(scriptType === 'p2pk' ? 'p2wpkh' : scriptType));
+  $('#qa_faucet').addEventListener('click', () => window.open('https://olesia.io/faucet/', '_blank', 'noopener'));
+  $('#qa_learn').addEventListener('click', () => showPane('learn'));
+  $('#nudge_learn').addEventListener('click', () => showPane('learn'));
+
+  // ---------- account detail ----------
+  async function openAccount(type) {
+    scriptType = type;
+    const t = TYPES.find((x) => x.id === type);
+    $('#acc_title').textContent = SHORT[type];
+    $('#acc_about').textContent = t.about;
+    $('#lab').style.display = type === 'p2pk' && mode === 'full' ? 'block' : 'none';
+    $('#acc_label').parentElement && ($('#acc_label').disabled = type === 'p2pk');
+    try {
+      const info = window.OW.info(source, network, type);
+      $('#acc_addr').textContent = info.address || ('P2PK — no address. scriptPubKey: ' + info.scriptHex);
+      const q = $('#acc_qr');
+      if (info.address) { q.src = await window.OW.qr(info.address); q.style.display = 'block'; } else q.style.display = 'none';
+      $('#acc_label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
+      $('#acc_recvhint').style.display = type === 'p2pk' ? 'none' : 'block';
+    } catch (e) { toast('✗ ' + e.message, 'bad'); return; }
+    showPane('account');
+    refreshAccount();
+    if (type === 'p2pk') refreshLab();
+  }
+  $('#acc_label').addEventListener('input', () => {
+    if (!source || scriptType === 'p2pk') return;
+    try { const a = window.OW.info(source, network, scriptType).address; if (a) localStorage.setItem('olesia:label:' + a, $('#acc_label').value); } catch {}
+  });
+  $('#acc_refresh').addEventListener('click', refreshAccount);
+  async function refreshAccount() {
+    const g = ++gen;
+    if (scriptType === 'p2pk') {
+      $('#acc_bal').textContent = 'Tracked below — explorers can’t index P2PK, so Olesia follows the exact coins it created.';
+      $('#acc_utxos').textContent = ''; $('#acc_hist').textContent = '(see “Your P2PK coins”)';
+      return;
     }
-    $('#hotnote').textContent =
-      p2pk ? 'P2PK has no address — use the 🧪 P2PK Lab below to fund it from your SegWit balance and spend it back out.'
-      : hot ? (isMain ? '⚠ mainnet hot wallet — real BTC, small amounts only' : '')
-      : (mode === 'watch' ? 'Watch-only: no seed loaded — build an unsigned PSBT, sign it elsewhere.' : '');
+    try {
+      const st = await window.OW.status(source, network, scriptType);
+      if (g !== gen) return;
+      balances[scriptType] = st.balance;
+      $('#acc_bal').textContent = `${coins(st.balance.confirmed)} ${unit()} confirmed` + (st.balance.pending ? ` · ${coins(st.balance.pending)} pending` : '');
+      $('#acc_utxos').textContent = st.utxos.length ? st.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
+      renderTotal(); renderAccountRows();
+    } catch (e) { if (g === gen) toast('✗ ' + e.message, 'bad'); }
+    try {
+      const txs = await window.OW.history(source, network, scriptType);
+      if (g !== gen) return;
+      const h = $('#acc_hist'); h.textContent = '';
+      if (!txs.length) { h.textContent = '(no transactions yet)'; return; }
+      const base = window.OW.explorer(network);
+      txs.forEach((t) => {
+        const row = document.createElement('div'); row.style.margin = '3px 0';
+        row.style.color = t.net >= 0 ? 'var(--mint)' : 'var(--bad)';
+        row.append(`${t.confirmed ? '✓' : '⧗'} ${t.net >= 0 ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat  `);
+        const a = document.createElement('a'); a.href = base + t.txid; a.target = '_blank'; a.rel = 'noopener'; a.textContent = t.txid.slice(0, 10) + '… ↗';
+        row.appendChild(a); h.appendChild(row);
+      });
+    } catch { /* history best-effort */ }
   }
+  $('#acc_sendbtn').addEventListener('click', () => {
+    if (scriptType === 'p2pk') return toast('P2PK spends from its Lab below — use “Spend a P2PK coin out”.');
+    openSend(scriptType);
+  });
 
-  // --- P2PK lab: fund a P2PK from the SegWit balance, track outpoints locally, spend them ---
-  let p2pkScriptHex = '';
-  const p2pkKey = () => `olesia:p2pk:${network}:${p2pkScriptHex}`;
+  // ---------- P2PK lab ----------
+  const p2pkKey = () => { try { return `olesia:p2pk:${network}:${window.OW.info(source, network, 'p2pk').scriptHex}`; } catch { return `olesia:p2pk:${network}:x`; } };
   const p2pkLoad = () => { try { return JSON.parse(localStorage.getItem(p2pkKey()) || '[]'); } catch { return []; } };
-  const p2pkStore = (list) => { try { localStorage.setItem(p2pkKey(), JSON.stringify(list)); } catch {} };
-
-  async function showP2PKLab() {
-    const on = scriptType === 'p2pk' && mode === 'full';
-    $('#p2pklab').style.display = on ? 'block' : 'none';
-    if (!on) return;
-    p2pkScriptHex = window.OW.info(source, network, 'p2pk').scriptHex || '';
+  const p2pkStore = (l) => { try { localStorage.setItem(p2pkKey(), JSON.stringify(l)); } catch {} };
+  async function refreshLab() {
     try {
       const st = await window.OW.status(source, network, 'p2wpkh');
-      const bal = st.balance.confirmed;
-      $('#p2pk_srcbal').textContent = 'SegWit balance available to move: ' + fmt(bal);
-      $('#p2pk_need').style.display = bal <= 0 ? 'block' : 'none';
-      $('#p2pk_fundbtn').disabled = bal <= 0;
+      $('#p2pk_srcbal').textContent = `SegWit balance available to move: ${coins(st.balance.confirmed)} ${unit()}`;
+      $('#p2pk_need').style.display = st.balance.confirmed <= 0 ? 'block' : 'none';
+      $('#p2pk_fundbtn').disabled = st.balance.confirmed <= 0;
     } catch (e) { $('#p2pk_srcbal').textContent = '✗ ' + e.message; }
-    await refreshP2PKList();
+    refreshP2PKList();
   }
   async function refreshP2PKList() {
     const list = p2pkLoad(); const el = $('#p2pk_list');
@@ -139,14 +275,14 @@
     let ann; try { ann = await window.OW.p2pkStatus({ network, outpoints: list }); } catch { ann = list.map((o) => ({ ...o, value: o.amount, error: 'status failed' })); }
     el.textContent = '';
     ann.forEach((o) => {
-      const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-top:1px solid #2b333c';
+      const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-top:1px solid var(--line-soft)';
       const state = o.error ? '⚠ ' + o.error : o.spent ? 'spent' : (o.confirmed ? '✓ confirmed' : '⧗ pending');
-      const head = document.createElement('div'); head.className = 'mono'; head.style.color = o.spent ? '#9aa7b4' : '#e6edf3';
-      head.textContent = `${(o.value / 1e8).toFixed(8)} tBTC · ${state} · ${o.txid.slice(0, 12)}…:${o.vout}`;
+      const head = document.createElement('div'); head.className = 'mono'; head.style.color = o.spent ? 'var(--faint)' : 'var(--text)';
+      head.textContent = `${(o.value / 1e8).toFixed(8)} · ${state} · ${o.txid.slice(0, 12)}…:${o.vout}`;
       row.appendChild(head);
       if (!o.spent && !o.error) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Spend this →'; b.style.marginTop = '6px';
-        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout, amount: o.value }, b));
+        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout }, b));
         row.appendChild(b);
       }
       el.appendChild(row);
@@ -154,178 +290,233 @@
   }
   async function spendOneP2PK(outpoint, btn) {
     const to = $('#p2pk_to').value.trim();
-    if (!to) return show($('#status'), 'enter a destination address to spend the P2PK coin to', 'bad');
-    btn.disabled = true; show($('#status'), 'Spending P2PK…', 'hint');
+    if (!to) return toast('enter a destination address first', 'bad');
+    btn.disabled = true; toast('Spending P2PK…');
     try {
       const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: true });
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
       res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
       const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
-      show($('#status'), '✓ P2PK spent', 'ok'); setTimeout(refreshP2PKList, 1500);
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); btn.disabled = false; }
+      toast('✓ P2PK spent', 'ok'); setTimeout(refreshP2PKList, 1500);
+    } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
   $('#p2pk_fundbtn').addEventListener('click', async () => {
     const amt = Number($('#p2pk_amt').value);
-    if (!(amt > 0)) return show($('#status'), 'enter an amount (sats) to move into P2PK', 'bad');
-    $('#p2pk_fundbtn').disabled = true; show($('#status'), 'Funding P2PK…', 'hint');
+    if (!(amt > 0)) return toast('enter an amount (sats) to move into P2PK', 'bad');
+    $('#p2pk_fundbtn').disabled = true; toast('Funding P2PK…');
     try {
       const r = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: true });
       const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount }); p2pkStore(list);
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
       res.textContent = `✓ moved ${r.amount} sat into P2PK (fee ${r.fee})  `;
       const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
-      show($('#status'), '✓ P2PK funded', 'ok'); $('#p2pk_amt').value = ''; setTimeout(showP2PKLab, 1500);
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
+      toast('✓ P2PK funded', 'ok'); $('#p2pk_amt').value = ''; setTimeout(refreshLab, 1500);
+    } catch (e) { toast('✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
   });
   $('#p2pk_refresh').addEventListener('click', refreshP2PKList);
   $('#p2pk_import').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#p2pk_importbtn').click(); });
   $('#p2pk_importbtn').addEventListener('click', async () => {
     const raw = $('#p2pk_import').value.trim();
-    if (!raw) return show($('#status'), 'paste the funding txid to recover a P2PK coin', 'bad');
+    if (!raw) return toast('paste the funding txid to recover a coin', 'bad');
     const [txid, voutStr] = raw.split(':'); const vout = Number(voutStr) || 0;
-    show($('#status'), 'Looking up…', 'hint');
+    toast('Looking up…');
     try {
       const o = await window.OW.p2pkImport({ source, network, txid: txid.trim(), vout });
       const list = p2pkLoad();
-      if (list.some((x) => x.txid === o.txid && x.vout === o.vout)) show($('#status'), 'already tracked', 'hint');
-      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount }); p2pkStore(list); show($('#status'), '✓ P2PK coin recovered', 'ok'); }
-      $('#p2pk_import').value = ''; await refreshP2PKList();
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+      if (list.some((x) => x.txid === o.txid && x.vout === o.vout)) toast('already tracked');
+      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount }); p2pkStore(list); toast('✓ P2PK coin recovered', 'ok'); }
+      $('#p2pk_import').value = ''; refreshP2PKList();
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
 
-  $('#expxpub').addEventListener('click', () => {
-    try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; $('#copyxpub').style.display = 'inline-block'; }
-    catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
-  });
-  // labels key off the real address only (P2PK has none — its #addr text is a script dump)
-  $('#label').addEventListener('input', () => {
-    if (!source || scriptType === 'p2pk') return;
-    try { const a = window.OW.info(source, network, scriptType).address; if (a) localStorage.setItem('olesia:label:' + a, $('#label').value); } catch {}
-  });
-
-  $('#refresh').addEventListener('click', async () => { await refreshStatus(); await refreshHistory(); });
-  async function refreshStatus() {
-    const g = ++gen;
-    try {
-      const st = await window.OW.status(source, network, scriptType);
-      if (g !== gen) return; // a newer request superseded this one
-      show($('#bal'), fmt(st.balance.confirmed) + ' confirmed' + (st.balance.pending ? '  ·  ' + fmt(st.balance.pending) + ' pending' : ''), 'mono');
-      $('#utxos').textContent = st.utxos.length ? st.utxos.map((u) => `${u.value} sat ${u.confirmed ? '✓' : 'pending'}`).join('   ·   ') : '(no UTXOs yet)';
-      show($('#status'), 'Balance updated.', 'ok');
-    } catch (e) { if (g === gen) show($('#status'), '✗ ' + e.message, 'bad'); }
+  // ---------- send ----------
+  let sendType = 'p2wpkh';
+  function openSend(fromType) {
+    sendType = fromType && fromType !== 'p2pk' ? fromType : 'p2wpkh';
+    if (mode === 'watch') sendType = 'p2wpkh';
+    $('#send_from').textContent = SHORT[sendType];
+    const b = balances[sendType];
+    $('#send_bal').textContent = b ? `${coins(b.confirmed)} ${unit()} available` : '…';
+    $('#send_wo').style.display = mode === 'watch' ? 'block' : 'none';
+    $('#send_p2pk').style.display = 'none';
+    const canHot = mode === 'full';
+    $('#send').disabled = !canHot; $('#dryrun').disabled = !canHot; $('#maxbtn').disabled = !canHot;
+    sweepMode = false; $('#sweepnote').style.display = 'none';
+    showPane('send');
   }
-  async function refreshHistory() {
-    const g = gen;
+  $('#maxbtn').addEventListener('click', () => {
+    sweepMode = true; $('#sweepnote').style.display = 'block';
+    const b = balances[sendType]; $('#amt').value = ''; $('#amt').placeholder = b ? `~${b.confirmed.toLocaleString()} sat minus fee` : 'everything minus fee';
+    toast('Sweep mode: everything (minus fee) goes to the destination.');
+  });
+  $('#amt').addEventListener('input', () => { if ($('#amt').value) { sweepMode = false; $('#sweepnote').style.display = 'none'; } });
+  // OP_RETURN explainer expand/collapse
+  $('#ormore').addEventListener('click', (e) => {
+    if (e.target.id === 'msg') return;
+    const open = $('#orbody').style.display !== 'block';
+    $('#orbody').style.display = open ? 'block' : 'none';
+    $('#orchev').textContent = open ? 'Hide ▴' : "What's this? ▾";
+  });
+  // fee presets — Auto ('') = engine asks the network for an estimate
+  const setFeeActive = () => $$('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
+  $('#fee').value = '';
+  $$('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
+  $('#fee').addEventListener('input', setFeeActive);
+
+  async function runSend(broadcast) {
     try {
-      const txs = await window.OW.history(source, network, scriptType);
-      if (g !== gen) return;
-      const h = $('#history'); h.textContent = '';
-      if (!txs.length) { h.textContent = '(no transactions yet)'; return; }
-      const base = window.OW.explorer(network);
-      for (const t of txs) {
-        const row = document.createElement('div'); row.style.margin = '3px 0';
-        row.style.color = t.net >= 0 ? '#7ee2a8' : '#ff9ca0';
-        row.appendChild(document.createTextNode(`${t.confirmed ? '✓' : '⧗ pending'}  ${t.net >= 0 ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat   `));
-        const a = document.createElement('a'); a.href = base + t.txid; a.target = '_blank'; a.rel = 'noopener'; a.textContent = t.txid.slice(0, 12) + '… ↗';
-        row.appendChild(a); h.appendChild(row);
+      toast(broadcast ? 'Broadcasting…' : 'Building…');
+      let res;
+      if (sweepMode) {
+        const to = $('#to').value.trim();
+        if (!to) return toast('enter a destination address', 'bad');
+        res = await window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: to, feeRate: $('#fee').value, broadcast });
+      } else {
+        res = await window.OW.send({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value, broadcast });
       }
-    } catch (e) { $('#history').textContent = '✗ ' + e.message; }
+      renderResult(res, broadcast);
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   }
-
-  const sendArgs = (broadcast) => ({ mnemonic: source, network, scriptType, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value, broadcast });
-  async function runSend(b) { try { show($('#status'), b ? 'Broadcasting…' : 'Building…', 'hint'); renderResult(await window.OW.send(sendArgs(b)), b); } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); } }
   $('#dryrun').addEventListener('click', () => runSend(false));
   $('#send').addEventListener('click', () => runSend(true));
-  async function runSweep(b) { try { if (!$('#sweepto').value.trim()) return show($('#status'), 'enter a sweep destination', 'bad'); show($('#status'), b ? 'Broadcasting sweep…' : 'Building sweep…', 'hint'); renderResult(await window.OW.sweep({ mnemonic: source, network, scriptType, toAddress: $('#sweepto').value, feeRate: $('#fee').value, broadcast: b }), b); } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); } }
-  $('#sweepdry').addEventListener('click', () => runSweep(false));
-  $('#sweep').addEventListener('click', () => runSweep(true));
-
   function renderResult(res, broadcast) {
-    const r = $('#result'); r.textContent = '';
+    const r = $('#result'); r.textContent = ''; r.className = 'mono';
     const line = (t) => { const d = document.createElement('div'); d.textContent = t; r.appendChild(d); };
     line(broadcast ? '✓ BROADCAST' : '· DRY RUN (nothing sent)');
-    const txidRow = document.createElement('div'); txidRow.textContent = 'txid: ' + res.txid;
+    const row = document.createElement('div'); row.textContent = 'txid: ' + res.txid;
     const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'sec copy'; cp.textContent = 'Copy'; cp.style.marginLeft = '8px';
-    cp.addEventListener('click', () => navigator.clipboard.writeText(res.txid).then(() => { cp.textContent = 'Copied ✓'; setTimeout(() => { cp.textContent = 'Copy'; }, 1200); }).catch(() => {}));
-    txidRow.appendChild(cp); r.appendChild(txidRow);
-    line('fee: ' + res.fee + ' sat  ·  vsize: ' + res.vsize + '  ·  ' + res.feeRate + ' sat/vB');
-    if (res.swept != null) line('sweeping ' + res.swept + ' sat → ' + res.to);
+    cp.addEventListener('click', () => navigator.clipboard.writeText(res.txid).then(() => { cp.textContent = '✓'; setTimeout(() => { cp.textContent = 'Copy'; }, 1200); }).catch(() => {}));
+    row.appendChild(cp); r.appendChild(row);
+    line(`fee: ${res.fee} sat · vsize: ${res.vsize} · ${res.feeRate} sat/vB`);
+    if (res.swept != null) line(`sweeping ${res.swept} sat → ${res.to}`);
     if (broadcast && res.explorer) { const a = document.createElement('a'); a.href = res.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'view on explorer ↗'; r.appendChild(a); }
     r.style.display = 'block';
-    show($('#status'), broadcast ? '✓ sent — see result' : 'built (dry run)', broadcast ? 'ok' : 'hint');
-    if (broadcast) setTimeout(async () => { await refreshStatus(); await refreshHistory(); }, 1500);
+    toast(broadcast ? '✓ sent' : 'built (dry run) — nothing broadcast', broadcast ? 'ok' : '');
+    if (broadcast) setTimeout(refreshAll, 1600);
   }
 
-  // --- encrypted on-device vault (unlock / save / forget) ---
-  if (window.OW.vault.exists()) $('#vaultcard').style.display = 'block';
-  async function unlockVault() {
-    const pin = $('#vpin').value;
-    if (!pin) return show($('#vmsg'), 'enter your PIN', 'bad');
-    show($('#vmsg'), 'Unlocking… (key stretching takes a moment)', 'hint');
-    // yield a frame so the message paints before scrypt blocks the thread
-    await new Promise((r) => setTimeout(r, 30));
-    try {
-      const m = window.OW.vault.open(pin);
-      $('#mnemonic').value = m; $('#vpin').value = '';
-      $('#vaultcard').style.display = 'none';
-      show($('#status'), '✓ unlocked', 'ok');
-      await loadWallet();
-    } catch (e) { show($('#vmsg'), '✗ ' + e.message, 'bad'); }
+  // ---------- learn ----------
+  const LESSONS = [
+    ['Entropy', 'A wallet is a very large secret number. If it’s <b>random enough</b>, nobody can ever guess it — there are more possible keys (2<sup>256</sup>) than atoms in the observable universe. Weak randomness is how early browser wallets were drained. Olesia draws entropy from your OS’s cryptographic generator.'],
+    ['The seed phrase', 'That number is encoded as <b>12 or 24 words</b> (BIP-39). The words <i>are</i> the wallet — no reset, no recovery without them. Write them on paper, in order. A photo in your camera roll is a photo in someone’s cloud.'],
+    ['Keys', 'From the seed come <b>private keys</b>; each has a <b>public key</b> made by one-way maths. You sign with the private key; anyone can verify with the public one. Olesia signs with RFC-6979 deterministic nonces — the classic nonce-reuse mistake is impossible by construction.'],
+    ['Addresses', 'An address is <b>a lock, not a place</b> — a friendly encoding of the rule “satisfy this script to spend”. Different script types are different locks, which is why one seed gives you five different addresses. Explore them in Accounts.'],
+    ['UTXOs', 'Bitcoin has no balance field. You own discrete chunks — <b>unspent transaction outputs</b> — like odd-denomination coins in a pocket. A payment consumes some coins and mints new ones: one to the recipient, change back to you.'],
+    ['Fees', 'Miners include transactions that pay them, priced in <b>sat/vB</b>. Busier network → higher rate to confirm fast. <b>Auto</b> in the Send screen asks the network for a live estimate; on testnets fees barely matter, so experiment freely.'],
+    ['Networks', '<b>Testnet3/4</b> and <b>Signet</b> share mainnet’s rules but use worthless coins — perfect for practice. <b>Mainnet</b> is real money. Every test network uses the same key maths, so what you learn here is the real thing, pointed at a playground.'],
+    ['Hot vs cold', 'A <b>hot</b> wallet keeps keys on a connected device — convenient, fine for small amounts. A <b>cold</b> wallet generates and signs offline, so keys never touch the internet. The one rule: real value belongs in cold storage — use the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a> and the air-gap tools.'],
+    ['Writing on-chain', 'OP_RETURN attaches a tiny permanent note to a transaction — no coins, unspendable, forever public. Satoshi set the tone by writing a newspaper headline into the first block. People disagree about data on Bitcoin; Olesia is neutral — it’s part of the protocol, explained, for thoughtful use.'],
+  ];
+  const learnRead = () => { try { return new Set(JSON.parse(localStorage.getItem('olesia:learn') || '[]')); } catch { return new Set(); } };
+  function renderLearn() {
+    const read = learnRead(); const box = $('#lessons'); box.textContent = '';
+    LESSONS.forEach(([title, body], i) => {
+      const d = document.createElement('div'); d.className = 'lesson' + (read.has(i) ? ' done' : '');
+      d.innerHTML = `<button><span class="n">${String(i + 1).padStart(2, '0')}</span> ${title} <span class="chk">${read.has(i) ? '✓' : ''}</span></button><div class="body">${body}</div>`;
+      d.querySelector('button').addEventListener('click', () => {
+        d.classList.toggle('open');
+        if (d.classList.contains('open')) {
+          const r = learnRead(); r.add(i);
+          try { localStorage.setItem('olesia:learn', JSON.stringify([...r])); } catch {}
+          d.querySelector('.chk').textContent = '✓'; updateLearnProg();
+        }
+      });
+      box.appendChild(d);
+    });
+    updateLearnProg();
   }
-  $('#vunlock').addEventListener('click', unlockVault);
-  $('#vpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockVault(); });
-  let forgetArmed = false;
-  $('#vforget').addEventListener('click', () => {
-    if (!forgetArmed) { forgetArmed = true; $('#vforget').textContent = 'Really forget? Coins stay on-chain; you will need the 24 words to restore. Tap again to confirm.'; return; }
-    window.OW.vault.forget(); $('#vaultcard').style.display = 'none';
-    forgetArmed = false; $('#vforget').textContent = 'Forget saved wallet…';
-    show($('#status'), 'Saved wallet removed from this device.', 'hint');
-  });
-  $('#vsave').addEventListener('click', async () => {
-    const pin = $('#vsetpin').value;
-    if (!source || mode !== 'full') return show($('#status'), 'load a seed first', 'bad');
-    show($('#status'), 'Encrypting…', 'hint');
-    await new Promise((r) => setTimeout(r, 30));
+  function updateLearnProg() {
+    const n = learnRead().size;
+    $('#learn_bar').style.width = (n / LESSONS.length * 100) + '%';
+    $('#learn_progtext').textContent = `${n} of ${LESSONS.length}` + (n === LESSONS.length ? ' — all done 🎉' : '');
+  }
+  renderLearn();
+
+  // ---------- settings ----------
+  const tog = (id) => $(id).classList.toggle('on');
+  $('#set_xpub').addEventListener('click', () => {
     try {
-      window.OW.vault.save(source, pin);
-      $('#vsetpin').value = ''; $('#vaultoffer').style.display = 'none';
-      show($('#status'), '✓ saved encrypted — next visit, unlock with your PIN', 'ok');
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+      $('#set_xpub_out').textContent = mode === 'watch' ? source : window.OW.xpub(source, network);
+      tog('#xpub_body');
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
+  });
+  $('#set_vault').addEventListener('click', () => tog('#vault_body'));
+  $('#set_airgap').addEventListener('click', () => tog('#airgap_body'));
+  $('#vsave').addEventListener('click', async () => {
+    if (!source || mode !== 'full') return toast('open a wallet with a seed first', 'bad');
+    toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
+    try {
+      window.OW.vault.save(source, $('#vsetpin').value);
+      $('#vsetpin').value = ''; $('#vault_state').textContent = 'saved encrypted on this device';
+      toast('✓ saved — next visit, unlock with your PIN', 'ok');
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#vsetpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#vsave').click(); });
+  function wireForget(btn) {
+    btn.addEventListener('click', () => {
+      if (!forgetArmed) { forgetArmed = true; btn.textContent = 'Really forget? Coins stay on-chain; you need the words to restore. Tap again.'; return; }
+      window.OW.vault.forget(); forgetArmed = false;
+      btn.textContent = 'Forget saved wallet…';
+      $('#vault_state').textContent = 'not saved — seed lives in this tab only';
+      $('#unlock').classList.remove('on');
+      toast('Saved wallet removed from this device.');
+      if (!source) showPane('welcome');
+    });
+  }
+  wireForget($('#vforget')); wireForget($('#vforget2'));
 
-  // --- air-gap PSBT tools ---
+  // ---------- air-gap ----------
   $('#buildunsigned').addEventListener('click', async () => {
     try {
-      show($('#status'), 'Building unsigned PSBT…', 'hint');
+      toast('Building unsigned PSBT…');
       const u = await window.OW.buildUnsigned({ source, network, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value });
       $('#unsignedout').value = u.psbt;
-      show($('#agresult'), 'unsigned PSBT built — fee ' + u.fee + ' sat, ~' + u.vsize + ' vB. Copy it to your offline signer.', 'ok');
-      $('#agresult').style.display = 'block';
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+      const r = $('#agresult'); r.style.display = 'block'; r.className = 'mono ok';
+      r.textContent = `unsigned PSBT built — fee ${u.fee} sat, ~${u.vsize} vB. Copy it to your offline signer.`;
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#signbtn').addEventListener('click', () => {
     try {
-      if (mode !== 'full') return show($('#status'), 'signing needs the seed (load your 24 words)', 'bad');
-      if (network === 'mainnet' && navigator.onLine) show($('#status'), '⚠ signing a mainnet PSBT while ONLINE — for real funds, do this offline.', 'bad');
+      if (mode !== 'full') return toast('signing needs the seed', 'bad');
+      if (network === 'mainnet' && navigator.onLine) toast('⚠ signing a mainnet PSBT while ONLINE — for real funds, do this offline.', 'bad');
       const psbt = $('#signin').value.trim() || $('#unsignedout').value.trim();
-      if (!psbt) return show($('#status'), 'paste an unsigned PSBT to sign', 'bad');
+      if (!psbt) return toast('paste an unsigned PSBT to sign', 'bad');
       const s = window.OW.signPsbt({ psbt, mnemonic: source, network });
       $('#signedout').value = s.psbt;
-      show($('#agresult'), 'signed ✓  txid ' + s.txid + ' — copy the signed PSBT to broadcast (online).', 'ok');
-      $('#agresult').style.display = 'block';
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+      const r = $('#agresult'); r.style.display = 'block'; r.className = 'mono ok';
+      r.textContent = `signed ✓ txid ${s.txid} — copy the signed PSBT to broadcast.`;
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#bcbtn').addEventListener('click', async () => {
     try {
       const psbt = $('#bcin').value.trim() || $('#signedout').value.trim();
-      if (!psbt) return show($('#status'), 'paste a signed PSBT to broadcast', 'bad');
-      show($('#status'), 'Broadcasting…', 'hint');
+      if (!psbt) return toast('paste a signed PSBT to broadcast', 'bad');
+      toast('Broadcasting…');
       const res = await window.OW.broadcastPsbt({ psbt, network });
-      const r = $('#agresult'); r.textContent = '✓ broadcast — txid ' + res.txid + '  '; r.className = 'ok';
+      const r = $('#agresult'); r.style.display = 'block'; r.className = 'mono ok'; r.textContent = '✓ broadcast — txid ' + res.txid + '  ';
       const a = document.createElement('a'); a.href = res.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; r.appendChild(a);
-      r.style.display = 'block';
-      setTimeout(async () => { await refreshStatus(); await refreshHistory(); }, 1500);
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+      setTimeout(refreshAll, 1600);
+    } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
+
+  // ---------- vault unlock (startup) ----------
+  async function unlockVault() {
+    const pin = $('#vpin').value;
+    if (!pin) return ($('#vmsg').textContent = 'enter your PIN');
+    $('#vmsg').textContent = 'Unlocking… (key stretching takes a moment)';
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const m = window.OW.vault.open(pin);
+      $('#vpin').value = ''; $('#vmsg').textContent = '';
+      source = m; mode = 'full'; scriptType = 'p2wpkh';
+      $('#unlock').classList.remove('on');
+      initWallet();
+    } catch (e) { $('#vmsg').textContent = '✗ ' + e.message; }
+  }
+  $('#vunlock').addEventListener('click', unlockVault);
+  $('#vpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockVault(); });
+
+  // ---------- boot ----------
+  if (window.OW.vault.exists()) { $('#unlock').classList.add('on'); }
+  else showPane('welcome');
 })();
