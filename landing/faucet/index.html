@@ -61,8 +61,8 @@ and the coins arrive in a minute or two. New to all this? <a href="https://olesi
 
 <div class="card">
 <label style="margin-top:0">Prefer Nostr? 🟣</label>
-<p class="hint" style="margin:2px 0 10px">Our faucet bot lives on Nostr as <b style="color:#f0a020">faucet@olesia.io</b>. It sends coins when you <b>tag it</b> in a note. Two ways:</p>
-<p class="hint" style="margin:0 0 4px"><b style="color:#e6edf3">1. Mention it.</b> In your Nostr app, start a note, type <b>@</b>, search <b>faucet@olesia.io</b>, and pick it so it's tagged (it'll show highlighted). Then add the network + your address:</p>
+<p class="hint" style="margin:2px 0 10px">Our faucet bot lives on Nostr as <b class="nip05" style="color:#f0a020"></b>. It sends coins when you <b>tag it</b> in a note. Two ways:</p>
+<p class="hint" style="margin:0 0 4px"><b style="color:#e6edf3">1. Mention it.</b> In your Nostr app, start a note, type <b>@</b>, search <b class="nip05"></b>, and pick it so it's tagged (it'll show highlighted). Then add the network + your address:</p>
 <p class="mono" style="background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:11px;font-size:13px;margin:6px 0 12px"><span style="color:#f0a020">@faucet</span> testnet4 tb1q…</p>
 <p class="hint" style="margin:0 0 10px"><b style="color:#e6edf3">2. Or reply.</b> Open the bot's profile, tap any of its notes, and reply with <span class="mono">testnet4 tb1q…</span> — a reply tags it automatically.</p>
 <div style="background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:8px;padding:11px 13px;font-size:13px;margin:0 0 6px">⚠ A plain note that only <i>says</i> "testnet4 …" <b>without tagging the bot</b> won't work — the bot only sees notes that mention it (so it doesn't have to read all of Nostr).</div>
@@ -77,6 +77,8 @@ const API = 'https://faucet.olesia.io';
 const TURNSTILE_SITEKEY = '0x4AAAAAAEMwWUd3W9ng0TAN'; // Cloudflare Turnstile site key (public)
 const $ = (s) => document.querySelector(s);
 const sat = (n) => n == null ? '—' : (n/1e8).toFixed(3) + ' tBTC';
+// Render the NIP-05 handle from parts so Cloudflare email-obfuscation can't mangle it.
+document.querySelectorAll('.nip05').forEach((e) => { e.textContent = 'faucet' + '@' + 'olesia.io'; });
 
 // Optional Cloudflare Turnstile "are you human" check — off until a site key is set.
 let tsToken = '';
