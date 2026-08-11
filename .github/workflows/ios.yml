@@ -44,6 +44,10 @@ jobs:
         working-directory: mobile
         run: npm ci || npm install
 
+      - name: Install the wallet's build deps (so www/ is rebuilt from source)
+        working-directory: packages/bitcoin
+        run: npm install --no-audit --no-fund || true
+
       - name: Bundle the wallet into www/
         working-directory: mobile
         run: npm run prepare-www
