@@ -63,6 +63,59 @@
   $('#c_go').addEventListener('click', () => closeConfirm(true));
   $('#confirm').addEventListener('click', (e) => { if (e.target.id === 'confirm') closeConfirm(false); });
 
+  // ---------- set-a-PIN sheet (keypad, not the OS keyboard; choose + confirm) ----------
+  let pinResolve = null, psBuf = '', psFirst = null, psText = false;
+  const psMin = 6;
+  function psDots() {
+    const d = $('#ps_dots'); d.textContent = '';
+    const n = Math.max(psBuf.length, psMin);
+    for (let i = 0; i < n; i++) { const s = document.createElement('i'); if (i < psBuf.length) s.className = 'fill'; d.appendChild(s); }
+  }
+  function psTitle() {
+    $('#ps_title').textContent = psFirst == null ? 'Choose a PIN' : 'Confirm your PIN';
+    $('#ps_sub').textContent = psFirst == null ? `${psMin}+ digits — you'll enter this to unlock` : 'type it once more';
+  }
+  function askPin() {
+    return new Promise((res) => {
+      pinResolve = res; psBuf = ''; psFirst = null; psText = false;
+      $('#ps_text').value = ''; $('#ps_textrow').style.display = 'none';
+      $('#ps_pad').style.display = 'grid'; $('#ps_dots').style.display = 'flex'; $('#ps_abc').textContent = 'abc';
+      $('#ps_msg').textContent = ''; psTitle(); psDots();
+      $('#pinsheet').classList.add('on');
+    });
+  }
+  const psClose = (val) => { $('#pinsheet').classList.remove('on'); if (pinResolve) { pinResolve(val); pinResolve = null; } };
+  function psSubmit() {
+    const val = psText ? $('#ps_text').value : psBuf;
+    if (!val || val.length < psMin) { $('#ps_msg').textContent = `at least ${psMin} characters`; return; }
+    if (psFirst == null) { // move to confirm phase
+      psFirst = val; psBuf = ''; $('#ps_text').value = ''; $('#ps_msg').textContent = ''; psTitle(); psDots();
+    } else if (val === psFirst) { psClose(val); }
+    else { $('#ps_msg').textContent = "those didn't match — start again"; psFirst = null; psBuf = ''; $('#ps_text').value = ''; psTitle(); psDots(); }
+  }
+  $('#ps_pad').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
+    if (b.dataset.k === 'back') psBuf = psBuf.slice(0, -1); else if (psBuf.length < 12) psBuf += b.dataset.k;
+    $('#ps_msg').textContent = ''; psDots();
+  });
+  $('#ps_abc').addEventListener('click', () => {
+    psText = !psText;
+    $('#ps_abc').textContent = psText ? '123' : 'abc';
+    $('#ps_textrow').style.display = psText ? 'flex' : 'none';
+    $('#ps_pad').style.display = psText ? 'none' : 'grid';
+    $('#ps_dots').style.display = psText ? 'none' : 'flex';
+    psBuf = ''; psDots(); if (psText) $('#ps_text').focus();
+  });
+  $('#ps_ok').addEventListener('click', psSubmit);
+  $('#ps_cancel').addEventListener('click', () => psClose(null));
+  $('#ps_text').addEventListener('keydown', (e) => { if (e.key === 'Enter') psSubmit(); });
+  document.addEventListener('keydown', (e) => {
+    if (!$('#pinsheet').classList.contains('on') || psText) return;
+    if (/^[0-9]$/.test(e.key) && psBuf.length < 12) { psBuf += e.key; psDots(); }
+    else if (e.key === 'Backspace') { psBuf = psBuf.slice(0, -1); psDots(); }
+    else if (e.key === 'Enter') psSubmit();
+  });
+
   // ---------- toast ----------
   let toastT;
   function toast(msg, cls) {
@@ -226,9 +279,9 @@
   });
   function openCreated() { source = wizMnemonic; passphrase = $('#c_pass').value; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; moveEntropy = ''; moveSamples = 0; $('#c_words').textContent = ''; $('#dice').value = ''; $('#c_pass').value = ''; initWallet(); }
   $('#c_save').addEventListener('click', async () => {
-    const pin = $('#c_pin').value;
+    const pin = await askPin(); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
-    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value); $('#c_pin').value = ''; openCreated(); }
+    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value); openCreated(); }
     catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#c_skip').addEventListener('click', () => { openCreated(); toast('Not saved — keep that paper safe; you’ll need the words next time.'); });
@@ -686,14 +739,14 @@
   $('#set_airgap').addEventListener('click', () => tog('#airgap_body'));
   $('#vsave').addEventListener('click', async () => {
     if (!source || mode !== 'full') return toast('open a wallet with a seed first', 'bad');
+    const pin = await askPin(); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
     try {
-      window.OW.vault.save(source, $('#vsetpin').value, passphrase);
-      $('#vsetpin').value = ''; $('#vault_state').textContent = 'saved encrypted on this device';
+      window.OW.vault.save(source, pin, passphrase);
+      $('#vault_state').textContent = 'saved encrypted on this device';
       toast('✓ saved — next visit, unlock with your PIN', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
-  $('#vsetpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#vsave').click(); });
   function wireForget(btn) {
     btn.addEventListener('click', () => {
       if (!forgetArmed) { forgetArmed = true; btn.textContent = 'Really forget? Coins stay on-chain; you need the words to restore. Tap again.'; return; }

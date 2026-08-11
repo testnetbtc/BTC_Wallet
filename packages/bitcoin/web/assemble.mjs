@@ -143,8 +143,8 @@ nav button.on{color:var(--accent)}
 .pad button:active{border-color:var(--accent)}
 .pad button.ghost{background:none;border:0;font-size:17px;color:var(--muted)}
 /* confirm sheet */
-#confirm{position:fixed;inset:0;z-index:70;background:rgba(5,7,10,.72);display:none;align-items:flex-end;justify-content:center}
-#confirm.on{display:flex}
+#confirm,#pinsheet{position:fixed;inset:0;z-index:70;background:rgba(5,7,10,.72);display:none;align-items:flex-end;justify-content:center}
+#confirm.on,#pinsheet.on{display:flex}
 .sheet{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
 .sheet h3{margin:0 0 4px;font-size:18px}
 .sheet .crow{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
@@ -213,6 +213,23 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
     <button id="vunlock" style="width:100%;max-width:280px;margin-top:16px">Unlock</button>
     <button id="vforget" class="sec" style="font-size:12px;margin-top:12px">Forget saved wallet…</button>
     <p class="hint" style="font-size:11px;color:var(--faint);margin-top:14px">scrypt + XChaCha20-Poly1305 · the seed itself never touches disk</p>
+  </div>
+</div>
+
+<div id="pinsheet">
+  <div class="sheet" style="text-align:center">
+    <h3 id="ps_title">Choose a PIN</h3>
+    <p class="hint" id="ps_sub" style="margin:2px 0 0">6+ digits — you'll enter this to unlock</p>
+    <div class="pindots" id="ps_dots" style="justify-content:center"></div>
+    <span id="ps_msg" class="hint" style="min-height:15px;display:block;margin:0"></span>
+    <div class="pad" id="ps_pad">
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+      <button type="button" class="ghost" id="ps_abc" title="use a passphrase">abc</button><button type="button" data-k="0">0</button><button type="button" class="ghost" data-k="back">⌫</button>
+    </div>
+    <div class="field" id="ps_textrow" style="display:none;margin-top:12px"><input id="ps_text" type="password" placeholder="passphrase (6+ chars)" autocomplete="off"></div>
+    <div class="row" style="margin-top:14px"><button type="button" class="sec" id="ps_cancel">Cancel</button><button type="button" id="ps_ok">Continue</button></div>
   </div>
 </div>
 
@@ -307,7 +324,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <div class="card">
     <label style="margin-top:0">Keep it on this device (recommended)</label>
     <p class="hint">Saved <b>encrypted</b> behind a PIN (scrypt + XChaCha20-Poly1305). The plaintext seed never touches disk — your PIN decrypts it in memory each time.</p>
-    <div class="field"><input id="c_pin" type="password" placeholder="choose a PIN / passphrase (6+ chars)" autocomplete="off"><button id="c_save">Save &amp; open</button></div>
+    <button id="c_save" style="width:100%">Set a PIN &amp; save</button>
   </div>
   <button id="c_skip" class="sec" style="width:100%">Don't save — open once, ask for the words next time</button>
 </section>
@@ -510,7 +527,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   </div>
   <div class="sbody" id="vault_body">
     <p class="hint" style="margin-top:0">Saves your seed <b>encrypted</b> (scrypt + XChaCha20-Poly1305 — the cold generator's own crypto). Plaintext never touches disk; your PIN decrypts it in memory. A weak PIN on a compromised device is still a risk — real money belongs in cold storage.</p>
-    <div class="field"><input id="vsetpin" type="password" placeholder="choose a PIN / passphrase (6+ chars)" autocomplete="off"><button id="vsave" class="sec">Save</button></div>
+    <button id="vsave" class="sec" style="width:100%">Set a PIN &amp; save</button>
     <button id="vforget2" class="sec" style="font-size:12px;margin-top:8px">Forget saved wallet…</button>
   </div>
 
