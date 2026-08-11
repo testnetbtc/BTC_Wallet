@@ -70,7 +70,17 @@ and the coins arrive in a minute or two. New to all this? <a href="https://olesi
 <p class="hint" style="margin:6px 0 0">One grant per Nostr account every 24 hours.</p>
 </div>
 
-<p class="foot">Coins come from a shared testnet wallet — please take only what you need so others can learn too. When you're done, <b>send them back</b> to <span class="mono">tb1qv0dh99kcv4vy6zcrf2ppyenfg76nlejs93kw22</span> to refill the faucet. · <a href="https://olesia.io">olesia.io</a> · <a href="https://github.com/testnetbtc/BTC_Wallet">source</a></p>
+<div class="card">
+<label style="margin-top:0">Finished testing? Send them back 🙏</label>
+<p class="hint" style="margin:2px 0 10px">These coins come from a shared pot so everyone can learn. When you're done practising, it's good faucet etiquette to return what's left — it keeps the tap running for the next person. (No obligation — but you'll have our gratitude.)</p>
+<div style="display:flex;gap:8px;align-items:center">
+<span class="mono" id="returnaddr" style="flex:1;background:#0e1116;border:1px solid #2b333c;border-radius:8px;padding:10px;font-size:12.5px">tb1qv0dh99kcv4vy6zcrf2ppyenfg76nlejs93kw22</span>
+<button id="copyreturn" style="background:#2b333c;color:#e6edf3;font-weight:600;padding:10px 14px">Copy</button>
+</div>
+<p class="hint" style="margin:8px 0 0">Works on both Testnet3 and Testnet4 — same address.</p>
+</div>
+
+<p class="foot"><a href="https://olesia.io">olesia.io</a> · <a href="https://app.olesia.io">wallet</a> · <a href="https://github.com/testnetbtc/BTC_Wallet">source</a></p>
 </div>
 <script>
 const API = 'https://faucet.olesia.io';
@@ -122,6 +132,12 @@ $('#go').addEventListener('click', async () => {
     }
   } catch { out.className='bad'; out.textContent='✗ Network error — the faucet may be offline. Try again shortly.'; }
   btn.disabled = false;
+});
+document.getElementById('copyreturn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('returnaddr').textContent.trim()).then(() => {
+    const b = document.getElementById('copyreturn'); b.textContent = 'Copied ✓';
+    setTimeout(() => { b.textContent = 'Copy'; }, 1400);
+  }).catch(() => {});
 });
 </script>
 </body></html>
