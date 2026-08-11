@@ -33,9 +33,10 @@
   }
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
-  // fee presets (slow / normal / fast) + custom override
+  // fee presets. Auto ('') = the engine asks the network for an estimate — the
+  // safe default everywhere (a hardcoded low rate could stall a mainnet tx).
   const setFeeActive = () => document.querySelectorAll('.feep').forEach((x) => x.classList.toggle('active', x.dataset.fee === $('#fee').value));
-  $('#fee').value = '2';
+  $('#fee').value = '';
   document.querySelectorAll('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
   $('#fee').addEventListener('input', setFeeActive);
 
@@ -64,7 +65,12 @@
     show($('#status'), 'New 24-word seed generated. Write it down, then press Load.', 'hint');
   });
 
+  // stale-response guard: switching network/script type mid-fetch must not let
+  // an older response overwrite a newer one
+  let gen = 0;
+
   $('#load').addEventListener('click', loadWallet);
+  $('#mnemonic').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); loadWallet(); } });
   async function loadWallet() {
     const s = $('#mnemonic').value.trim();
     if (window.OW.validate(s)) mode = 'full';
@@ -82,6 +88,7 @@
     $('#xpubout').style.display = 'none'; $('#copyxpub').style.display = 'none';
     $('#tabs').style.display = 'flex'; showTab('recv');
     applyGating(); showP2PKLab();
+    if (mode === 'full') $('#vaultoffer').style.display = window.OW.vault.exists() ? 'none' : 'block';
     show($('#status'), 'Loaded. Fetching…', 'hint');
     await refreshStatus(); await refreshHistory();
   }
@@ -171,6 +178,7 @@
     } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
   });
   $('#p2pk_refresh').addEventListener('click', refreshP2PKList);
+  $('#p2pk_import').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#p2pk_importbtn').click(); });
   $('#p2pk_importbtn').addEventListener('click', async () => {
     const raw = $('#p2pk_import').value.trim();
     if (!raw) return show($('#status'), 'paste the funding txid to recover a P2PK coin', 'bad');
@@ -189,20 +197,28 @@
     try { const x = window.OW.xpub(source, network); show($('#xpubout'), x, 'mono'); $('#xpubout').style.display = 'block'; $('#copyxpub').style.display = 'inline-block'; }
     catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
   });
-  $('#label').addEventListener('input', () => { const a = $('#addr').textContent; if (a) localStorage.setItem('olesia:label:' + a, $('#label').value); });
+  // labels key off the real address only (P2PK has none — its #addr text is a script dump)
+  $('#label').addEventListener('input', () => {
+    if (!source || scriptType === 'p2pk') return;
+    try { const a = window.OW.info(source, network, scriptType).address; if (a) localStorage.setItem('olesia:label:' + a, $('#label').value); } catch {}
+  });
 
   $('#refresh').addEventListener('click', async () => { await refreshStatus(); await refreshHistory(); });
   async function refreshStatus() {
+    const g = ++gen;
     try {
       const st = await window.OW.status(source, network, scriptType);
+      if (g !== gen) return; // a newer request superseded this one
       show($('#bal'), fmt(st.balance.confirmed) + ' confirmed' + (st.balance.pending ? '  ·  ' + fmt(st.balance.pending) + ' pending' : ''), 'mono');
       $('#utxos').textContent = st.utxos.length ? st.utxos.map((u) => `${u.value} sat ${u.confirmed ? '✓' : 'pending'}`).join('   ·   ') : '(no UTXOs yet)';
       show($('#status'), 'Balance updated.', 'ok');
-    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+    } catch (e) { if (g === gen) show($('#status'), '✗ ' + e.message, 'bad'); }
   }
   async function refreshHistory() {
+    const g = gen;
     try {
       const txs = await window.OW.history(source, network, scriptType);
+      if (g !== gen) return;
       const h = $('#history'); h.textContent = '';
       if (!txs.length) { h.textContent = '(no transactions yet)'; return; }
       const base = window.OW.explorer(network);
@@ -239,6 +255,44 @@
     show($('#status'), broadcast ? '✓ sent — see result' : 'built (dry run)', broadcast ? 'ok' : 'hint');
     if (broadcast) setTimeout(async () => { await refreshStatus(); await refreshHistory(); }, 1500);
   }
+
+  // --- encrypted on-device vault (unlock / save / forget) ---
+  if (window.OW.vault.exists()) $('#vaultcard').style.display = 'block';
+  async function unlockVault() {
+    const pin = $('#vpin').value;
+    if (!pin) return show($('#vmsg'), 'enter your PIN', 'bad');
+    show($('#vmsg'), 'Unlocking… (key stretching takes a moment)', 'hint');
+    // yield a frame so the message paints before scrypt blocks the thread
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const m = window.OW.vault.open(pin);
+      $('#mnemonic').value = m; $('#vpin').value = '';
+      $('#vaultcard').style.display = 'none';
+      show($('#status'), '✓ unlocked', 'ok');
+      await loadWallet();
+    } catch (e) { show($('#vmsg'), '✗ ' + e.message, 'bad'); }
+  }
+  $('#vunlock').addEventListener('click', unlockVault);
+  $('#vpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockVault(); });
+  let forgetArmed = false;
+  $('#vforget').addEventListener('click', () => {
+    if (!forgetArmed) { forgetArmed = true; $('#vforget').textContent = 'Really forget? Coins stay on-chain; you will need the 24 words to restore. Tap again to confirm.'; return; }
+    window.OW.vault.forget(); $('#vaultcard').style.display = 'none';
+    forgetArmed = false; $('#vforget').textContent = 'Forget saved wallet…';
+    show($('#status'), 'Saved wallet removed from this device.', 'hint');
+  });
+  $('#vsave').addEventListener('click', async () => {
+    const pin = $('#vsetpin').value;
+    if (!source || mode !== 'full') return show($('#status'), 'load a seed first', 'bad');
+    show($('#status'), 'Encrypting…', 'hint');
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      window.OW.vault.save(source, pin);
+      $('#vsetpin').value = ''; $('#vaultoffer').style.display = 'none';
+      show($('#status'), '✓ saved encrypted — next visit, unlock with your PIN', 'ok');
+    } catch (e) { show($('#status'), '✗ ' + e.message, 'bad'); }
+  });
+  $('#vsetpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#vsave').click(); });
 
   // --- air-gap PSBT tools ---
   $('#buildunsigned').addEventListener('click', async () => {

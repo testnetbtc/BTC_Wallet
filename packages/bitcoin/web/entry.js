@@ -10,6 +10,7 @@ import {
   fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
+import { sealSeed, openSeed } from '../src/vault.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
 import { NETWORKS } from '../src/networks.js';
 
@@ -62,6 +63,14 @@ window.OW = {
     }),
   signPsbt: ({ psbt, mnemonic, network, index = 0 }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index }),
   broadcastPsbt: ({ psbt, network }) => broadcastSigned({ psbt: T(psbt), network }),
+
+  // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)
+  vault: {
+    exists: () => { try { return !!localStorage.getItem('olesia:vault'); } catch { return false; } },
+    save: (mnemonic, pin) => localStorage.setItem('olesia:vault', sealSeed(T(mnemonic), pin)),
+    open: (pin) => openSeed(localStorage.getItem('olesia:vault'), pin),
+    forget: () => localStorage.removeItem('olesia:vault'),
+  },
 
   // P2PK lab: fund a P2PK from the seed's SegWit balance, track outpoints, spend them out
   fundP2PK: ({ source, network, amount, feeRate, broadcast = true }) =>

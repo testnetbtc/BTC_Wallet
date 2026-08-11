@@ -75,6 +75,14 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <p class="hint" style="margin:8px 0 0">All testnet-safe. <a href="https://olesia.io/learn/">Learn the concepts →</a></p>
 </div>
 
+<div class="card" id="vaultcard" style="display:none">
+<label>🔒 Unlock your saved wallet</label>
+<p class="hint">A wallet is stored on this device — <b>encrypted</b> (scrypt + XChaCha20-Poly1305). The seed itself is never written to disk; your PIN decrypts it in memory.</p>
+<div class="field"><input id="vpin" type="password" placeholder="PIN / passphrase" autocomplete="off"><button id="vunlock">Unlock</button></div>
+<button id="vforget" class="sec" style="font-size:12.5px">Forget saved wallet…</button>
+<span id="vmsg" class="hint"></span>
+</div>
+
 <div class="card">
 <label>Network <span class="help" data-target="tip_net">?</span></label>
 <div class="tiptext" id="tip_net">Bitcoin has several chains that share the same rules. <b>Testnet3/4</b> and <b>Signet</b> use free, worthless coins for practice (Signet has regular ~10-min blocks — the nicest to learn on). <b>Mainnet</b> is real money.</div>
@@ -87,6 +95,11 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <button id="gen" class="sec">Generate new</button>
 <button id="load">Load</button>
 <span id="mode" class="hint"></span>
+<div id="vaultoffer" style="display:none;border-top:1px solid #2b333c;margin-top:12px;padding-top:12px">
+<label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:0 0 6px">Keep this wallet on the device? <span class="help" data-target="tip_vault">?</span></label>
+<div class="tiptext" id="tip_vault">Saves your seed <b>encrypted</b> in this browser's storage — scrypt key-stretching + XChaCha20-Poly1305, the same audited crypto as the cold generator's backups. The plaintext seed is never written to disk; it only exists in memory after you unlock with your PIN. Honest caveat: an encrypted seed on a device plus a weak PIN is still a risk — keep real money in cold storage, and use a strong PIN here.</div>
+<div class="field"><input id="vsetpin" type="password" placeholder="choose a PIN / passphrase (4+ chars)" autocomplete="off"><button id="vsave" class="sec">Save encrypted</button></div>
+</div>
 </div>
 
 <div class="tabs" id="tabs" style="display:none">
@@ -109,7 +122,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <div id="bal" class="mono"></div>
 <div id="utxos" class="hint"></div>
 <button id="refresh" class="sec">Refresh</button>
-<button id="expxpub" class="sec" style="display:none">Show account xpub</button>
+<button id="expxpub" class="sec" style="display:none">Show account xpub (SegWit)</button>
 <button type="button" id="copyxpub" class="sec copy" data-copy="xpubout" style="display:none">Copy xpub</button>
 <div id="xpubout" class="mono" style="display:none;margin-top:6px"></div>
 <label style="margin-top:16px">Recent transactions</label>
@@ -141,16 +154,17 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 <div><input id="amt" placeholder="amount (sats)" inputmode="numeric"></div>
 </div>
 <label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">OP_RETURN message <span class="help" data-target="tip_msg">?</span></label>
-<div class="tiptext" id="tip_msg"><b>OP_RETURN</b> attaches up to ~80 bytes of arbitrary data to a transaction — a permanent, public message written on-chain. It carries no coins and can never be spent.</div>
+<div class="tiptext" id="tip_msg"><b>Write a message on-chain.</b> OP_RETURN attaches a tiny permanent note (~80 bytes) to a transaction. It carries no coins and can never be spent — just a line written into Bitcoin's public record, forever. <b>Real uses:</b> proving a document existed at a point in time, notarising, attribution, a personal message or memorial. <b>The famous one:</b> Satoshi wrote a newspaper headline — <i>"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"</i> — into the very first block (in the coinbase field; OP_RETURN is today's tidy way to do the same). <b>Where we stand:</b> people disagree about what data belongs on Bitcoin, and Olesia takes no side — it's part of the protocol, so it's here, explained, for you to use thoughtfully.</div>
 <input id="msg" placeholder="optional OP_RETURN message (≤80 bytes)" autocomplete="off">
 <label style="font-weight:400;color:#9aa7b4;font-size:13px;margin:4px 0">Fee rate <span class="help" data-target="tip_fee">?</span></label>
 <div class="tiptext" id="tip_fee">Miners include transactions that pay them, priced in <b>satoshis per virtual byte</b> (sat/vB). Higher = confirms faster. On testnets fees barely matter, so it is a safe place to experiment.</div>
 <div class="feeps">
-<button type="button" class="feep" data-fee="1">🐢 Slow</button>
-<button type="button" class="feep active" data-fee="2">🚶 Normal</button>
-<button type="button" class="feep" data-fee="5">🚀 Fast</button>
+<button type="button" class="feep active" data-fee="">✨ Auto</button>
+<button type="button" class="feep" data-fee="1">🐢 1</button>
+<button type="button" class="feep" data-fee="2">🚶 2</button>
+<button type="button" class="feep" data-fee="5">🚀 5</button>
 </div>
-<div class="row"><div><input id="fee" placeholder="custom sat/vB" inputmode="numeric"></div></div>
+<div class="row"><div><input id="fee" placeholder="custom sat/vB (Auto = network estimate)" inputmode="numeric"></div></div>
 <button id="dryrun" class="sec">Build (dry run)</button>
 <button id="send">Send</button>
 <div><span id="hotnote" class="hint"></span></div>
@@ -165,7 +179,7 @@ watch-only <b>xpub</b> here and sign <b>offline</b> — never put a large-balanc
 </div>
 
 <div class="card" id="airgap" style="display:none">
-<label>Air-gap / PSBT tools <span class="hint">— the mainnet-safe path</span></label>
+<label>Air-gap / PSBT tools <span class="hint">— the mainnet-safe path (SegWit account)</span></label>
 <p class="hint">Watch-only online: <b>Build unsigned</b> here (fills from the Send fields above) → sign it <b>offline</b> → <b>Broadcast signed</b> here. The seed never needs to be online.</p>
 <button id="buildunsigned" class="sec">Build unsigned PSBT (from Send fields)</button>
 <textarea id="unsignedout" placeholder="unsigned PSBT (base64) — copy to your offline signer" readonly></textarea>
