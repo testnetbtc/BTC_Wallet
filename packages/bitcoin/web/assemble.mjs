@@ -57,7 +57,9 @@ button:disabled{opacity:.45;cursor:default}
 .copy,.paste{font-size:12px;padding:6px 12px;min-height:0}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
 .warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:11px;padding:11px 13px;font-size:13px;margin:10px 0}
-.netpills{display:flex;gap:8px;flex-wrap:wrap}
+.netlabel{text-align:center;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:700;margin:10px 0 11px}
+.netlabel .ldot{letter-spacing:0}
+.netpills{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .netpill{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:9px 15px;font-size:13.5px;font-weight:600;cursor:pointer;min-height:0}
 .netpill .nd{width:8px;height:8px;border-radius:50%;background:var(--violet)}
 .netpill[data-net="mainnet"] .nd{background:var(--bad)}
@@ -264,18 +266,19 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-welcome">
   <div style="text-align:center;padding:26px 0 8px">
     <div style="font-size:40px;font-weight:800;letter-spacing:-.02em">Olesia<span class="ldot">.</span></div>
-    <p class="sub" style="margin:6px auto 0;max-width:34ch">Learn Bitcoin by doing — a real wallet on practice networks where mistakes cost nothing.</p>
+    <p class="sub" style="margin:6px auto 0;max-width:32ch">Learn Bitcoin by doing — hands-on with every address type, on testnets or real mainnet.</p>
   </div>
-  <div class="card">
-    <label style="margin-top:0">Network <span class="help" data-target="tip_net">?</span></label>
-    <div class="tiptext" id="tip_net">Bitcoin has several chains sharing the same rules. <b>Testnet 3/4</b> and <b>Signet</b> use free, worthless coins for practice. <b>Mainnet</b> is real money — learn on a testnet first.</div>
-    <div id="netpills" class="netpills"></div>
-    <select id="net" style="display:none"></select>
-    <div id="mainwarn" class="warn" style="margin-top:12px;display:none"></div>
-  </div>
-  <button id="w_create" style="width:100%;font-size:15.5px;padding:15px">＋ Create a new wallet</button>
+
+  <p class="netlabel">Network<span class="ldot">.</span></p>
+  <div id="netpills" class="netpills"></div>
+  <select id="net" style="display:none"></select>
+  <div id="mainwarn" class="warn" style="margin:12px 0 0;display:none"></div>
+
+  <button id="w_create" style="width:100%;font-size:15.5px;padding:15px;margin-top:18px">＋ Create a new wallet</button>
   <button id="w_import" class="sec" style="width:100%;margin-top:8px;font-size:15px;padding:14px">↓ Import an existing wallet</button>
-  <p class="hint" style="text-align:center;margin-top:16px">Storing meaningful funds? Generate fully offline with the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a> and use this app watch-only.</p>
+
+  <div class="warn" style="margin-top:18px">🔥 <b>This is a hot wallet — for learning and small amounts only.</b> Your keys live in this browser. Perfect for practice and pocket-money sums you'd accept losing — but <b>never keep meaningful savings, or your full stack, here.</b></div>
+  <p class="hint" style="text-align:center;margin-top:12px">Holding real value? Generate offline with the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a>, then use this app <b>watch-only</b> and sign offline. <a href="https://olesia.io/learn/#security" target="_blank" rel="noopener">Why →</a></p>
   <p class="hint" style="text-align:center;margin-top:10px">Non-custodial · open source · <a href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener">verify everything</a> · <a href="https://olesia.io/learn/" target="_blank" rel="noopener">learn the basics</a></p>
 </section>
 
