@@ -49,7 +49,7 @@ transactions and every script type on test networks where mistakes cost nothing.
 </a>
 <a class="tile" href="https://app.olesia.io">
 <h3>2 · Open the wallet →</h3>
-<p>Then use it: send, receive, sweep and message across every script type. Balances, QR, history. Runs in your browser.</p>
+<p>A full wallet app: every address type as its own account (Taproot to Satoshi-era P2PK), send with confirmation &amp; live fees, PIN-secured on your device, lessons built in.</p>
 <span class="go">app.olesia.io</span>
 </a>
 <a class="tile" href="https://olesia.io/faucet/">
@@ -82,8 +82,8 @@ sha256sum olesia.html
 <h2>How it's built</h2>
 <p class="hint">
 <b>Cold generator</b> — audited <code>@scure</code>/<code>@noble</code> primitives, 256-bit entropy from the OS CSPRNG, fail-closed self-check, encrypted authenticated backups, reproducible single-file build.<br>
-<b>Online wallet</b> — signs locally with <code>@scure/btc-signer</code> (RFC-6979); balances/broadcast over the network; never stores your seed.<br>
-<b>Mainnet (coming)</b> — air-gap only: watch-only online, sign offline, broadcast through your own node. The seed never goes online.
+<b>Online wallet</b> — signs locally with <code>@scure/btc-signer</code> (RFC-6979); balances/broadcast over the network. Your seed stays in your browser — optionally saved <i>encrypted</i> (scrypt + XChaCha20-Poly1305) behind a PIN, never in plaintext.<br>
+<b>Mainnet</b> — supported for small amounts as a hot wallet, with a confirmation sheet on every send. For meaningful funds: watch-only online, sign offline (air-gap), broadcast through our own node.
 </p>
 
 <p class="foot">Olesia is experimental and self-audited. Not financial advice; not a substitute for a hardware wallet for large sums. Testnet first, always.</p>
