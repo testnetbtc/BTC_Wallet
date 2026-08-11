@@ -138,6 +138,28 @@ nav button.on{color:var(--accent)}
 .ucore .dot{width:52px;height:52px;border-radius:15px}
 .ucore .dot::before{left:11px;top:9px;width:20px;height:26px;border-width:4px}
 .ucore .dot::after{right:9px;bottom:9px;width:9px;height:9px}
+/* keypad */
+.pindots{display:flex;gap:12px;margin:18px 0 6px;justify-content:center;min-height:14px}
+.pindots i{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line)}
+.pindots i.fill{background:var(--accent);border-color:var(--accent)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:280px;margin:14px auto 0}
+.pad button{background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:50%;aspect-ratio:1;font-size:22px;font-weight:600;min-height:0;padding:0}
+.pad button:active{border-color:var(--accent)}
+.pad button.ghost{background:none;border:0;font-size:17px;color:var(--muted)}
+/* confirm sheet */
+#confirm{position:fixed;inset:0;z-index:70;background:rgba(5,7,10,.72);display:none;align-items:flex-end;justify-content:center}
+#confirm.on{display:flex}
+.sheet{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
+.sheet h3{margin:0 0 4px;font-size:18px}
+.sheet .crow{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+.sheet .crow:last-of-type{border-bottom:0}
+.sheet .crow .k{color:var(--muted);flex:0 0 auto}
+.sheet .crow .v{text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
+.sheet .crow .v small{display:block;color:var(--faint);font-size:11.5px}
+/* seed backup grid */
+.seedgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}
+.seedgrid span{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:12.5px}
+.seedgrid span i{color:var(--faint);font-style:normal;margin-right:7px;font-size:10.5px}
 /* toast */
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));max-width:min(92vw,520px);background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px 15px;font-size:13px;z-index:50;display:none;box-shadow:0 12px 30px -12px #000}
 #toast.ok{border-color:#1c5c3a;color:var(--mint)}
@@ -158,12 +180,32 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <div id="unlock">
   <div class="ucore">
     <span class="dot"></span>
-    <h2 style="margin:18px 0 4px">Welcome back</h2>
-    <p class="hint" style="max-width:26ch">Your wallet is stored <b>encrypted</b> on this device. Unlock to decrypt it in memory.</p>
-    <div class="field" style="width:100%;margin:14px 0 8px"><input id="vpin" type="password" placeholder="PIN / passphrase" autocomplete="off"><button id="vunlock">Unlock</button></div>
+    <h2 style="margin:14px 0 2px">Enter your PIN</h2>
+    <p class="hint" style="max-width:28ch">Your wallet is stored <b>encrypted</b> on this device — the PIN decrypts it in memory.</p>
+    <div class="pindots" id="pindots"></div>
     <span id="vmsg" class="hint"></span>
-    <button id="vforget" class="sec" style="font-size:12px;margin-top:14px">Forget saved wallet…</button>
-    <p class="hint" style="font-size:11px;color:var(--faint);margin-top:16px">scrypt + XChaCha20-Poly1305 · the seed itself never touches disk</p>
+    <div class="pad" id="pad">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button class="ghost" id="pad_abc" title="passphrase">abc</button><button data-k="0">0</button><button class="ghost" data-k="back">⌫</button>
+    </div>
+    <div class="field" style="width:100%;margin:12px 0 0;display:none" id="vpinrow"><input id="vpin" type="password" placeholder="passphrase" autocomplete="off"></div>
+    <button id="vunlock" style="width:100%;max-width:280px;margin-top:16px">Unlock</button>
+    <button id="vforget" class="sec" style="font-size:12px;margin-top:12px">Forget saved wallet…</button>
+    <p class="hint" style="font-size:11px;color:var(--faint);margin-top:14px">scrypt + XChaCha20-Poly1305 · the seed itself never touches disk</p>
+  </div>
+</div>
+
+<div id="confirm">
+  <div class="sheet">
+    <h3 id="c_title">Confirm</h3>
+    <p class="hint" id="c_net" style="margin:0 0 6px"></p>
+    <div id="c_rows"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="sec" id="c_cancel">Cancel</button>
+      <button id="c_go">Confirm & send</button>
+    </div>
   </div>
 </div>
 
@@ -348,7 +390,19 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <p class="slbl">Security</p>
   <div class="sgroup">
     <div class="srow" id="set_vault"><span>🔒</span><span class="t"><b>Keep wallet on this device</b><span id="vault_state">not saved — seed lives in this tab only</span></span><span class="val">›</span></div>
+    <div class="srow" id="set_backup"><span>📜</span><span class="t"><b>Backup seed phrase</b><span>view your words — PIN required</span></span><span class="val">›</span></div>
     <div class="srow" id="set_lock"><span>🚪</span><span class="t"><b>Lock now</b><span>clears the seed from memory</span></span></div>
+  </div>
+  <div class="sbody" id="backup_body">
+    <div class="warn" style="margin-top:0">Anyone who sees these words <b>controls the coins</b>. Make sure nobody is watching your screen, and never screenshot them — write them on paper.</div>
+    <div id="bk_gate">
+      <div class="field" id="bk_pinrow" style="display:none"><input id="bk_pin" type="password" placeholder="enter your PIN" autocomplete="off"><button id="bk_reveal" class="sec">Reveal</button></div>
+      <button id="bk_hold" class="sec" style="display:none;width:100%">Hold to reveal (1.5s)…</button>
+    </div>
+    <div id="bk_show" style="display:none">
+      <div class="seedgrid" id="bk_words"></div>
+      <button id="bk_hide" class="sec" style="width:100%">Hide</button>
+    </div>
   </div>
   <div class="sbody" id="vault_body">
     <p class="hint" style="margin-top:0">Saves your seed <b>encrypted</b> (scrypt + XChaCha20-Poly1305 — the cold generator's own crypto). Plaintext never touches disk; your PIN decrypts it in memory. A weak PIN on a compromised device is still a risk — real money belongs in cold storage.</p>
@@ -380,7 +434,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <div class="sgroup">
     <div class="srow" onclick="window.open('https://olesia.io/#verify','_blank','noopener')"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check the hash yourself</span></span><span class="val">↗</span></div>
     <div class="srow" onclick="window.open('https://github.com/testnetbtc/BTC_Wallet','_blank','noopener')"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></div>
-    <div class="srow"><span>🏷️</span><span class="t"><b>Version</b></span><span class="val">2.0.0</span></div>
+    <div class="srow"><span>🏷️</span><span class="t"><b>Version</b></span><span class="val">2.1.0</span></div>
   </div>
   <p class="hint" style="margin-top:14px">Balances/broadcast via mempool.space (mainnet broadcast via api.olesia.io). No analytics, no server-side storage. Signing with <code>@scure/btc-signer</code>, in your browser.</p>
 </section>

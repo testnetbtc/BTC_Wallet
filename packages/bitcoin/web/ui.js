@@ -21,6 +21,48 @@
   const coins = (sats) => (sats / 1e8).toFixed(8).replace(/0{3}$/, '');
   const sum = (o) => Object.values(o).reduce((a, b) => a + (b?.confirmed || 0), 0);
 
+  // ---------- USD price (mempool.space, cached 5 min) ----------
+  let priceCache = { usd: null, t: 0 };
+  async function usdPrice() {
+    if (priceCache.usd && Date.now() - priceCache.t < 300000) return priceCache.usd;
+    try {
+      const r = await fetch('https://mempool.space/api/v1/prices');
+      const d = await r.json();
+      priceCache = { usd: d.USD, t: Date.now() };
+      return d.USD;
+    } catch { return priceCache.usd; }
+  }
+  const usdOf = (sats, px) => (px == null ? null : (sats / 1e8) * px);
+  const fmtUsd = (sats, px) => {
+    const v = usdOf(sats, px);
+    if (v == null) return '';
+    const s = v >= 0.01 ? '$' + v.toFixed(2) : '<$0.01';
+    return network === 'mainnet' ? s : `≈ ${s} at mainnet prices · no real value`;
+  };
+
+  // ---------- confirm sheet (every broadcast passes through here) ----------
+  let confirmResolve = null;
+  function confirmSheet(title, rows) {
+    return new Promise((resolve) => {
+      confirmResolve = resolve;
+      $('#c_title').textContent = title;
+      $('#c_net').textContent = network === 'mainnet' ? '⚠ mainnet — REAL bitcoin' : `${network} — practice coins, no real value`;
+      const box = $('#c_rows'); box.textContent = '';
+      rows.forEach(([k, v, sub]) => {
+        const d = document.createElement('div'); d.className = 'crow';
+        const kk = document.createElement('span'); kk.className = 'k'; kk.textContent = k;
+        const vv = document.createElement('span'); vv.className = 'v'; vv.textContent = v;
+        if (sub) { const s = document.createElement('small'); s.textContent = sub; vv.appendChild(s); }
+        d.append(kk, vv); box.appendChild(d);
+      });
+      $('#confirm').classList.add('on');
+    });
+  }
+  const closeConfirm = (val) => { $('#confirm').classList.remove('on'); if (confirmResolve) { confirmResolve(val); confirmResolve = null; } };
+  $('#c_cancel').addEventListener('click', () => closeConfirm(false));
+  $('#c_go').addEventListener('click', () => closeConfirm(true));
+  $('#confirm').addEventListener('click', (e) => { if (e.target.id === 'confirm') closeConfirm(false); });
+
   // ---------- toast ----------
   let toastT;
   function toast(msg, cls) {
@@ -33,6 +75,9 @@
     if (!source && ['home', 'accounts', 'account', 'send'].includes(name)) name = 'welcome';
     $$('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
     $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.nav === name));
+    // never leave the seed on screen or a stale confirm open when navigating
+    try { if (typeof hideBackup === 'function') { hideBackup(); $('#backup_body').classList.remove('on'); } } catch {}
+    try { closeConfirm(false); } catch {}
     window.scrollTo(0, 0);
   }
   $$('nav button').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
@@ -288,8 +333,19 @@
   async function spendOneP2PK(outpoint, btn) {
     const to = $('#p2pk_to').value.trim();
     if (!to) return toast('enter a destination address first', 'bad');
-    btn.disabled = true; toast('Spending P2PK…');
+    btn.disabled = true;
     try {
+      toast('Building…');
+      const dry = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: false });
+      const px = await usdPrice();
+      const okGo = await confirmSheet('Spend this P2PK coin?', [
+        ['To', to],
+        ['Amount', `${dry.sent.toLocaleString()} sat`, `${coins(dry.sent)} ${unit()}${px ? ' · ' + fmtUsd(dry.sent, px) : ''}`],
+        ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
+        ['From', 'P2PK (bare public key) · ' + network],
+      ]);
+      if (!okGo) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
+      toast('Spending P2PK…');
       const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, broadcast: true });
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
       res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
@@ -360,18 +416,33 @@
   $$('.feep').forEach((b) => b.addEventListener('click', () => { $('#fee').value = b.dataset.fee; setFeeActive(); }));
   $('#fee').addEventListener('input', setFeeActive);
 
+  const buildTx = (broadcast) => sweepMode
+    ? window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, feeRate: $('#fee').value, broadcast })
+    : window.OW.send({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value, broadcast });
+
   async function runSend(broadcast) {
+    const to = $('#to').value.trim();
+    if (!to) return toast('enter a destination address', 'bad');
     try {
-      toast(broadcast ? 'Broadcasting…' : 'Building…');
-      let res;
-      if (sweepMode) {
-        const to = $('#to').value.trim();
-        if (!to) return toast('enter a destination address', 'bad');
-        res = await window.OW.sweep({ mnemonic: source, network, scriptType: sendType, toAddress: to, feeRate: $('#fee').value, broadcast });
-      } else {
-        res = await window.OW.send({ mnemonic: source, network, scriptType: sendType, toAddress: $('#to').value, amount: $('#amt').value, message: $('#msg').value, feeRate: $('#fee').value, broadcast });
-      }
-      renderResult(res, broadcast);
+      toast('Building…');
+      // Always dry-run first: the confirmation shows the REAL fee and amounts
+      // from the actual transaction, never an estimate.
+      const dry = await buildTx(false);
+      if (!broadcast) return renderResult(dry, false);
+      const px = await usdPrice();
+      const amount = sweepMode ? dry.swept : Number($('#amt').value);
+      const msg = $('#msg').value.trim();
+      const rows = [
+        ['To', to],
+        [sweepMode ? 'Amount (sweep)' : 'Amount', `${amount.toLocaleString()} sat`, `${coins(amount)} ${unit()}${px ? ' · ' + fmtUsd(amount, px) : ''}`],
+        ['Network fee', `${dry.fee.toLocaleString()} sat`, `${dry.feeRate} sat/vB${px ? ' · ' + fmtUsd(dry.fee, px) : ''}`],
+      ];
+      if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'permanent public message']);
+      rows.push(['From', SHORT[sendType] + ' · ' + network]);
+      const okGo = await confirmSheet(sweepMode ? 'Sweep everything?' : 'Send this?', rows);
+      if (!okGo) return toast('Cancelled — nothing sent.');
+      toast('Broadcasting…');
+      renderResult(await buildTx(true), true);
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   }
   $('#dryrun').addEventListener('click', () => runSend(false));
@@ -496,22 +567,93 @@
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
 
-  // ---------- vault unlock (startup) ----------
+  // ---------- vault unlock (startup): PIN keypad + passphrase fallback ----------
+  let pinBuf = '', padMode = true;
+  function renderDots() {
+    const d = $('#pindots'); d.textContent = '';
+    const n = Math.max(pinBuf.length, 4);
+    for (let i = 0; i < n; i++) { const s = document.createElement('i'); if (i < pinBuf.length) s.className = 'fill'; d.appendChild(s); }
+  }
+  renderDots();
+  $('#pad').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
+    if (b.dataset.k === 'back') pinBuf = pinBuf.slice(0, -1);
+    else if (pinBuf.length < 12) pinBuf += b.dataset.k;
+    $('#vmsg').textContent = '';
+    renderDots();
+  });
+  $('#pad_abc').addEventListener('click', () => {
+    padMode = !padMode;
+    $('#pad_abc').textContent = padMode ? 'abc' : '123';
+    $('#vpinrow').style.display = padMode ? 'none' : 'flex';
+    $('#pad').style.display = padMode ? 'grid' : 'none';
+    $('#pindots').style.display = padMode ? 'flex' : 'none';
+    pinBuf = ''; renderDots();
+    if (!padMode) $('#vpin').focus();
+  });
   async function unlockVault() {
-    const pin = $('#vpin').value;
-    if (!pin) return ($('#vmsg').textContent = 'enter your PIN');
-    $('#vmsg').textContent = 'Unlocking… (key stretching takes a moment)';
+    const pin = padMode ? pinBuf : $('#vpin').value;
+    if (!pin) return ($('#vmsg').textContent = padMode ? 'tap your PIN digits first' : 'enter your passphrase');
+    $('#vmsg').textContent = 'Unlocking…';
     await new Promise((r) => setTimeout(r, 30));
     try {
       const m = window.OW.vault.open(pin);
-      $('#vpin').value = ''; $('#vmsg').textContent = '';
+      pinBuf = ''; $('#vpin').value = ''; renderDots(); $('#vmsg').textContent = '';
       source = m; mode = 'full'; scriptType = 'p2wpkh';
       $('#unlock').classList.remove('on');
       initWallet();
-    } catch (e) { $('#vmsg').textContent = '✗ ' + e.message; }
+    } catch (e) { $('#vmsg').textContent = '✗ ' + e.message; pinBuf = ''; renderDots(); }
   }
   $('#vunlock').addEventListener('click', unlockVault);
   $('#vpin').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockVault(); });
+  // physical keyboard works on the keypad too
+  document.addEventListener('keydown', (e) => {
+    if (!$('#unlock').classList.contains('on') || !padMode) return;
+    if (/^[0-9]$/.test(e.key) && pinBuf.length < 12) { pinBuf += e.key; renderDots(); }
+    else if (e.key === 'Backspace') { pinBuf = pinBuf.slice(0, -1); renderDots(); }
+    else if (e.key === 'Enter') unlockVault();
+  });
+
+  // ---------- seed backup viewer (PIN-gated) ----------
+  $('#set_backup').addEventListener('click', () => {
+    if (mode !== 'full') return toast('watch-only wallets have no seed here', 'bad');
+    const body = $('#backup_body');
+    if (body.classList.contains('on')) { hideBackup(); body.classList.remove('on'); return; }
+    body.classList.add('on');
+    const saved = window.OW.vault.exists();
+    $('#bk_pinrow').style.display = saved ? 'flex' : 'none';
+    $('#bk_hold').style.display = saved ? 'none' : 'block';
+  });
+  function hideBackup() {
+    $('#bk_show').style.display = 'none'; $('#bk_words').textContent = '';
+    $('#bk_gate').style.display = 'block'; $('#bk_pin').value = '';
+    clearTimeout(bkTimer);
+  }
+  let bkTimer;
+  function showWords(m) {
+    const box = $('#bk_words'); box.textContent = '';
+    m.trim().split(/\s+/).forEach((w, i) => {
+      const s = document.createElement('span'); const n = document.createElement('i');
+      n.textContent = i + 1; s.append(n, w); box.appendChild(s);
+    });
+    $('#bk_gate').style.display = 'none'; $('#bk_show').style.display = 'block';
+    clearTimeout(bkTimer); bkTimer = setTimeout(hideBackup, 60000); // auto-hide after 60s
+  }
+  $('#bk_reveal').addEventListener('click', async () => {
+    const pin = $('#bk_pin').value;
+    if (!pin) return toast('enter your PIN', 'bad');
+    toast('Checking…'); await new Promise((r) => setTimeout(r, 30));
+    try { showWords(window.OW.vault.open(pin)); toast('Revealed — auto-hides in 60s.'); }
+    catch (e) { toast('✗ ' + e.message, 'bad'); }
+  });
+  $('#bk_pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#bk_reveal').click(); });
+  // no vault saved -> no PIN exists to check; require a deliberate 1.5s hold instead
+  let holdT;
+  const holdBtn = $('#bk_hold');
+  const startHold = () => { holdBtn.textContent = 'Keep holding…'; holdT = setTimeout(() => { showWords(source); holdBtn.textContent = 'Hold to reveal (1.5s)…'; }, 1500); };
+  const endHold = () => { clearTimeout(holdT); holdBtn.textContent = 'Hold to reveal (1.5s)…'; };
+  holdBtn.addEventListener('mousedown', startHold); holdBtn.addEventListener('touchstart', startHold, { passive: true });
+  holdBtn.addEventListener('mouseup', endHold); holdBtn.addEventListener('mouseleave', endHold); holdBtn.addEventListener('touchend', endHold);
 
   // ---------- boot ----------
   if (window.OW.vault.exists()) { $('#unlock').classList.add('on'); }
