@@ -28,10 +28,8 @@ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,
   -webkit-font-smoothing:antialiased}
 #shell{max-width:560px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 18px 10px}
-.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:-.01em}
-.dot{width:26px;height:26px;border-radius:8px;background:var(--surface);border:1px solid var(--line);position:relative}
-.dot::before{content:"";position:absolute;left:5px;top:4px;width:11px;height:14px;border:2.4px solid var(--text);border-radius:50%}
-.dot::after{content:"";position:absolute;right:4px;bottom:4px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em}
+.ldot{color:var(--accent)}
 .hbtns{display:flex;gap:8px;align-items:center}
 .netchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text)}
 .netchip .sw{width:8px;height:8px;border-radius:50%;background:var(--violet)}
@@ -135,9 +133,6 @@ nav button.on{color:var(--accent)}
 #unlock{position:fixed;inset:0;z-index:60;background:linear-gradient(180deg,#0b0e12,#0e1116);display:none;align-items:center;justify-content:center;padding:24px}
 #unlock.on{display:flex}
 .ucore{width:100%;max-width:330px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.ucore .dot{width:52px;height:52px;border-radius:15px}
-.ucore .dot::before{left:11px;top:9px;width:20px;height:26px;border-width:4px}
-.ucore .dot::after{right:9px;bottom:9px;width:9px;height:9px}
 /* keypad */
 .pindots{display:flex;gap:12px;margin:18px 0 6px;justify-content:center;min-height:14px}
 .pindots i{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line)}
@@ -185,8 +180,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <div id="unlock">
   <div class="ucore">
-    <span class="dot"></span>
-    <h2 style="margin:14px 0 2px">Enter your PIN</h2>
+    <div style="font-size:32px;font-weight:800;letter-spacing:-.02em">Olesia<span class="ldot">.</span></div>
+    <h2 style="margin:14px 0 2px;font-size:18px">Enter your PIN</h2>
     <p class="hint" style="max-width:28ch">Your wallet is stored <b>encrypted</b> on this device — the PIN decrypts it in memory.</p>
     <div class="pindots" id="pindots"></div>
     <span id="vmsg" class="hint"></span>
@@ -217,7 +212,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <div id="shell">
 <header>
-  <span class="logo"><span class="dot"></span> Olesia</span>
+  <span class="logo">Olesia<span class="ldot">.</span></span>
   <span class="hbtns">
     <button id="lockbtn" title="Lock wallet">🔒</button>
     <span class="netchip" id="netchip"><span class="sw"></span><span id="netname">testnet4</span></span>
