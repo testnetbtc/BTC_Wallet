@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olesia · Telegram Alerts — get pinged about your Bitcoin</title>
+<meta name="description" content="Custom Bitcoin alerts on Telegram: address activity, price thresholds, fee/mempool levels, and new blocks. Non-custodial — watch-only, your keys never involved.">
+<link rel="icon" href="/olesia-icon.png">
+<style>
+:root{color-scheme:dark;--bg:#0e1116;--panel:#161b22;--panel2:#1b222c;--line:#2b333c;--text:#e6edf3;--muted:#9aa7b4;--faint:#6b7480;--orange:#f0a020;--green:#7ee2a8;--tg:#29a9eb;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:880px;margin:0 auto;padding:26px 18px 64px}
+a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
+header{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap;margin-bottom:20px}
+.brand{font-size:30px;font-weight:800;letter-spacing:-.02em}.brand span{color:var(--orange)}
+.sub{font-size:19px;color:var(--muted);font-weight:600}
+.hero{background:linear-gradient(180deg,#141b24,#10151c);border:1px solid var(--line);border-radius:16px;padding:30px 24px;margin-bottom:14px}
+.hero h1{font-size:30px;line-height:1.2;margin:0 0 10px;text-wrap:balance}
+.hero h1 .tg{color:var(--tg)}
+.hero p{color:var(--muted);font-size:16px;margin:0;max-width:60ch}
+.dev{display:inline-block;margin-top:16px;background:#221a08;border:1px solid #5c4512;color:var(--orange);border-radius:20px;padding:5px 13px;font-size:13px;font-weight:600}
+h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:30px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px 17px;cursor:pointer;transition:border-color .15s,background .15s}
+.card:hover{border-color:#3a4653}
+.card.on{border-color:var(--tg);background:#12212e}
+.card .ic{font-size:22px}
+.card h3{margin:8px 0 4px;font-size:16px}
+.card p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.5}
+.card .eg{margin-top:9px;font-size:12px;color:var(--faint);font-family:var(--mono);background:#0c0f13;border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+.card .chk{float:right;color:var(--tg);font-weight:700;opacity:0;transition:opacity .15s}
+.card.on .chk{opacity:1}
+.steps{counter-reset:s;display:grid;gap:10px}
+.step{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:13px 15px}
+.step .n{counter-increment:s;flex:none;width:26px;height:26px;border-radius:50%;background:#12212e;border:1px solid var(--tg);color:var(--tg);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.step .n::before{content:counter(s)}
+.step b{font-size:14.5px}.step p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0 0}
+.tgbtn{background:var(--tg);color:#04121c;font-weight:700;border:0;border-radius:11px;padding:13px 20px;font-size:15px;display:inline-flex;gap:9px;align-items:center;cursor:not-allowed;opacity:.75}
+.note{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:12px;padding:15px 17px;margin:26px 0 0;font-size:14.5px;line-height:1.6}
+.note b{color:#e6edf3}
+.foot{color:var(--faint);font-size:13px;margin-top:36px;border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/">Olesia<span>.</span></a>
+    <div class="sub">Telegram Alerts</div>
+  </header>
+
+  <div class="hero">
+    <h1>Get pinged on <span class="tg">Telegram</span> about your Bitcoin.</h1>
+    <p>Custom, watch-only alerts — tell Olesia what to watch and a Telegram bot messages you when it happens. Paste an <b>address or xpub</b>; your keys are never involved and nothing you paste can spend a thing.</p>
+    <span class="dev">🛠️ In development — this page is a preview of what's coming</span>
+  </div>
+
+  <h2>What you can be alerted about</h2>
+  <div class="grid" id="alerts">
+    <div class="card" data-k="addr">
+      <span class="chk">✓</span><div class="ic">📥</div>
+      <h3>Address activity</h3>
+      <p>A watched address (or whole xpub) receives or sends coins — and when it confirms.</p>
+      <div class="eg">📥 tb1q…rtkf received 0.0100 BTC · unconfirmed</div>
+    </div>
+    <div class="card" data-k="price">
+      <span class="chk">✓</span><div class="ic">💹</div>
+      <h3>Price alerts</h3>
+      <p>BTC crosses a level you set — above or below, one-shot or repeating.</p>
+      <div class="eg">💹 BTC crossed $100,000 (▲ your $98k alert)</div>
+    </div>
+    <div class="card" data-k="fee">
+      <span class="chk">✓</span><div class="ic">⛽</div>
+      <h3>Fee / mempool</h3>
+      <p>The sat/vB rate drops below your target — time your transactions cheaply.</p>
+      <div class="eg">⛽ Fees dropped to 3 sat/vB (your ≤5 target)</div>
+    </div>
+    <div class="card" data-k="block">
+      <span class="chk">✓</span><div class="ic">⛓️</div>
+      <h3>New blocks &amp; halving</h3>
+      <p>Each new block, or countdowns to the next difficulty adjustment and halving.</p>
+      <div class="eg">⛓️ Block 968,000 mined · next halving in 41,999 blocks</div>
+    </div>
+  </div>
+
+  <h2>How it will work</h2>
+  <div class="steps">
+    <div class="step"><span class="n"></span><div><b>Open the Olesia bot on Telegram</b><p>One tap — no account, no email.</p></div></div>
+    <div class="step"><span class="n"></span><div><b>Add what to watch</b><p>Paste an address or xpub (watch-only), a price level, or a fee target.</p></div></div>
+    <div class="step"><span class="n"></span><div><b>Get pinged</b><p>The bot messages you the moment it happens. Mute or edit any alert anytime.</p></div></div>
+  </div>
+
+  <div class="cta">
+    <button class="tgbtn" id="connect" disabled>✈️ Connect Telegram — coming soon</button>
+    <span class="foot" style="margin:0;border:0;padding:0">Want to know when it launches? Follow <a href="https://github.com/testnetbtc/BTC_Wallet">the repo</a>.</span>
+  </div>
+
+  <div class="note">
+    <b>Non-custodial by design.</b> Olesia only ever watches <b>public</b> data — addresses and xpubs reveal balances and history but <b>cannot</b> spend. You never send a seed or a private key to get alerts, and you shouldn't: no legitimate notification service needs one.
+  </div>
+
+  <div class="foot">
+    <a href="/">← Back to Olesia</a> · Part of Olesia — learn Bitcoin by doing.
+  </div>
+</div>
+
+<script>
+// Preview-only: let visitors toggle the alert types they'd want, so the page
+// demonstrates the intended selection UX. No data is sent — the bot + backend
+// are built separately (see docs/TELEGRAM_NOTIFICATIONS_BRIEF.md).
+document.querySelectorAll('#alerts .card').forEach(function (c) {
+  c.addEventListener('click', function () { c.classList.toggle('on'); });
+});
+</script>
+</body>
+</html>

@@ -25,6 +25,8 @@ const PAGES = [
     scriptHosts: [TURNSTILE], frame: TURNSTILE, formAction: "'self'" },
   { file: 'p2pk/index.html', paths: ['/p2pk/*'],
     connect: "'self' https://mempool.space" },
+  { file: 'telegram/index.html', paths: ['/telegram/*'],
+    connect: "'self' https://mempool.space" },
 ];
 
 // 1) security headers (no CSP) on everything

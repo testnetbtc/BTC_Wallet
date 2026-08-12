@@ -25,6 +25,9 @@
 /p2pk/*
   Content-Security-Policy: default-src 'none'; script-src 'sha256-+K8jAkfPezm3sW5RNMNJzKTWpU+iQQYxvNPnh4usf0E='; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'self' https://mempool.space; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
+/telegram/*
+  Content-Security-Policy: default-src 'none'; script-src 'sha256-xqh0a2c+M+rWotaQDNiREJD9k99X3+6Y1/s1rUMHsZ8='; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'self' https://mempool.space; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
 /.well-known/nostr.json
   Access-Control-Allow-Origin: *
   Content-Type: application/json
