@@ -918,12 +918,31 @@
       r.textContent = `unsigned PSBT built — fee ${u.fee} sat, ~${u.vsize} vB. Copy it to your offline signer.`;
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
-  $('#signbtn').addEventListener('click', () => {
+  // SECURITY INVARIANT: verify-before-sign. The PSBT (and the online machine
+  // that built it) is untrusted. Decode it independently, verify which coins
+  // are ours and which outputs are cryptographically OUR change, compute the
+  // fee ourselves, show everything — and only then allow signing.
+  $('#signbtn').addEventListener('click', async () => {
     try {
       if (mode !== 'full') return toast('signing needs the seed', 'bad');
       if (network === 'mainnet' && navigator.onLine) toast('⚠ signing a mainnet PSBT while ONLINE — for real funds, do this offline.', 'bad');
       const psbt = $('#signin').value.trim() || $('#unsignedout').value.trim();
       if (!psbt) return toast('paste an unsigned PSBT to sign', 'bad');
+      const d = window.OW.describePsbt({ psbt, source, network, passphrase });
+      const rows = [['Network', (NETLABEL[network] || network) + (network === 'mainnet' ? ' — REAL bitcoin' : '')]];
+      d.inputs.forEach((inp, i) => rows.push([
+        `Input ${i + 1}`,
+        inp.amount != null ? `${inp.amount.toLocaleString()} sat` : '⚠ amount unknown',
+        inp.mine ? `✓ this wallet's coin · ${inp.path}` : "⚠ NOT this wallet's coin",
+      ]));
+      d.outputs.forEach((o) => {
+        if (o.type === 'op_return') rows.push(['OP_RETURN', `“${(o.opReturn || '').slice(0, 40)}”`, 'permanent public message']);
+        else if (o.change) rows.push(['Change — verified yours', o.address, `${o.amount.toLocaleString()} sat · ${o.path}`]);
+        else rows.push(['PAYMENT → external', o.address || '(unknown script)', `${o.amount.toLocaleString()} sat — leaves the wallet`]);
+      });
+      rows.push(['Network fee (computed)', d.fee != null ? `${d.fee.toLocaleString()} sat` : 'UNKNOWN — cannot verify', d.feeRate != null ? `≈${d.feeRate} sat/vB` : '']);
+      const okGo = await confirmSheet('Sign this transaction?', rows, 'Sign');
+      if (!okGo) return toast('Cancelled — nothing signed.');
       const s = window.OW.signPsbt({ psbt, mnemonic: source, network, passphrase });
       $('#signedout').value = s.psbt;
       const r = $('#agresult'); r.style.display = 'block'; r.className = 'mono ok';

@@ -10,7 +10,7 @@ import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
   fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
-  inspectWIF, sweepWIF, decodeRawTx, broadcastRaw,
+  inspectWIF, sweepWIF, decodeRawTx, broadcastRaw, describePsbt,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { sealSeed, openSeed } from '../src/vault.js';
@@ -74,6 +74,8 @@ window.OW = {
       message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, allowUnconfirmed: true,
     }),
   signPsbt: ({ psbt, mnemonic, network, index = 0, passphrase = '' }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index, passphrase }),
+  // independent decode+verify of an untrusted PSBT (for the review-before-sign sheet)
+  describePsbt: ({ psbt, source, network, passphrase = '' }) => describePsbt({ psbt: T(psbt), source: T(source), network, passphrase }),
   broadcastPsbt: ({ psbt, network }) => broadcastSigned({ psbt: T(psbt), network }),
 
   // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)

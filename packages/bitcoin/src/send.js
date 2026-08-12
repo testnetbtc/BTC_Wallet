@@ -2,13 +2,13 @@
 // tx (optionally with an OP_RETURN message), and optionally broadcast. Testnet-first.
 import * as btc from '@scure/btc-signer';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
-import { deriveKey } from './wallet.js';
+import { deriveKey, accountXpub } from './wallet.js';
 import { deriveScript } from './scripts.js';
 import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast, getTx, getOutspend } from './esplora.js';
 import { buildSignedTx, buildSweepTx } from './tx.js';
 import { buildFundP2PK, buildSpendP2PK } from './p2pk_fund.js';
 import { wifKey, wifAddresses } from './wif.js';
-import { watchOnly, buildUnsignedPSBT, signPSBTOffline, extractTx } from './psbt.js';
+import { watchOnly, buildUnsignedPSBT, signPSBTOffline, extractTx, describePSBT } from './psbt.js';
 import { net } from './networks.js';
 
 const XPUB_RE = /^(xpub|tpub|ypub|zpub|vpub|upub)[0-9A-Za-z]+$/;
@@ -228,7 +228,28 @@ export async function prepareUnsigned(opts) {
   const built = buildUnsignedPSBT({ utxos: spendable, wo: { script: wo.script, address: wo.address }, recipients, message, changeAddress: wo.address, feeRate, network });
   return { from: wo.address, ...built, feeRate };
 }
+// Independent PSBT description for review screens. `source` may be the seed or
+// an account xpub — ownership is derived, never taken from PSBT metadata.
+export function describePsbt({ psbt, source, network, passphrase = '' }) {
+  const s = (source || '').trim();
+  const axpub = isXpub(s) ? s : accountXpub(s, passphrase || '', network);
+  return describePSBT((psbt || '').trim(), { accountXpub: axpub, network });
+}
+
+// SECURITY INVARIANT: never sign what cannot be independently verified.
+// The PSBT (and the online machine that built it) is untrusted input.
 export function signUnsigned({ psbt, mnemonic, network, index = 0, passphrase = '' }) {
+  const d = describePsbt({ psbt, source: mnemonic, network, passphrase });
+  if (!d.anyInputMine)
+    throw new Error('refusing to sign: no input belongs to this wallet — wrong seed, passphrase, or network?');
+  if (!d.allInputsMine)
+    throw new Error("refusing to sign: this PSBT spends coins that are NOT this wallet's — a single-sig wallet must never co-sign foreign inputs");
+  if (d.fee == null)
+    throw new Error('refusing to sign: input amounts are missing from the PSBT, so the fee cannot be independently verified');
+  if (d.fee < 0)
+    throw new Error('refusing to sign: outputs exceed inputs — malformed or malicious PSBT');
+  if (d.inTotal > 0 && d.fee > d.inTotal * 0.2)
+    throw new Error(`refusing to sign: fee (${d.fee} sat) exceeds 20% of the inputs (${d.inTotal} sat) — rebuild with a sane fee`);
   return signPSBTOffline(psbt, (mnemonic || '').trim(), passphrase || '', network, index);
 }
 export async function broadcastSigned({ psbt, network }) {
