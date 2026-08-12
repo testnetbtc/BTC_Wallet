@@ -1,6 +1,9 @@
 // Safety test for the watch-only classifier. The SECRET cases MUST all reject.
+import { HDKey } from '@scure/bip32';
+import { mnemonicToSeedSync } from '@scure/bip39';
 import { classifyInput, xpubAddresses } from './lib.mjs';
 import { accountXpub } from '../src/wallet.js';
+import { net } from '../src/networks.js';
 
 let fail = 0;
 const expect = (input, kind, note = '') => {
@@ -20,8 +23,12 @@ expect(SEED12, 'SECRET', '12-word seed');
 expect(SEED24, 'SECRET', '24-word seed');
 expect('5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ', 'SECRET', 'mainnet WIF');
 expect('cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy', 'SECRET', 'testnet WIF');
-expect('xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi', 'SECRET', 'xprv');
-expect('tprv8ZgxMBicQKsPeDgjzdC36fs6bMjGApWDNLR9erAXMs5skhMv36j9MV5ecvfavji5khqjWaWSFhN3YcCUUdKb2WYW9tdrRk9dvC5rJ6RcCTf', 'SECRET', 'tprv');
+// xprv/tprv derived at RUNTIME from the throwaway test seed — so a real private
+// extended key is fed to the classifier, but no key-shaped literal sits in the
+// repo (which the CI secret-scan rightly flags, test vector or not).
+const root = mnemonicToSeedSync(SEED12, '');
+expect(HDKey.fromMasterSeed(root, net('mainnet').bip32).privateExtendedKey, 'SECRET', 'xprv (runtime-derived)');
+expect(HDKey.fromMasterSeed(root, net('testnet4').bip32).privateExtendedKey, 'SECRET', 'tprv (runtime-derived)');
 expect('0000000000000000000000000000000000000000000000000000000000000001', 'SECRET', 'hex privkey');
 
 console.log('\n--- PUBLIC (must ACCEPT) ---');
