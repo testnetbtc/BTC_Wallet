@@ -35,5 +35,13 @@ export function decryptColdBackup(obj, password) {
   let pt;
   try { pt = xchacha20poly1305(key, hexToBytes(c.nonce), aad).decrypt(hexToBytes(obj.ciphertext)); }
   catch { throw new Error('wrong password, corrupt file, or tampered metadata'); }
-  return { mnemonic: bytesToUtf8(pt), passphraseUsed: !!obj.passphraseUsed };
+  // v3 authenticates its metadata as AEAD associated data, so the returned flags
+  // are trustworthy. v1/v2 do NOT — only the mnemonic (the ciphertext) is
+  // authenticated. We flag that so the caller/UI treats legacy metadata as
+  // untrusted rather than silently acting on a potentially altered value.
+  return {
+    mnemonic: bytesToUtf8(pt),
+    passphraseUsed: !!obj.passphraseUsed,
+    metadataAuthenticated: obj.version >= 3,
+  };
 }

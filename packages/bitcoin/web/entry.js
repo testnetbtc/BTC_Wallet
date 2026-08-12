@@ -4,7 +4,7 @@
 import { generateMnemonic, validateMnemonic, entropyToMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { sha256 } from '@noble/hashes/sha256';
-import { concatBytes, utf8ToBytes } from '@noble/hashes/utils';
+import { concatBytes, utf8ToBytes, bytesToHex } from '@noble/hashes/utils';
 import QRCode from 'qrcode';
 import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
@@ -56,6 +56,19 @@ window.OW = {
   status: (source, network, scriptType, index = 0, passphrase = '') => statusFor(T(source), network, scriptType, index, passphrase),
   history: (source, network, scriptType, index = 0, passphrase = '') => historyFor(T(source), network, scriptType, index, passphrase),
   xpub: (mnemonic, network, passphrase = '') => accountXpub(T(mnemonic), passphrase || '', network),
+
+  // Wallet fingerprint: a short, non-reversible code derived from the account
+  // (which already depends on seed + passphrase). Same words + same passphrase
+  // ALWAYS give the same code; a wrong passphrase gives a different one. Lets a
+  // user confirm they re-entered the passphrase correctly WITHOUT revealing it —
+  // the fix for the silent "valid-looking but wrong wallet" trap. Reveals nothing
+  // the exportable account xpub doesn't already.
+  fingerprint: (source, network = 'mainnet', passphrase = '') => {
+    const s = T(source);
+    const x = isXpub(s) ? s : accountXpub(s, passphrase || '', network);
+    const h = bytesToHex(sha256(utf8ToBytes(x))).toUpperCase();
+    return h.slice(0, 4) + '-' + h.slice(4, 8);
+  },
 
   send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
     prepareAndSend({

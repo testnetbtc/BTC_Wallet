@@ -342,8 +342,9 @@
     await new Promise((r) => setTimeout(r, 30));
     try {
       const text = await f.text();
-      const { mnemonic, passphraseUsed } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
+      const { mnemonic, passphraseUsed, metadataAuthenticated } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
       if (!window.OW.validate(mnemonic)) throw new Error('decrypted, but the recovered phrase is not valid BIP-39');
+      if (metadataAuthenticated === false) toast('Legacy backup: its labels (network/passphrase flag) are not cryptographically authenticated — only the seed itself is verified.', 'bad');
       if (passphraseUsed && !$('#bkbip39').value) {
         $('#bkbip39row').style.display = 'block';
         $('#bkinfo').className = 'hint';
@@ -411,13 +412,17 @@
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
 
+  function walletFP() { try { return window.OW.fingerprint(source, network, passphrase); } catch { return null; } }
   function initWallet() {
     $('#lockbtn').style.display = 'inline-block';
     $('#vault_state').textContent = window.OW.vault.exists() ? 'saved encrypted on this device' : 'not saved — seed lives in this tab only';
     $('#acct_watchnote').style.display = mode === 'watch' ? 'block' : 'none';
     renderAccountRows();
     showPane('home');
-    toast(mode === 'watch' ? 'Watch-only wallet opened (xpub).' : '✓ Wallet open', 'ok');
+    // With a passphrase, confirm the RIGHT wallet opened: a wrong passphrase
+    // still "works" but gives a different (empty) wallet — the fingerprint catches it.
+    if (mode === 'full' && passphrase) toast(`Wallet fingerprint ${walletFP()} — the same words + passphrase always give this code. A different code means a different passphrase.`, 'ok');
+    else toast(mode === 'watch' ? 'Watch-only wallet opened (xpub).' : '✓ Wallet open', 'ok');
     refreshAll();
   }
 
@@ -1079,7 +1084,11 @@
       const s = document.createElement('span'); const n = document.createElement('i');
       n.textContent = i + 1; s.append(n, w); box.appendChild(s);
     });
-    if (p) { const s = document.createElement('span'); s.style.gridColumn = '1 / -1'; s.style.color = 'var(--accent)'; s.textContent = '+ passphrase set (not shown — remember it separately; it is part of this wallet)'; box.appendChild(s); }
+    if (p) {
+      const s = document.createElement('span'); s.style.gridColumn = '1 / -1'; s.style.color = 'var(--accent)';
+      s.textContent = `+ passphrase set (not shown — remember it separately; it is part of this wallet). Wallet fingerprint: ${walletFP()} — check this matches when you restore, to prove the passphrase was right.`;
+      box.appendChild(s);
+    }
     $('#bk_gate').style.display = 'none'; $('#bk_show').style.display = 'block';
     clearTimeout(bkTimer); bkTimer = setTimeout(hideBackup, 60000); // auto-hide after 60s
   }
