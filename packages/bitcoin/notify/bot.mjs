@@ -22,7 +22,7 @@ import { classifyInput, xpubAddresses, XPUB_GAP } from './lib.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SEC = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
 const TOKEN = SEC('telegram.json').token;
-const BOT_USERNAME = (existsSync(join(HERE, '..', '.secrets', 'telegram.json')) && SEC('telegram.json').username) || 'OlesiaAlertsBot';
+const BOT_USERNAME = (existsSync(join(HERE, '..', '.secrets', 'telegram.json')) && SEC('telegram.json').username) || 'BTCNode_bot';
 const API = `https://api.telegram.org/bot${TOKEN}`;
 const DB_FILE = join(HERE, '..', '.secrets', 'notify.db');
 const HEARTBEAT = join(HERE, '..', '.secrets', 'notify-heartbeat.json');
