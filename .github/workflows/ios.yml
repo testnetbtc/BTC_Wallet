@@ -59,6 +59,15 @@ jobs:
           if [ ! -d ios ]; then npx cap add ios; fi
           npx cap sync ios
 
+      - name: Declare export-compliance (exempt) in Info.plist
+        working-directory: mobile/ios/App/App
+        run: |
+          # Olesia uses only standard crypto (TLS + platform primitives), which is
+          # exempt. Declaring it here stops App Store Connect asking on every upload.
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" Info.plist \
+            || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" Info.plist
+          /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" Info.plist
+
       - name: Build for the Simulator (no signing needed)
         working-directory: mobile/ios/App
         run: |
