@@ -13,7 +13,7 @@ import {
   inspectWIF, sweepWIF, decodeRawTx, broadcastRaw, describePsbt,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
-import { sealSeed, openSeed } from '../src/vault.js';
+import { sealSeed, openSeed, generateVaultPassphrase, secretStrength, meetsMainnetBar } from '../src/vault.js';
 import { decryptColdBackup } from '../src/coldbackup.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
 import { NETWORKS } from '../src/networks.js';
@@ -81,12 +81,19 @@ window.OW = {
   // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)
   vault: {
     exists: () => { try { return !!localStorage.getItem('olesia:vault'); } catch { return false; } },
-    save: (mnemonic, pin, passphrase = '') => {
-      localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin));
+    // network gates the strength policy: mainnet seeds must not persist under a
+    // weak PIN (see vault.js meetsMainnetBar). Testnet keeps the convenient PIN.
+    save: (mnemonic, pin, passphrase = '', network = 'testnet4') => {
+      const requireStrong = network === 'mainnet';
+      localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin, { requireStrong }));
       // remember the PIN length (not the PIN) so unlock can auto-submit at the right
       // digit — only meaningful for all-numeric PINs; harmless for passphrase unlocks
       try { if (/^[0-9]+$/.test(String(pin))) localStorage.setItem('olesia:pinlen', String(String(pin).length)); else localStorage.removeItem('olesia:pinlen'); } catch {}
     },
+    // exact-entropy passphrase for strong protection; strength check for the UI
+    suggest: (words = 6) => generateVaultPassphrase(words),
+    strength: (secret) => secretStrength(secret),
+    strongEnoughForMainnet: (secret) => meetsMainnetBar(secret),
     open: (pin) => {
       const raw = openSeed(localStorage.getItem('olesia:vault'), pin);
       try { const o = JSON.parse(raw); if (o && o.m) return { m: o.m, p: o.p || '' }; } catch {}

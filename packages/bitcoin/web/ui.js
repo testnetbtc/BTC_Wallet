@@ -64,7 +64,7 @@
   $('#confirm').addEventListener('click', (e) => { if (e.target.id === 'confirm') closeConfirm(false); });
 
   // ---------- set-a-PIN sheet (keypad, not the OS keyboard; choose + confirm) ----------
-  let pinResolve = null, psBuf = '', psFirst = null, psText = false;
+  let pinResolve = null, psBuf = '', psFirst = null, psText = false, psMainnet = false;
   const psMin = 6;
   function psDots() {
     const d = $('#ps_dots'); d.textContent = '';
@@ -75,24 +75,54 @@
     $('#ps_title').textContent = psFirst == null ? 'Choose a PIN' : 'Confirm your PIN';
     $('#ps_sub').textContent = psFirst == null ? `${psMin}+ digits — you'll enter this to unlock` : 'type it once more';
   }
-  function askPin() {
+  // opts.mainnet: a mainnet seed must not persist behind a weak PIN — start in
+  // passphrase mode with the strong-passphrase generator, and enforce the bar.
+  function askPin(opts = {}) {
     return new Promise((res) => {
-      pinResolve = res; psBuf = ''; psFirst = null; psText = false;
-      $('#ps_text').value = ''; $('#ps_textrow').style.display = 'none';
-      $('#ps_pad').style.display = 'grid'; $('#ps_dots').style.display = 'flex'; $('#ps_abc').textContent = 'abc';
-      $('#ps_msg').textContent = ''; psTitle(); psDots();
+      pinResolve = res; psBuf = ''; psFirst = null; psMainnet = !!opts.mainnet;
+      psText = psMainnet; // mainnet defaults to a passphrase, not a PIN
+      $('#ps_text').value = ''; $('#ps_msg').textContent = '';
+      $('#ps_textrow').style.display = psText ? 'flex' : 'none';
+      $('#ps_genrow').style.display = psMainnet ? 'block' : 'none';
+      $('#ps_strength').textContent = '';
+      $('#ps_pad').style.display = psText ? 'none' : 'grid';
+      $('#ps_dots').style.display = psText ? 'none' : 'flex';
+      $('#ps_abc').textContent = psText ? '123' : 'abc';
+      psTitle(); psDots();
       $('#pinsheet').classList.add('on');
+      if (psText) setTimeout(() => $('#ps_text').focus(), 30);
     });
   }
   const psClose = (val) => { $('#pinsheet').classList.remove('on'); if (pinResolve) { pinResolve(val); pinResolve = null; } };
   function psSubmit() {
     const val = psText ? $('#ps_text').value : psBuf;
     if (!val || val.length < psMin) { $('#ps_msg').textContent = `at least ${psMin} characters`; return; }
+    // enforce the mainnet strength bar on the FIRST entry (before confirm)
+    if (psMainnet && psFirst == null && !window.OW.vault.strongEnoughForMainnet(val)) {
+      $('#ps_msg').textContent = 'too weak for a mainnet wallet — use a generated passphrase or a 12+ char mixed password';
+      return;
+    }
     if (psFirst == null) { // move to confirm phase
-      psFirst = val; psBuf = ''; $('#ps_text').value = ''; $('#ps_msg').textContent = ''; psTitle(); psDots();
+      psFirst = val; psBuf = ''; $('#ps_text').value = ''; $('#ps_msg').textContent = ''; $('#ps_genrow').style.display = 'none'; psTitle(); psDots();
     } else if (val === psFirst) { psClose(val); }
-    else { $('#ps_msg').textContent = "those didn't match — start again"; psFirst = null; psBuf = ''; $('#ps_text').value = ''; psTitle(); psDots(); }
+    else { $('#ps_msg').textContent = "those didn't match — start again"; psFirst = null; psBuf = ''; $('#ps_text').value = ''; if (psMainnet) $('#ps_genrow').style.display = 'block'; psTitle(); psDots(); }
   }
+  function psShowStrength() {
+    if (!psMainnet || psFirst != null) return;
+    const s = window.OW.vault.strength($('#ps_text').value);
+    const okBar = window.OW.vault.strongEnoughForMainnet($('#ps_text').value);
+    $('#ps_strength').innerHTML = !$('#ps_text').value ? '' :
+      s.verifiable ? `${s.words}-word passphrase · <b>${s.bits} bits</b> ${okBar ? '✓' : '— add more words'}`
+                   : `typed password · strength unverifiable ${okBar ? '✓ (meets the length/variety floor)' : '— need 12+ chars, mixed'}`;
+  }
+  $('#ps_gen').addEventListener('click', () => {
+    const g = window.OW.vault.suggest(6);
+    psText = true; $('#ps_text').type = 'text'; $('#ps_text').value = g.phrase;
+    $('#ps_textrow').style.display = 'flex'; $('#ps_pad').style.display = 'none'; $('#ps_dots').style.display = 'none'; $('#ps_abc').textContent = '123';
+    psShowStrength();
+    toast('Write this passphrase down — it protects your wallet and is not recoverable.', 'bad');
+  });
+  $('#ps_text').addEventListener('input', psShowStrength);
   $('#ps_pad').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
     if (b.dataset.k === 'back') psBuf = psBuf.slice(0, -1); else if (psBuf.length < 12) psBuf += b.dataset.k;
@@ -284,9 +314,9 @@
   });
   function openCreated() { source = wizMnemonic; passphrase = $('#c_pass').value; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; moveEntropy = ''; moveSamples = 0; $('#c_words').textContent = ''; $('#dice').value = ''; $('#c_pass').value = ''; initWallet(); }
   $('#c_save').addEventListener('click', async () => {
-    const pin = await askPin(); if (pin == null) return;
+    const pin = await askPin({ mainnet: network === 'mainnet' }); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
-    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value); openCreated(); }
+    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value, network); openCreated(); }
     catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#c_skip').addEventListener('click', () => { openCreated(); toast('Not saved — keep that paper safe; you’ll need the words next time.'); });
@@ -887,10 +917,10 @@
   $('#set_airgap').addEventListener('click', () => tog('#airgap_body'));
   $('#vsave').addEventListener('click', async () => {
     if (!source || mode !== 'full') return toast('open a wallet with a seed first', 'bad');
-    const pin = await askPin(); if (pin == null) return;
+    const pin = await askPin({ mainnet: network === 'mainnet' }); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
     try {
-      window.OW.vault.save(source, pin, passphrase);
+      window.OW.vault.save(source, pin, passphrase, network);
       $('#vault_state').textContent = 'saved encrypted on this device';
       toast('✓ saved — next visit, unlock with your PIN', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }

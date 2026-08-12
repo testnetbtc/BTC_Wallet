@@ -236,6 +236,10 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <button type="button" class="ghost" id="ps_abc" title="use a passphrase">abc</button><button type="button" data-k="0">0</button><button type="button" class="ghost" data-k="back">⌫</button>
     </div>
     <div class="field" id="ps_textrow" style="display:none;margin-top:12px"><input id="ps_text" type="password" placeholder="passphrase (6+ chars)" autocomplete="off"></div>
+    <div id="ps_genrow" style="display:none;margin-top:8px">
+      <button type="button" class="sec" id="ps_gen" style="width:100%">🎲 Generate a strong passphrase (66 bits)</button>
+      <p class="hint" id="ps_strength" style="margin:6px 0 0;min-height:15px"></p>
+    </div>
     <div class="row" style="margin-top:14px"><button type="button" class="sec" id="ps_cancel">Cancel</button><button type="button" id="ps_ok">Continue</button></div>
   </div>
 </div>
