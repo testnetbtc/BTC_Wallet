@@ -64,7 +64,12 @@ export async function prepareAndSend(opts) {
   const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
   if (w.watchOnly) throw new Error('watch-only (xpub) cannot sign — use the air-gap tools');
   if (!w.address) throw new Error('P2PK has no address; spending it is a museum feature (coming soon)');
-  const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
+  // Optional caller-curated coin set (e.g. the faucet, which picks confirmed
+  // small coins itself). When given, we spend EXACTLY those; otherwise we fetch
+  // and (optionally) allow unconfirmed as before.
+  const spendable = Array.isArray(opts.utxos) && opts.utxos.length
+    ? await attachPrevTxs(opts.utxos, network, w)
+    : await spendableUtxos(w, network, opts.allowUnconfirmed);
   const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
   const built = buildSignedTx({ utxos: spendable, key: w, recipients, message, changeAddress: w.address, feeRate, networkName: network });
   const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;

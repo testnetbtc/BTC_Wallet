@@ -8,7 +8,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as btc from '@scure/btc-signer';
-import { prepareAndSend, statusFor } from '../src/send.js';
+import { prepareAndSend, statusFor, walletAddress } from '../src/send.js';
+import { getUTXOs } from '../src/esplora.js';
 import { net } from '../src/networks.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,32 @@ const ALLOW_ORIGIN = new Set(['https://faucet.olesia.io', 'https://olesia.io', '
 // Turnstile secret from a 600 file (preferred) or env. Absent -> human check off.
 const TURNSTILE_SECRET = (existsSync(join(HERE, '..', '.secrets', 'turnstile.json')) ? secret('turnstile.json').secret : '') || process.env.TURNSTILE_SECRET || '';
 const MAX_BODY = 4000;
+
+// ---- faucet coin selection -------------------------------------------------
+// The generic sender optimizes for fewest-inputs, which means it always grabs the
+// single biggest coin — including an UNCONFIRMED top-up, and leaving the whole
+// pot's change dangling in one long unconfirmed chain. For a faucet that is wrong:
+// we want to (1) spend only CONFIRMED coins whenever possible, and (2) draw from
+// the bank of small pre-split coins, picked at RANDOM so simultaneous claims land
+// on different coins instead of colliding on one. Returns a curated UTXO set to
+// hand to prepareAndSend({ utxos }), or null to fall back to the default path.
+const FEE_HEADROOM = 2000;                 // sat; covers a 2-in/2-out p2wpkh tx at feeRate 2 with margin
+const SMALL_COIN_MAX = DRIP * 20;          // treat coins < 0.02 tBTC as "bank" coins; never auto-grab the giant pot coin
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+async function pickFaucetCoins(network) {
+  const addr = walletAddress(MNEMONIC, network, 'p2wpkh');
+  const confirmed = (await getUTXOs(addr, network)).filter((u) => u.confirmed);
+  if (!confirmed.length) return null;      // nothing confirmed -> caller falls back to allowUnconfirmed
+  const need = DRIP + FEE_HEADROOM;
+  // 1) accumulate random small "bank" coins until they cover the drip + fee.
+  const bank = shuffle(confirmed.filter((u) => u.value <= SMALL_COIN_MAX));
+  const chosen = []; let sum = 0;
+  for (const u of bank) { chosen.push(u); sum += u.value; if (sum >= need) return chosen; }
+  // 2) not enough small coins — use the smallest single CONFIRMED coin that covers
+  //    it (may be a large coin, but still confirmed: avoids unconfirmed spends).
+  const big = confirmed.filter((u) => u.value >= need).sort((a, b) => a.value - b.value)[0];
+  return big ? [big] : null;               // 3) no confirmed coin covers it -> fall back
+}
 
 // rate limits (sliding window)
 const RL = { ip: { max: 3, win: 3_600_000 }, addr: { max: 1, win: 86_400_000 }, global: { max: 500, win: 86_400_000 } };
@@ -85,7 +112,11 @@ const server = http.createServer((req, res) => {
       if (!internal && limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
       if (limited('addr', address, now)) return json(res, 429, { error: 'this address already got coins today' });
       try {
-        const r = await prepareAndSend({ source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: 2, broadcast: true, allowUnconfirmed: true });
+        const opts = { source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: 2, broadcast: true };
+        const coins = await pickFaucetCoins(network).catch(() => null);
+        // Confirmed bank coins if we have them; only chain off unconfirmed as a last resort.
+        if (coins && coins.length) opts.utxos = coins; else opts.allowUnconfirmed = true;
+        const r = await prepareAndSend(opts);
         json(res, 200, { txid: r.broadcastTxid, amount: DRIP, explorer: r.explorer });
       } catch (e) { json(res, 400, { error: String(e.message).slice(0, 200) }); }
     });
