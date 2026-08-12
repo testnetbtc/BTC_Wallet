@@ -59,6 +59,16 @@ jobs:
           if [ ! -d ios ]; then npx cap add ios; fi
           npx cap sync ios
 
+      - name: Generate app icons + splash screens
+        working-directory: mobile
+        run: |
+          # assets/icon.png (1024, opaque square — iOS applies its own mask) and
+          # assets/splash*.png (2732 square) -> every size Xcode needs
+          npx --yes @capacitor/assets generate --ios \
+            --iconBackgroundColor '#0e1116' \
+            --splashBackgroundColor '#0e1116' \
+            --splashBackgroundColorDark '#0e1116'
+
       - name: Declare export-compliance (exempt) in Info.plist
         working-directory: mobile/ios/App/App
         run: |
@@ -103,6 +113,37 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER=""
 
+      - name: Run it on a simulator and take screenshots
+        continue-on-error: true          # never fail the build over screenshots
+        run: |
+          set -x
+          APP=$(find mobile/ios/App/build/Build/Products -name "*.app" -maxdepth 3 | head -1)
+          [ -z "$APP" ] && { echo "no .app built"; exit 0; }
+          # prefer a 6.7" device (App Store's required screenshot size)
+          UDID=$(xcrun simctl list devices available -j | node -e "
+            let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+              const j=JSON.parse(d); let pick=null, fb=null;
+              for (const [rt,devs] of Object.entries(j.devices))
+                for (const dev of devs) {
+                  if (!dev.isAvailable) continue;
+                  if (/iPhone 1[5-9] Pro Max|iPhone 1[4-9] Plus/.test(dev.name) && !pick) pick = dev.udid;
+                  if (/iPhone/.test(dev.name) && !fb) fb = dev.udid;
+                }
+              console.log(pick || fb || '');
+            });")
+          [ -z "$UDID" ] && { echo "no simulator available"; exit 0; }
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b || true
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" io.olesia.wallet || true
+          mkdir -p "$RUNNER_TEMP/shots"
+          sleep 12   # let the webview paint
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/shots/01-welcome.png" || true
+          sleep 6
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/shots/02-welcome-settled.png" || true
+          xcrun simctl shutdown "$UDID" || true
+          ls -la "$RUNNER_TEMP/shots" || true
+
       - name: Package the simulator app
         run: |
           APP=$(find mobile/ios/App/build/Build/Products -name "*.app" -maxdepth 3 | head -1)
@@ -110,6 +151,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           [ -n "$APP" ] && cp -R "$APP" "$RUNNER_TEMP/out/" || true
           cp -R "$RUNNER_TEMP/Olesia.xcarchive" "$RUNNER_TEMP/out/" || true
+          cp -R "$RUNNER_TEMP/shots" "$RUNNER_TEMP/out/" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:

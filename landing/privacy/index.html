@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Olesia</title>
+<meta name="description" content="Olesia collects no personal data. Your keys never leave your device. Here is exactly what happens, in plain English.">
+<link rel="icon" href="/olesia-icon.png">
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 system-ui,-apple-system,sans-serif;background:#0e1116;color:#e6edf3}
+.wrap{max-width:760px;margin:0 auto;padding:28px 18px 70px}
+a{color:#7ee2a8}
+h1{font-size:34px;margin:0 0 2px;letter-spacing:.5px}h1 span{color:#f0a020}
+.sub{color:#9aa7b4;font-size:18px;margin:0 0 6px}
+.date{color:#6b7480;font-size:13px;margin:0 0 24px}
+h2{font-size:20px;margin:32px 0 8px;border-top:1px solid #2b333c;padding-top:24px}
+h3{font-size:16px;margin:22px 0 6px;color:#e6edf3}
+p,li{color:#c9d3dd}
+.big{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:12px;padding:18px 20px;margin:0 0 24px;font-size:16px;line-height:1.65}
+.big b{color:#e6edf3}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:10px;padding:14px 16px;margin:20px 0;font-size:14.5px}
+.warn b{color:#ffd57a}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #2b333c;vertical-align:top}
+th{color:#9aa7b4;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+code{background:#161b22;border:1px solid #2b333c;border-radius:6px;padding:1px 6px;font-size:13px;word-break:break-all}
+.foot{color:#6b7480;font-size:13px;margin-top:40px;border-top:1px solid #2b333c;padding-top:20px}
+ul{padding-left:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Olesia<span>.</span></h1>
+  <p class="sub">Privacy Policy</p>
+  <p class="date">Last updated: 12 August 2026</p>
+
+  <div class="big">
+    <b>The short version: Olesia collects nothing about you.</b> No account, no email, no
+    name, no analytics, no advertising, no tracking, no cookies. Your seed phrase and
+    private keys are created on your device, stay on your device, and are never sent
+    anywhere — not to us, not to anyone. We could not access your wallet if we wanted to,
+    and we could not hand it over if we were asked.
+  </div>
+
+  <h2>Who we are</h2>
+  <p>Olesia is a free, open-source, <b>non-custodial</b> Bitcoin wallet built for learning.
+  “Non-custodial” means we never hold your coins or your keys — only you do. The entire
+  source code is public at
+  <a href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener">github.com/testnetbtc/BTC_Wallet</a>,
+  so every claim on this page can be independently verified rather than taken on trust.</p>
+
+  <h2>What we do not collect</h2>
+  <ul>
+    <li>No accounts, sign-ups, usernames, emails or phone numbers</li>
+    <li>No names, addresses or identity documents (no KYC)</li>
+    <li>No analytics, telemetry, crash reporting or usage statistics</li>
+    <li>No advertising identifiers, no third-party trackers, no cookies</li>
+    <li>No seed phrases, private keys, PINs or passphrases — <b>ever</b></li>
+  </ul>
+
+  <h2>What stays on your device</h2>
+  <p>Everything that matters. Olesia stores a small amount of data in your browser or app
+  storage, on your device only. It is never transmitted.</p>
+  <table>
+    <tr><th>Stored item</th><th>What it is</th></tr>
+    <tr><td><code>olesia:vault</code></td><td>Your seed phrase, <b>encrypted</b> with your PIN (scrypt + XChaCha20-Poly1305). Without your PIN it is unreadable — including by us.</td></tr>
+    <tr><td><code>olesia:pinlen</code></td><td>The <i>length</i> of your PIN (never the PIN), so the keypad knows when to submit.</td></tr>
+    <tr><td><code>olesia:label:…</code></td><td>Any nicknames you give your own accounts.</td></tr>
+    <tr><td><code>olesia:learn</code></td><td>Which lessons you have read.</td></tr>
+  </table>
+  <p>You can erase all of it at any time with <b>Settings → Forget saved wallet</b>, or by
+  clearing site data / deleting the app. We hold no copy, so there is nothing for you to
+  ask us to delete.</p>
+
+  <h2>What leaves your device, and why</h2>
+  <p>A wallet has to talk to the Bitcoin network to show balances and broadcast payments.
+  Olesia contacts only these services, and only for that purpose:</p>
+  <table>
+    <tr><th>Service</th><th>What is sent</th><th>Why</th></tr>
+    <tr>
+      <td><b>mempool.space</b><br><span style="color:#6b7480">third party</span></td>
+      <td>Your Bitcoin addresses (to look up balances and history) and signed transactions you choose to broadcast.</td>
+      <td>To show your balance and send payments. Governed by their own privacy policy.</td>
+    </tr>
+    <tr>
+      <td><b>blockstream.info</b><br><span style="color:#6b7480">third party</span></td>
+      <td>The same, used as a fallback when mempool.space is unavailable.</td>
+      <td>Reliability. Governed by their own privacy policy.</td>
+    </tr>
+    <tr>
+      <td><b>api.olesia.io</b><br><span style="color:#6b7480">ours</span></td>
+      <td>Only if you use the testnet faucet: the practice address you paste, and your IP address.</td>
+      <td>To send you free practice coins and stop one person draining the faucet.</td>
+    </tr>
+  </table>
+
+  <div class="warn">
+    <b>Please understand this properly.</b> Bitcoin is a public ledger, and looking up a
+    balance means telling <i>someone</i> which addresses you care about. Those third-party
+    explorers can see your IP address alongside the addresses you query — that is true of
+    almost every wallet, not just Olesia. If that matters to you, the answer is to run
+    your own node, and we would rather teach you that than pretend the problem away.
+  </div>
+
+  <h2>The faucet, specifically</h2>
+  <p>Our faucet gives away worthless <b>testnet</b> coins. To stop abuse it keeps a short-lived,
+  in-memory record of recent claim IPs and addresses — a sliding window that is discarded
+  automatically. It is not written to a database, not profiled, and not shared. If the
+  Cloudflare Turnstile human check is enabled, your IP is shared with Cloudflare purely to
+  verify you are not a bot, under their privacy policy.</p>
+
+  <h2>Children</h2>
+  <p>Olesia is not directed at children under 13, and since we collect no personal data, we
+  do not knowingly collect anything from them.</p>
+
+  <h2>Your rights (UK GDPR)</h2>
+  <p>Rights of access, correction, erasure and portability all apply to personal data a
+  company holds about you. <b>We hold none</b>, so in practice there is nothing to request —
+  your data is already entirely in your own hands. If you believe otherwise, contact us and
+  we will investigate promptly. You may also complain to the UK Information Commissioner's
+  Office (<a href="https://ico.org.uk" target="_blank" rel="noopener">ico.org.uk</a>).</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes we will update the date above and publish the change in the
+  public repository, where the full history is visible to anyone.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy? Open an issue at
+  <a href="https://github.com/testnetbtc/BTC_Wallet/issues" target="_blank" rel="noopener">our public GitHub repository</a>
+  — asking in the open means the answer helps everyone, and you can see it was answered.</p>
+
+  <div class="foot">
+    <a href="/">← Back to Olesia</a> · Non-custodial. Open source. Your keys, your coins.
+  </div>
+</div>
+</body>
+</html>
