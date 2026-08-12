@@ -506,7 +506,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       A tiny <b>permanent note</b> (~80 bytes) written into Bitcoin's public record. It carries no coins and can never be spent.<br><br>
       <b>Genuine uses:</b> proving a document existed at a point in time, notarising, attribution, a personal message or memorial.<br><br>
       <b>The famous one:</b> Satoshi wrote a newspaper headline — <i>"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"</i> — into the very first block. OP_RETURN is today's tidy way to leave your own mark like that.<br><br>
-      <b>Where we stand:</b> people disagree about what data belongs on Bitcoin. Olesia is neutral — it's part of the protocol, so it's here, explained, for you to use thoughtfully. <span style="color:var(--faint)">(No NFTs or inscriptions.)</span>
+      <b>Where we stand:</b> this is genuinely debated. Critics argue Bitcoin's block space is for money, and every byte of data is paid for once but stored by every node forever. Supporters note OP_RETURN was <i>designed</i> as the honest, prunable way to carry a small note — far kinder to the network than hiding data in fake addresses. Olesia teaches the tidy form and only that: one standard output, 80 bytes, no NFTs, no inscriptions. Practice freely on testnets; on mainnet, ask yourself if it truly needs to be forever.
     </div>
     <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px" onclick="event.stopPropagation()">
     <div class="msgtools"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>

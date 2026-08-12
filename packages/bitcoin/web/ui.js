@@ -718,7 +718,10 @@
     $('#send_pay').style.display = m === 'pay' ? 'block' : 'none';
     $('#send').textContent = m === 'msg' ? 'Write on the chain' : 'Send';
     // in message-only mode the note becomes required and the explainer opens
-    if (m === 'msg') { $('#orbody').style.display = 'block'; $('#orchev').textContent = 'Hide ▴'; $('#msg').focus(); }
+    if (m === 'msg') {
+      $('#orbody').style.display = 'block'; $('#orchev').textContent = 'Hide ▴'; $('#msg').focus();
+      if (network === 'mainnet') toast('Mainnet: this writes to every Bitcoin node, forever. Testnets are the place to practise.', 'bad');
+    }
   }
   $$('#send_mode .feep').forEach((b) => b.addEventListener('click', () => setSendMode(b.dataset.mode)));
   $('#maxbtn').addEventListener('click', () => {
@@ -819,7 +822,7 @@
     ['Fees', 'Miners include transactions that pay them, priced in <b>sat/vB</b>. Busier network → higher rate to confirm fast. <b>Auto</b> in the Send screen asks the network for a live estimate; on testnets fees barely matter, so experiment freely.'],
     ['Networks', '<b>Testnet3/4</b> and <b>Signet</b> share mainnet’s rules but use worthless coins — perfect for practice. <b>Mainnet</b> is real money. Every test network uses the same key maths, so what you learn here is the real thing, pointed at a playground.'],
     ['Hot vs cold', 'A <b>hot</b> wallet keeps keys on a connected device — convenient, fine for small amounts. A <b>cold</b> wallet generates and signs offline, so keys never touch the internet. The one rule: real value belongs in cold storage — use the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a> and the air-gap tools.'],
-    ['Writing on-chain', 'OP_RETURN attaches a tiny permanent note to a transaction — no coins, unspendable, forever public. Satoshi set the tone by writing a newspaper headline into the first block. People disagree about data on Bitcoin; Olesia is neutral — it’s part of the protocol, explained, for thoughtful use.'],
+    ['Writing on-chain', 'OP_RETURN attaches a tiny permanent note to a transaction — no coins, unspendable, forever public. Satoshi set the tone by writing a newspaper headline into the first block. Know the debate: critics say block space is for money and every byte lives on every node forever; supporters note OP_RETURN was <i>designed</i> as the honest, prunable way to carry a small note — kinder than hiding data in fake addresses that bloat the UTXO set. Olesia teaches only the tidy form: 80 bytes, one output, no inscriptions. Practice on testnets; on mainnet, ask if it truly needs to be forever.'],
   ];
   const learnRead = () => { try { return new Set(JSON.parse(localStorage.getItem('olesia:learn') || '[]')); } catch { return new Set(); } };
   function renderLearn() {
