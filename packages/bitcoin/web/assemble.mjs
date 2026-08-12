@@ -121,7 +121,7 @@ a{color:var(--mint)}
 .lesson .body b{color:var(--text)}
 .lesson.open .body{display:block}
 /* settings */
-.srow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-bottom-width:0;padding:13px 14px;cursor:pointer;font-size:14px}
+.srow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-bottom-width:0;padding:13px 14px;cursor:pointer;font-size:14px;text-decoration:none;color:inherit}
 .sgroup .srow:first-child{border-radius:13px 13px 0 0}
 .sgroup .srow:last-child{border-radius:0 0 13px 13px;border-bottom-width:1px}
 .sgroup .srow:only-child{border-radius:13px}
@@ -512,7 +512,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <b>The famous one:</b> Satoshi wrote a newspaper headline — <i>"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"</i> — into the very first block. OP_RETURN is today's tidy way to leave your own mark like that.<br><br>
       <b>Where we stand:</b> this is genuinely debated. Critics argue Bitcoin's block space is for money, and every byte of data is paid for once but stored by every node forever. Supporters note OP_RETURN was <i>designed</i> as the honest, prunable way to carry a small note — far kinder to the network than hiding data in fake addresses. Olesia teaches the tidy form and only that: one standard output, 80 bytes, no NFTs, no inscriptions. Practice freely on testnets; on mainnet, ask yourself if it truly needs to be forever.
     </div>
-    <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px" onclick="event.stopPropagation()">
+    <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px">
     <div class="msgtools"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>
   </div>
   <div class="card">
@@ -599,8 +599,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
   <p class="slbl">About</p>
   <div class="sgroup">
-    <div class="srow" onclick="window.open('https://olesia.io/#verify','_blank','noopener')"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check the hash yourself</span></span><span class="val">↗</span></div>
-    <div class="srow" onclick="window.open('https://github.com/testnetbtc/BTC_Wallet','_blank','noopener')"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></div>
+    <a class="srow" href="https://olesia.io/#verify" target="_blank" rel="noopener"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check the hash yourself</span></span><span class="val">↗</span></a>
+    <a class="srow" href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></a>
     <div class="srow"><span>🏷️</span><span class="t"><b>Version</b></span><span class="val">2.1.0</span></div>
   </div>
   <p class="hint" style="margin-top:14px">Balances/broadcast via mempool.space (mainnet broadcast via api.olesia.io). No analytics, no server-side storage. Signing with <code>@scure/btc-signer</code>, in your browser.</p>

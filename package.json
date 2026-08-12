@@ -4,7 +4,7 @@
   "description": "A 2014-style Bitcoin wallet, done right — offline BIP-39 generator on audited primitives",
   "main": "index.js",
   "scripts": {
-    "build": "node build.mjs && node assemble.mjs",
+    "build": "node build.mjs && node assemble.mjs && node tools/harden-coldgen.mjs",
     "test": "node src/selftest.mjs && node src/addrtest.mjs && node src/nettest.mjs && node src/backuptest.mjs && node src/privacytest.mjs && node src/kdfboundstest.mjs && node src/latchtest.mjs && node src/uitest.mjs"
   },
   "keywords": [],
@@ -19,8 +19,10 @@
     "@noble/hashes": "^1.4.0",
     "@scure/base": "^1.1.6",
     "@scure/bip32": "^1.4.0",
-    "@scure/bip39": "^1.3.0",
-    "esbuild": "^0.23.0"
+    "@scure/bip39": "^1.3.0"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
 }
