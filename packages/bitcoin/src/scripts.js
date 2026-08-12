@@ -30,13 +30,13 @@ export function scriptTypeList() { return Object.keys(SCRIPT_TYPES); }
 // This is how we look up balances for P2PK, which has no address.
 export function scriptHashOf(scriptBytes) { return bytesToHex(sha256(scriptBytes).slice().reverse()); }
 
-export function deriveScript(mnemonic, network, type, index = 0, passphrase = '') {
+export function deriveScript(mnemonic, network, type, index = 0, passphrase = '', chain = 0) {
   const n = net(network);
   const t = SCRIPT_TYPES[type];
   if (!t) throw new Error('unknown script type: ' + type);
   const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || '');
-  const path = `m/${t.purpose}'/${n.coin}'/0'/0/${index}`;
-  const child = HDKey.fromMasterSeed(seed).derive(path);
+  const path = `m/${t.purpose}'/${n.coin}'/0'/${chain}/${index}`;
+  const child = HDKey.fromMasterSeed(seed, n.bip32).derive(path);
   if (!child.privateKey) throw new Error('no private key derived');
   const pub = child.publicKey; // 33-byte compressed
 
@@ -49,7 +49,7 @@ export function deriveScript(mnemonic, network, type, index = 0, passphrase = ''
   else throw new Error('unhandled type ' + type);
 
   return {
-    type, label: t.label, about: t.about, segwit: !!t.segwit, path,
+    type, label: t.label, about: t.about, segwit: !!t.segwit, path, index, chain,
     privKey: child.privateKey, pubkey: pub, spend,
     address: spend.address || null,           // null for P2PK
     scriptHex: bytesToHex(spend.script),

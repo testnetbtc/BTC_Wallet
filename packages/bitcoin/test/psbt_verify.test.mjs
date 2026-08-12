@@ -6,8 +6,7 @@ import { HDKey } from '@scure/bip32';
 import { hexToBytes } from '@noble/hashes/utils';
 import { base64 } from '@scure/base';
 import { describePsbt, signUnsigned } from '../src/send.js';
-import { accountXpub } from '../src/wallet.js';
-import { deriveKey } from '../src/wallet.js';
+import { accountXpub, deriveKey, parseExtendedKey } from '../src/wallet.js';
 import { net } from '../src/networks.js';
 
 let bad = false;
@@ -18,7 +17,7 @@ const WALLET = 'immense rain burden meat one stock cigar dice enhance post jacke
 const ATTACKER = 'like youth surface loop fire bulk push repair riot scan blame tilt';        // theirs
 const n = net(NET);
 const axpub = accountXpub(WALLET, '', NET);
-const acct = HDKey.fromExtendedKey(axpub);
+const acct = parseExtendedKey(axpub, NET);
 const walletScript = (chain, index) => btc.p2wpkh(acct.deriveChild(chain).deriveChild(index).publicKey, n.btc);
 const attackerAddr = deriveKey(ATTACKER, '', NET, 0).address;
 const OUR = walletScript(0, 0);      // receive #0 (the app's live address)
@@ -53,7 +52,7 @@ const throwsMsg = (fn, re) => { try { fn(); return false; } catch (e) { return r
   // ownership must come from OUR derivation, not the creator's claims
   const tx = new btc.Transaction({ allowUnknownOutputs: true });
   tx.addInput(ourInput(1000000));
-  const atkScript = btc.p2wpkh(HDKey.fromExtendedKey(accountXpub(ATTACKER, '', NET)).deriveChild(1).deriveChild(0).publicKey, n.btc);
+  const atkScript = btc.p2wpkh(parseExtendedKey(accountXpub(ATTACKER, '', NET), NET).deriveChild(1).deriveChild(0).publicKey, n.btc);
   tx.addOutput({ script: atkScript.script, amount: 999000n }); // "change" says the attacker
   const d = describePsbt({ psbt: base64.encode(tx.toPSBT()), source: WALLET, network: NET });
   ok('fake change: attacker\'s chain-1 address is still EXTERNAL', d.outputs[0].change === false);
@@ -125,7 +124,7 @@ const throwsMsg = (fn, re) => { try { fn(); return false; } catch (e) { return r
 // ---- 9. a different script type (taproot) to someone else: external ---------
 {
   const trAddr = deriveKey(ATTACKER, '', NET, 0); // reuse a real key for a valid p2tr
-  const trPub = HDKey.fromExtendedKey(accountXpub(ATTACKER, '', NET)).deriveChild(0).deriveChild(0).publicKey;
+  const trPub = parseExtendedKey(accountXpub(ATTACKER, '', NET), NET).deriveChild(0).deriveChild(0).publicKey;
   const tr = btc.p2tr(trPub.slice(1), undefined, n.btc);
   const psbt = makePSBT({ inputs: [ourInput(100000)], outputs: [
     { script: tr.script, amount: 50000 },

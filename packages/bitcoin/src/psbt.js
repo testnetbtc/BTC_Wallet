@@ -9,12 +9,12 @@ import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
 import { base64 } from '@scure/base';
 import { net } from './networks.js';
 import { opReturnScript, assertFeeRate } from './tx.js';
-import { deriveKey } from './wallet.js';
+import { deriveKey, parseExtendedKey } from './wallet.js';
 
 // Watch-only: derive a receive script/address from an ACCOUNT xpub (m/84'/coin'/0').
 export function watchOnly(accountXpub, network, chain = 0, index = 0) {
   const n = net(network);
-  const node = HDKey.fromExtendedKey(accountXpub).deriveChild(chain).deriveChild(index);
+  const node = parseExtendedKey(accountXpub, network).deriveChild(chain).deriveChild(index);
   const spend = btc.p2wpkh(node.publicKey, n.btc);
   return { pubkey: node.publicKey, script: spend.script, address: spend.address };
 }
@@ -55,7 +55,7 @@ export function describePSBT(psbtB64, { accountXpub, network, gap = 20 }) {
   const coin = n.coin ?? (n.btc.bech32 === 'bc' ? 0 : 1);
 
   // ownership set: every script this wallet would produce on either chain
-  const acct = HDKey.fromExtendedKey(accountXpub);
+  const acct = parseExtendedKey(accountXpub, network);
   const own = new Map(); // scriptHex -> { chain, index, address, path }
   for (const chain of [0, 1]) {
     const branch = acct.deriveChild(chain);
