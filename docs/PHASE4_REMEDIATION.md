@@ -37,11 +37,13 @@ now permanent.
    transaction, and verifies it with `secp256k1.verify`. This proves the signature commits
    to the *correct message*, not merely that the bytes are well-formed. (Directly answers
    "do not test Olesia with Olesia".)
-3. **Live real-network acceptance** (`test/p2pk_live.mjs`, testnet4): real Bitcoin nodes
-   fully validate the signature and script, so an accepted broadcast is proof beyond any
-   local check. Verified live:
-   - MINT `b3350fd4f3f68fe2832559f702a1e7b0a49af9057230abb44b5f5af70d8523f6`
-   - SPEND `314cf8f68458dda1749be543795895d531fb411c99aa939d9d112200e6ae1524`
+3. **Live real-network acceptance** (`test/p2pk_live.mjs`): real Bitcoin nodes fully
+   validate the signature and script, so an accepted broadcast is proof beyond any local
+   check. Verified live on **two independent networks**:
+   - testnet4 — MINT `b3350fd4f3f68fe2832559f702a1e7b0a49af9057230abb44b5f5af70d8523f6`,
+     SPEND `314cf8f68458dda1749be543795895d531fb411c99aa939d9d112200e6ae1524`
+   - signet — MINT `c3b394901847a4974636a86635acc8407209823e88574b1d19032df76bde4011`,
+     SPEND `43acb0d6dcfc6c9909e71cee5907e111d4c02a6874a7e1246f57601340ade9c8`
 
 ## Edge cases covered (the order's list)
 
@@ -81,9 +83,9 @@ now permanent.
 
 ## Residual notes (honest)
 
-1. **Live acceptance was on testnet4**, which enforces the same consensus script rules as
-   mainnet. A signet leg was not run (the available signet coins are in a website wallet
-   whose key is not held here); testnet4 real-node acceptance is equivalent proof for P2PK.
+1. **Live acceptance was on testnet4 and signet** — two independent real networks, both
+   enforcing mainnet's consensus script rules. Not exercised on mainnet (no reason to put
+   a museum P2PK on mainnet); real-node acceptance on two test networks is equivalent proof.
 2. P2PK remains an **educational museum feature**, testnet-first; it is not a
    general-purpose spend path.
 3. Internal + independent-oracle + live tests, **not an independent audit**.
