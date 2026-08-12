@@ -14,7 +14,7 @@ const hash160 = (b) => ripemd160(sha256(b));
 const u32 = (n) => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, n, true); return a; };
 const u64 = (n) => { const a = new Uint8Array(8); new DataView(a.buffer).setBigUint64(0, BigInt(n), true); return a; };
 const revTxid = (hex) => hexToBytes(hex).slice().reverse();
-function varint(n) {
+export function varint(n) {
   n = Number(n);
   if (n < 0xfd) return Uint8Array.of(n);
   if (n <= 0xffff) return concatBytes(Uint8Array.of(0xfd), le(n, 2));

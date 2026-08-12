@@ -5,7 +5,7 @@
   "private": true,
   "description": "Olesia/Chainwatch Bitcoin tx build+sign+broadcast (testnet-first)",
   "scripts": {
-    "test": "node test/tx.test.mjs && node test/psbt.test.mjs && node test/scripttypes.test.mjs && node test/p2pk.test.mjs && node test/vault.test.mjs && node test/wif.test.mjs && node test/descriptor.test.mjs && node test/fee.test.mjs && node test/freeze.test.mjs && node test/psbt_verify.test.mjs && node test/leak.test.mjs && node test/backup.test.mjs && node test/passphrase.test.mjs && node test/wrong_network.test.mjs && node test/ui.test.mjs",
+    "test": "node test/tx.test.mjs && node test/psbt.test.mjs && node test/scripttypes.test.mjs && node test/p2pk.test.mjs && node test/p2pk_vectors.test.mjs && node test/vault.test.mjs && node test/wif.test.mjs && node test/descriptor.test.mjs && node test/fee.test.mjs && node test/freeze.test.mjs && node test/psbt_verify.test.mjs && node test/leak.test.mjs && node test/backup.test.mjs && node test/passphrase.test.mjs && node test/wrong_network.test.mjs && node test/ui.test.mjs",
     "test:e2e": "node test/e2e_live.mjs"
   },
   "dependencies": {
