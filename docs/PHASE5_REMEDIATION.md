@@ -103,7 +103,7 @@ Clean install from the lockfile, then build twice — **byte-identical**:
 npm ci
 npm run build            # cold generator: bundle → assemble → harden
 sha256sum public/index.html
-# → 77a2752609d5895fbe37577cf6226e975442203ceb11cfa5b712cc6f79ae569c  (identical across rebuilds)
+# → 34625d6d4b3b79000170615305eefbfc2e100f2afe37f5181757ec3d324d8a51  (identical across rebuilds)
 ```
 
 The wallet build is likewise deterministic
@@ -117,7 +117,7 @@ matched them — plus the pinned value:
 
 | Artifact | Built (repo) | Served (preview) | Pinned | Match |
 |---|---|---|---|---|
-| Cold generator | `77a2752609…` | `77a2752609…` (preview.alea-wallet) | `77a2752609…` (VERIFY.md) | ✅ |
+| Cold generator | `34625d6d4b…` | `34625d6d4b…` (preview.alea-wallet) | `34625d6d4b…` (VERIFY.md) | ✅ |
 | Hot wallet | `b16f8f6690…` | `b16f8f6690…` (preview.olesia-wallet) | — | ✅ |
 
 So the exact reviewed bytes are what the browser receives; compromising the website alone
