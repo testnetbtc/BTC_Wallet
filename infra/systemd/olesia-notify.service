@@ -1,0 +1,22 @@
+[Unit]
+Description=Olesia Telegram Alerts bot (watch-only Bitcoin notifications)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/notify/bot.mjs
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/faucet/BTC_Wallet/packages/bitcoin/.secrets
+ProtectHome=false
+PrivateTmp=true
+MemoryMax=256M
+CPUQuota=40%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
