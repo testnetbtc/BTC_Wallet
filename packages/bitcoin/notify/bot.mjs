@@ -358,13 +358,19 @@ async function onCallback(cbq) {
 // users subscribed to that feed, honouring each user's size filter. Producers
 // (detectors) and delivery (this bot) are fully decoupled — that is what makes
 // the public feeds multi-tenant instead of one broadcast channel.
+// Feed events arrive as structured JSON over the internal intake. Producers are
+// trusted (127.0.0.1 + token), but we still escape every field before it becomes
+// Telegram HTML and only allow http(s) links — a buggy or compromised detector
+// must not be able to inject markup or a javascript: URL into a user's chat.
+const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const safeHttpUrl = (u) => { try { const x = new URL(String(u)); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; } catch { return null; } };
 function formatEvent(ev) {
   const f = FEEDS[ev.feed];
-  const head = `${f ? f.emoji + ' <b>' + f.label + '</b>' : ev.feed}`;
-  const parts = [head];
-  if (ev.title) parts.push(ev.title);
-  if (ev.body) parts.push(ev.body);
-  if (ev.link) parts.push(`<a href="${ev.link}">view transaction</a>`);
+  const parts = [f ? `${f.emoji} <b>${escHtml(f.label)}</b>` : escHtml(ev.feed)];
+  if (ev.title) parts.push(escHtml(ev.title));
+  if (ev.body) parts.push(escHtml(ev.body));
+  const url = safeHttpUrl(ev.link);
+  if (url) parts.push(`<a href="${escHtml(url)}">view transaction</a>`);
   return parts.join('\n');
 }
 function deliverEvent(ev) {
