@@ -21,6 +21,19 @@ export function assertFeeRate(feeRate) {
   return Math.ceil(f);
 }
 
+// Reject an address that does not belong to `networkName` with a CLEAR message,
+// before it can ever become a transaction output. A mainnet address on testnet
+// (or vice-versa) is a classic way to burn funds — the network is validated at
+// build time, for every recipient and every sweep destination.
+export function assertAddressNetwork(address, networkName) {
+  const n = net(networkName);
+  const a = (address || '').trim();
+  if (!a) throw new Error('missing destination address');
+  try { btc.Address(n.btc).decode(a); }
+  catch { throw new Error(`"${a.slice(0, 16)}…" is not a valid ${networkName} address — you may be on the wrong network`); }
+  return a;
+}
+
 export function opReturnScript(message) {
   const data = typeof message === 'string' ? utf8ToBytes(message) : message;
   if (data.length > OP_RETURN_MAX)
@@ -48,7 +61,7 @@ export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, 
   const n = net(networkName);
   feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to sweep');
-  btc.Address(n.btc).decode(toAddress); // throws on an invalid/wrong-network address
+  assertAddressNetwork(toAddress, networkName); // clear wrong-network rejection
   const inputs = utxos.map((u) => buildInput(u, key));
   // OP_RETURN rides along if given; changeAddress = destination => rest goes there.
   const outs = message != null && String(message).length ? [{ script: opReturnScript(message), amount: 0n }] : [];
@@ -68,6 +81,57 @@ export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, 
   };
 }
 
+// Sign a tx whose inputs may belong to DIFFERENT keys (HD account spends coins
+// across receive + change addresses). Each keyed UTXO is {txid,vout,value,key,
+// prevTxHex?}. Change goes to `changeAddress` (the next unused CHANGE address).
+export function buildSignedTxMulti({ keyedUtxos, recipients = [], message = null, changeAddress, feeRate = 2, networkName }) {
+  const n = net(networkName);
+  feeRate = assertFeeRate(feeRate);
+  if (!keyedUtxos?.length) throw new Error('no UTXOs to spend');
+  const outputs = [];
+  for (const r of recipients) {
+    if (!r.address || !(Number(r.amount) > 0)) throw new Error('recipient needs {address, amount>0}');
+    assertAddressNetwork(r.address, networkName);
+    outputs.push({ address: r.address, amount: BigInt(r.amount) });
+  }
+  if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
+  if (!outputs.length) throw new Error('nothing to send');
+  const inputs = keyedUtxos.map((u) => buildInput(u, u.key));
+  const sel = btc.selectUTXO(inputs, outputs, 'default', {
+    changeAddress: changeAddress || keyedUtxos[0].key.address,
+    feePerByte: BigInt(feeRate), network: n.btc, bip69: true, createTx: true, allowUnknownOutputs: true, dust: 546n,
+  });
+  if (!sel || !sel.tx) throw new Error('coin selection failed — insufficient funds for outputs + fee?');
+  const tx = sel.tx;
+  // sign with each DISTINCT key; a key matching no selected input is a no-op we skip
+  const seen = new Set();
+  for (const u of keyedUtxos) {
+    const h = bytesToHex(u.key.privKey);
+    if (seen.has(h)) continue; seen.add(h);
+    try { tx.sign(u.key.privKey); } catch { /* key not among the selected inputs */ }
+  }
+  tx.finalize();
+  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: sel.fee != null ? Number(sel.fee) : undefined, vsize: tx.vsize, inputsUsed: sel.inputs?.length };
+}
+
+// Sweep an entire HD account (all keyed UTXOs) to one address, minus fee, no change.
+export function buildSweepTxMulti({ keyedUtxos, toAddress, feeRate = 2, networkName, message = null }) {
+  const n = net(networkName);
+  feeRate = assertFeeRate(feeRate);
+  if (!keyedUtxos?.length) throw new Error('no UTXOs to sweep');
+  assertAddressNetwork(toAddress, networkName);
+  const inputs = keyedUtxos.map((u) => buildInput(u, u.key));
+  const outs = message != null && String(message).length ? [{ script: opReturnScript(message), amount: 0n }] : [];
+  const sel = btc.selectUTXO(inputs, outs, 'all', { changeAddress: toAddress, feePerByte: BigInt(feeRate), network: n.btc, createTx: true, dust: 546n, allowUnknownOutputs: true });
+  if (!sel || !sel.tx) throw new Error('sweep build failed — balance below fee?');
+  const tx = sel.tx;
+  const seen = new Set();
+  for (const u of keyedUtxos) { const h = bytesToHex(u.key.privKey); if (seen.has(h)) continue; seen.add(h); try { tx.sign(u.key.privKey); } catch { /* not selected */ } }
+  tx.finalize();
+  const total = keyedUtxos.reduce((a, u) => a + BigInt(u.value), 0n);
+  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: sel.fee != null ? Number(sel.fee) : undefined, vsize: tx.vsize, swept: Number(total - (sel.fee ?? 0n)) };
+}
+
 // { utxos:[{txid,vout,value}], key (from deriveKey), recipients:[{address,amount}],
 //   message?, changeAddress?, feeRate (sat/vB), networkName } -> { txHex, txid, fee, vsize }
 export function buildSignedTx({ utxos, key, recipients = [], message = null,
@@ -79,6 +143,7 @@ export function buildSignedTx({ utxos, key, recipients = [], message = null,
   const outputs = [];
   for (const r of recipients) {
     if (!r.address || !(Number(r.amount) > 0)) throw new Error('recipient needs {address, amount>0}');
+    assertAddressNetwork(r.address, networkName);
     outputs.push({ address: r.address, amount: BigInt(r.amount) });
   }
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });

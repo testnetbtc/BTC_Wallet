@@ -5,7 +5,7 @@ import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
 import { deriveKey, accountXpub } from './wallet.js';
 import { deriveScript } from './scripts.js';
 import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast, getTx, getOutspend } from './esplora.js';
-import { buildSignedTx, buildSweepTx } from './tx.js';
+import { buildSignedTx, buildSweepTx, buildSignedTxMulti, buildSweepTxMulti } from './tx.js';
 import { buildFundP2PK, buildSpendP2PK } from './p2pk_fund.js';
 import { wifKey, wifAddresses } from './wif.js';
 import { watchOnly, buildUnsignedPSBT, signPSBTOffline, extractTx, describePSBT } from './psbt.js';
@@ -135,6 +135,96 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
   const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
   const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
   return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+}
+
+// ---- HD account: derivation at (chain,index), gap-limit discovery, recovery ----
+// Derive one address of `scriptType` at (chain, index) from a seed or an xpub.
+// Everything needed to both WATCH and (for a seed) SPEND that address.
+export function deriveAt(source, network, scriptType, chain, index, passphrase = '') {
+  const s = (source || '').trim();
+  if (isXpub(s)) {
+    if (scriptType !== 'p2wpkh') throw new Error('watch-only (xpub) supports native SegWit only');
+    const w = watchOnly(s, network, chain, index);
+    return { address: w.address, script: w.script, scripthash: null, watchOnly: true, segwit: true, type: 'p2wpkh', chain, index, path: `m/84'/${net(network).coin}'/0'/${chain}/${index}` };
+  }
+  const w = deriveScript(s, network, scriptType, index, passphrase, chain);
+  return { address: w.address, script: w.spend.script, scripthash: w.scripthash, privKey: w.privKey, spend: w.spend, segwit: w.segwit, type: w.type, chain, index, path: w.path, watchOnly: false };
+}
+const locOf = (d) => (d.address ? d.address : { scripthash: d.scripthash });
+
+// DETERMINISTIC RECOVERY: from the seed (or xpub) ALONE, walk the external
+// (chain 0) and internal/change (chain 1) chains until `gap` consecutive UNUSED
+// addresses, and return every used address with its live balance/UTXOs. No
+// browser-local metadata is consulted — this is the source of truth for "what
+// this wallet owns", so funds received at any rotated index are always found.
+export async function discoverAccount({ source, network, scriptType = 'p2wpkh', passphrase = '', gap = 20 }) {
+  const chains = { 0: [], 1: [] };
+  // scan each chain in parallel windows of `gap` addresses: probe [base, base+gap),
+  // keep the used ones, and only extend the window if the LAST probed address was
+  // used (which could push the run of unused below `gap`). This gives standard
+  // gap-limit coverage at a fraction of the latency of a sequential scan.
+  for (const chain of [0, 1]) {
+    let base = 0;
+    for (;;) {
+      // probe a full gap-sized window in parallel starting right after the last
+      // used address. If NOTHING in the window is used, we have `gap` consecutive
+      // unused addresses -> stop. Otherwise jump past the highest used and repeat,
+      // guaranteeing a full gap is scanned beyond every used address.
+      const window = Array.from({ length: gap }, (_, k) => base + k);
+      const probed = await Promise.all(window.map(async (index) => {
+        const d = deriveAt(source, network, scriptType, chain, index, passphrase);
+        const [balance, utxos] = await Promise.all([getBalance(locOf(d), network), getUTXOs(locOf(d), network)]);
+        return { d, index, balance, utxos, used: balance.used || utxos.length > 0 };
+      }));
+      let hi = -1;
+      for (const p of probed) if (p.used) { chains[chain].push({ ...p.d, balance: p.balance, utxos: p.utxos }); hi = Math.max(hi, p.index); }
+      if (hi < 0) break;      // a full window with no used address -> gap reached
+      base = hi + 1;
+    }
+    chains[chain].sort((a, b) => a.index - b.index);
+  }
+  const receive = chains[0], change = chains[1];
+  const all = [...receive, ...change];
+  const confirmed = all.reduce((a, e) => a + e.balance.confirmed, 0);
+  const pending = all.reduce((a, e) => a + e.balance.pending, 0);
+  // next unused indices (rotation targets)
+  const usedIdx = (arr) => (arr.length ? Math.max(...arr.map((e) => e.index)) + 1 : 0);
+  return {
+    scriptType, network, gap,
+    balance: { confirmed, pending, total: confirmed + pending },
+    receive, change, used: all,
+    utxos: all.flatMap((e) => e.utxos.map((u) => ({ ...u, chain: e.chain, index: e.index, address: e.address }))),
+    nextReceive: usedIdx(receive),
+    nextChange: usedIdx(change),
+  };
+}
+
+// HD SEND: spend across the whole account (all discovered receive + change UTXOs)
+// and return change to the NEXT UNUSED change address (chain 1). Because
+// discoverAccount finds funds at any index from the seed alone, and change lands
+// on the change chain (also discovered), nothing becomes unrecoverable.
+export async function prepareSendHD(opts) {
+  const { source, mnemonic, network, scriptType = 'p2wpkh', recipients = [], message = null, passphrase = '', sweep = false, toAddress } = opts;
+  const src = source ?? mnemonic;
+  if (isXpub((src || '').trim())) throw new Error('watch-only (xpub) cannot sign — use the air-gap PSBT flow');
+  const disc = await discoverAccount({ source: src, network, scriptType, passphrase });
+  const spend = disc.utxos.filter((u) => opts.allowUnconfirmed || u.confirmed);
+  if (!spend.length) throw new Error(`no ${opts.allowUnconfirmed ? '' : 'confirmed '}coins in this ${scriptType} account — fund it first`);
+  const keyed = await Promise.all(spend.map(async (u) => {
+    const key = deriveAt(src, network, scriptType, u.chain, u.index, passphrase);
+    const k = { txid: u.txid, vout: u.vout, value: u.value, key };
+    if (key.segwit === false) k.prevTxHex = await getTxHex(u.txid, network);
+    return k;
+  }));
+  const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
+  const changeAddress = deriveAt(src, network, scriptType, 1, disc.nextChange, passphrase).address;
+  const built = sweep
+    ? buildSweepTxMulti({ keyedUtxos: keyed, toAddress, feeRate, networkName: network, message })
+    : buildSignedTxMulti({ keyedUtxos: keyed, recipients, message, changeAddress, feeRate, networkName: network });
+  const txid = opts.broadcast ? await broadcast(built.txHex, network) : built.txid;
+  return { ...built, from: `${scriptType} account (${keyed.length} coin${keyed.length > 1 ? 's' : ''})`, feeRate, changeAddress,
+           broadcast: !!opts.broadcast, broadcastTxid: opts.broadcast ? txid : null,
+           explorer: opts.broadcast ? net(network).explorer + txid : null };
 }
 
 // ---- freeze-and-broadcast primitives (build once, confirm once, send SAME bytes) ----

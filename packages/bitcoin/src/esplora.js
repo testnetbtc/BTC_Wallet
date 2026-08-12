@@ -43,7 +43,11 @@ export async function getBalance(target, networkName) {
   const c = info.chain_stats, m = info.mempool_stats;
   const confirmed = (c.funded_txo_sum - c.spent_txo_sum);
   const pending = (m.funded_txo_sum - m.spent_txo_sum);
-  return { confirmed, pending, total: confirmed + pending };
+  // `used` = ever received anything (even if since spent). Gap-limit discovery
+  // must key off usedness, NOT current balance, or a spent-empty address would
+  // falsely trip the gap and hide funds beyond it.
+  const used = (c.tx_count + m.tx_count) > 0 || (c.funded_txo_count + m.funded_txo_count) > 0;
+  return { confirmed, pending, total: confirmed + pending, used };
 }
 
 // A fee ESTIMATE from the network is untrusted input. It is clamped to a sane

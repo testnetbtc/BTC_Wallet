@@ -11,8 +11,10 @@ import {
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
   fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
   inspectWIF, sweepWIF, decodeRawTx, broadcastRaw, describePsbt,
+  prepareSendHD, discoverAccount,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
+import { accountDescriptors } from '../src/descriptor.js';
 import { sealSeed, openSeed, generateVaultPassphrase, secretStrength, meetsMainnetBar } from '../src/vault.js';
 import { decryptColdBackup } from '../src/coldbackup.js';
 import { scriptTypeList, SCRIPT_TYPES } from '../src/scripts.js';
@@ -70,14 +72,24 @@ window.OW = {
     return h.slice(0, 4) + '-' + h.slice(4, 8);
   },
 
-  send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
-    prepareAndSend({
+  // HD send: spends across the whole account (all discovered receive+change
+  // UTXOs), change to the next unused change address (chain 1).
+  send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
+    prepareSendHD({
       source: T(mnemonic), network, scriptType, passphrase,
       recipients: (toAddress && Number(amount) > 0) ? [{ address: T(toAddress), amount: Number(amount) }] : [],
-      message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed,
+      message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, broadcast, allowUnconfirmed,
     }),
-  sweep: ({ mnemonic, network, scriptType, toAddress, message, feeRate, index = 0, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
-    prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, index, broadcast, allowUnconfirmed, passphrase }),
+  sweep: ({ mnemonic, network, scriptType, toAddress, message, feeRate, broadcast = false, allowUnconfirmed = network !== 'mainnet', passphrase = '' }) =>
+    prepareSendHD({ source: T(mnemonic), network, scriptType, passphrase, sweep: true, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : undefined, broadcast, allowUnconfirmed }),
+
+  // full-account discovery (gap-limit, from seed or xpub) — deterministic recovery
+  discover: ({ source, network, scriptType = 'p2wpkh', passphrase = '', gap = 20 }) => discoverAccount({ source: T(source), network, scriptType, passphrase, gap }),
+  // BIP-84 output descriptors (receive + change) for interoperable watch-only export
+  descriptors: ({ source, network, passphrase = '' }) => {
+    const s = T(source);
+    return isXpub(s) ? accountDescriptors({ accountXpub: s, network }) : accountDescriptors({ mnemonic: s, passphrase, network });
+  },
 
   // air-gap PSBT flow (P2WPKH)
   buildUnsigned: ({ source, network, toAddress, amount, message, feeRate, index = 0, passphrase = '' }) =>

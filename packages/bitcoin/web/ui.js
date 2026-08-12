@@ -433,6 +433,11 @@
   // ---------- balances / accounts ----------
   const typesFor = () => (mode === 'watch' ? TYPES.filter((t) => t.id === 'p2wpkh') : TYPES);
 
+  // full HD discovery result per script type (change lives on rotated addresses,
+  // so a single index-0 read would under-count). The active type gets full
+  // discovery; the others get a cheap index-0 read for the home summary and are
+  // discovered in full when opened.
+  const discovered = {};
   async function refreshAll() {
     const g = ++gen;
     const jobs = typesFor().map(async (t) => {
@@ -444,6 +449,9 @@
           const live = ann.filter((o) => !o.spent && !o.error);
           balances.p2pk = { confirmed: live.filter((o) => o.confirmed).reduce((a, o) => a + o.value, 0),
                             pending: live.filter((o) => !o.confirmed).reduce((a, o) => a + o.value, 0) };
+        } else if (t.id === (mode === 'watch' ? 'p2wpkh' : scriptType) || t.id === 'p2wpkh') {
+          const disc = await window.OW.discover({ source, network, scriptType: t.id, passphrase });
+          discovered[t.id] = disc; balances[t.id] = disc.balance;
         } else {
           const st = await window.OW.status(source, network, t.id, 0, passphrase);
           balances[t.id] = st.balance;
@@ -554,11 +562,23 @@
       return;
     }
     try {
-      const st = await window.OW.status(source, network, scriptType, 0, passphrase);
+      // full HD discovery: balance + UTXOs across ALL receive & change addresses
+      const disc = await window.OW.discover({ source, network, scriptType, passphrase });
       if (g !== gen) return;
-      balances[scriptType] = st.balance;
-      $('#acc_bal').textContent = `${coins(st.balance.confirmed)} ${unit()} confirmed` + (st.balance.pending ? ` · ${coins(st.balance.pending)} pending` : '');
-      $('#acc_utxos').textContent = st.utxos.length ? st.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
+      discovered[scriptType] = disc; balances[scriptType] = disc.balance;
+      $('#acc_bal').textContent = `${coins(disc.balance.confirmed)} ${unit()} confirmed` + (disc.balance.pending ? ` · ${coins(disc.balance.pending)} pending` : '')
+        + (disc.used.length > 1 ? ` · across ${disc.used.length} addresses` : '');
+      $('#acc_utxos').textContent = disc.utxos.length ? disc.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
+      // rotate the receive address to the next unused one (avoids address reuse)
+      if (mode !== 'watch') {
+        const nextAddr = window.OW.address(source, network, scriptType, disc.nextReceive, passphrase);
+        if (nextAddr && $('#acc_addr').textContent !== nextAddr) {
+          $('#acc_addr').textContent = nextAddr;
+          document.querySelector('.qrbox').classList.remove('noaddr');
+          $('#acc_qr').src = await window.OW.qr(nextAddr);
+          $('#acc_recvhint').innerHTML = `Fresh unused address (receive #${disc.nextReceive}). Older addresses still work and their funds are always found from your seed.`;
+        }
+      }
       renderTotal(); renderAccountRows();
     } catch (e) { if (g === gen) toast('✗ ' + e.message, 'bad'); }
     try {
@@ -812,18 +832,21 @@
       const frozenHex = built.txHex, frozenTxid = built.txid;
       if (!frozenHex) throw new Error('engine did not return the built transaction — refusing to continue');
       const px = await usdPrice();
-      // render the confirmation from the transaction itself, not the form
+      // render the confirmation from the transaction itself, not the form.
+      // change now lands on the CHANGE chain (built.changeAddress), so mark that
+      // (or the self-address in message-only mode) as change — everything else is external.
       const dec = window.OW.decodeTx({ hex: frozenHex, network });
       const mine = myAddress();
+      const changeAddr = built.changeAddress || mine;
       const rows = [];
       for (const o of dec.outputs) {
         if (o.type === 'op_return') rows.push(['OP_RETURN', `“${(o.opReturn || '').slice(0, 48)}”`, 'permanent public message']);
-        else if (o.address === mine) rows.push([msgOnly ? 'Back to you' : 'Change (back to you)', o.address, `${o.amount.toLocaleString()} sat`]);
+        else if (o.address === changeAddr || o.address === mine) rows.push([msgOnly ? 'Back to you' : 'Change (back to you)', o.address, `${o.amount.toLocaleString()} sat`]);
         else rows.push(['To', o.address || `(unknown script)`, `${o.amount.toLocaleString()} sat · ${coins(o.amount)} ${unit()}${px ? ' · ' + fmtUsd(o.amount, px) : ''}`]);
       }
       rows.push(['Network fee', `${built.fee.toLocaleString()} sat`, `${built.feeRate} sat/vB${px ? ' · ' + fmtUsd(built.fee, px) : ''}`]);
       // abnormal-fee tripwires: % of what leaves the wallet, and absolute rate
-      const paidOut = dec.outputs.filter((o) => o.type !== 'op_return' && o.address !== mine).reduce((a, o) => a + o.amount, 0);
+      const paidOut = dec.outputs.filter((o) => o.type !== 'op_return' && o.address !== mine && o.address !== changeAddr).reduce((a, o) => a + o.amount, 0);
       const feePct = paidOut > 0 ? (built.fee / paidOut) * 100 : 0;
       if (feePct > 10) rows.push(['⚠ UNUSUALLY HIGH FEE', `${feePct.toFixed(1)}% of the amount sent`, 'check the fee field before confirming']);
       if (built.feeRate > 200) rows.push(['⚠ HIGH FEE RATE', `${built.feeRate} sat/vB`, 'typical is 1–20; confirm this is deliberate']);
@@ -903,7 +926,13 @@
   const tog = (id) => $(id).classList.toggle('on');
   $('#set_xpub').addEventListener('click', () => {
     try {
-      $('#set_xpub_out').textContent = mode === 'watch' ? source : window.OW.xpub(source, network, passphrase);
+      const xpub = mode === 'watch' ? source : window.OW.xpub(source, network, passphrase);
+      const d = window.OW.descriptors({ source, network, passphrase });
+      $('#set_xpub_out').textContent =
+        `Account key (${xpub.slice(0, 4)}):\n${xpub}\n\n` +
+        `Output descriptors — the unambiguous way to import this wallet as watch-only ` +
+        `(Bitcoin Core / Sparrow). They carry the script type, fingerprint, path and branch:\n\n` +
+        `receive:\n${d.receive}\n\nchange:\n${d.change}`;
       tog('#xpub_body');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
