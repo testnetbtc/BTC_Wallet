@@ -43,14 +43,18 @@ async function pickFaucetCoins(network) {
   const confirmed = (await getUTXOs(addr, network)).filter((u) => u.confirmed);
   if (!confirmed.length) return null;      // nothing confirmed -> caller falls back to allowUnconfirmed
   const need = DRIP + FEE_HEADROOM;
-  // 1) accumulate random small "bank" coins until they cover the drip + fee.
-  const bank = shuffle(confirmed.filter((u) => u.value <= SMALL_COIN_MAX));
-  const chosen = []; let sum = 0;
-  for (const u of bank) { chosen.push(u); sum += u.value; if (sum >= need) return chosen; }
-  // 2) not enough small coins — use the smallest single CONFIRMED coin that covers
-  //    it (may be a large coin, but still confirmed: avoids unconfirmed spends).
+  const bank = confirmed.filter((u) => u.value <= SMALL_COIN_MAX);
+  // 1) prefer ONE drip-sized bank coin (keeps every drip a clean 1-in/2-out tx and,
+  //    picked at random, spreads concurrent claims across the bank).
+  const singles = shuffle(bank.filter((u) => u.value >= need));
+  if (singles.length) return [singles[0]];
+  // 2) otherwise accumulate random small coins until they cover the drip + fee.
+  const acc = []; let sum = 0;
+  for (const u of shuffle(bank)) { acc.push(u); sum += u.value; if (sum >= need) return acc; }
+  // 3) last resort: smallest single CONFIRMED coin that covers it (may be a large
+  //    pot coin, but still confirmed — never an unconfirmed spend).
   const big = confirmed.filter((u) => u.value >= need).sort((a, b) => a.value - b.value)[0];
-  return big ? [big] : null;               // 3) no confirmed coin covers it -> fall back
+  return big ? [big] : null;               // 4) nothing confirmed covers it -> caller falls back
 }
 
 // rate limits (sliding window)
