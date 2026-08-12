@@ -46,11 +46,19 @@ export async function getBalance(target, networkName) {
   return { confirmed, pending, total: confirmed + pending };
 }
 
+// A fee ESTIMATE from the network is untrusted input. It is clamped to a sane
+// window before it can influence a transaction: a malicious/broken Esplora
+// response (NaN, Infinity, negative, absurd) must never silently set the fee.
+// 1000 sat/vB is far above any historical sustained mainnet feerate; genuinely
+// wanting more requires typing it yourself (and passing the engine's hard cap).
+export const MAX_ESTIMATED_FEERATE = 1000;
 export async function getFeeRate(networkName, target = 6) {
   const base = net(networkName).esplora;
   try {
     const f = JSON.parse(await j(`${base}/fee-estimates`));
-    return Math.max(1, Math.ceil(f[String(target)] ?? f['6'] ?? 2));
+    const raw = Number(f[String(target)] ?? f['6'] ?? 2);
+    if (!Number.isFinite(raw)) return 2;                 // NaN/Infinity -> safe default
+    return Math.min(MAX_ESTIMATED_FEERATE, Math.max(1, Math.ceil(raw)));
   } catch { return 2; }
 }
 

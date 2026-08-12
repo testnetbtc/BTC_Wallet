@@ -7,6 +7,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { hexToBytes, bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
+import { assertFeeRate } from './tx.js';
 
 const dsha = (b) => sha256(sha256(b));
 const hash160 = (b) => ripemd160(sha256(b));
@@ -30,6 +31,7 @@ export const p2pkScript = (pub) => concatBytes(Uint8Array.of(pub.length), pub, U
 // targetScript: raw P2PK scriptPubKey bytes to fund
 // changeScript: source P2WPKH scriptPubKey bytes (change returns here)
 export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScript, amount, feeRate = 2 }) {
+  feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to fund from');
   amount = BigInt(amount);
   const inTotal = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
@@ -81,6 +83,7 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
 // Optional `message` adds an OP_RETURN output — writing a note while spending
 // Satoshi's own script type, the closest thing to the genesis headline.
 export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, feeRate = 2, message = null }) {
+  feeRate = assertFeeRate(feeRate);
   const value = BigInt(utxo.value);
   let orScript = null;
   if (message != null && String(message).length) {

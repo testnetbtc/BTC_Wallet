@@ -8,7 +8,7 @@ import { HDKey } from '@scure/bip32';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
 import { base64 } from '@scure/base';
 import { net } from './networks.js';
-import { opReturnScript } from './tx.js';
+import { opReturnScript, assertFeeRate } from './tx.js';
 import { deriveKey } from './wallet.js';
 
 // Watch-only: derive a receive script/address from an ACCOUNT xpub (m/84'/coin'/0').
@@ -24,6 +24,7 @@ export function watchOnly(accountXpub, network, chain = 0, index = 0) {
 export function buildUnsignedPSBT({ utxos, wo, recipients = [], message = null,
                                     changeAddress, feeRate = 2, network }) {
   const n = net(network);
+  feeRate = assertFeeRate(feeRate);
   const outputs = [];
   for (const r of recipients) outputs.push({ address: r.address, amount: BigInt(r.amount) });
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });

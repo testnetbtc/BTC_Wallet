@@ -7,6 +7,20 @@ import { net } from './networks.js';
 
 export const OP_RETURN_MAX = 80; // bytes; keep small for broad relay/mining
 
+// Hard fee-rate cap at the signing boundary. Whatever the source of a fee rate —
+// network estimate, UI field, API caller — a transaction is never BUILT with a
+// non-finite, non-positive, or absurd rate. 5000 sat/vB is deliberately far above
+// the UI warning thresholds: this is the engine's last line, not fee policy.
+export const MAX_FEERATE = 5000;
+export function assertFeeRate(feeRate) {
+  const f = Number(feeRate);
+  if (!Number.isFinite(f) || f < 1)
+    throw new Error(`unsafe fee rate (${String(feeRate)}) — must be a finite number ≥ 1 sat/vB`);
+  if (f > MAX_FEERATE)
+    throw new Error(`unsafe fee rate (${f} sat/vB) — above the ${MAX_FEERATE} sat/vB hard cap`);
+  return Math.ceil(f);
+}
+
 export function opReturnScript(message) {
   const data = typeof message === 'string' ? utf8ToBytes(message) : message;
   if (data.length > OP_RETURN_MAX)
@@ -32,6 +46,7 @@ function buildInput(u, w) {
 // No change output — the recipient receives total-fee. Validates the destination.
 export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, message = null }) {
   const n = net(networkName);
+  feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to sweep');
   btc.Address(n.btc).decode(toAddress); // throws on an invalid/wrong-network address
   const inputs = utxos.map((u) => buildInput(u, key));
@@ -58,6 +73,7 @@ export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, 
 export function buildSignedTx({ utxos, key, recipients = [], message = null,
                                 changeAddress, feeRate = 2, networkName }) {
   const n = net(networkName);
+  feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to spend');
 
   const outputs = [];
