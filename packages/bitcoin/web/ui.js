@@ -169,6 +169,8 @@
   $$('nav button').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
   $('#back_accounts').addEventListener('click', () => showPane('accounts'));
   $('#back_home').addEventListener('click', () => showPane('home'));
+  // generic back links (‹ Home on Accounts / Learn / Settings, etc.)
+  $$('.back[data-nav]').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
 
   // ---------- global helpers: tooltips, copy, paste ----------
   document.addEventListener('click', (e) => {
@@ -418,6 +420,7 @@
     $('#vault_state').textContent = window.OW.vault.exists() ? 'saved encrypted on this device' : 'not saved — seed lives in this tab only';
     $('#acct_watchnote').style.display = mode === 'watch' ? 'block' : 'none';
     renderAccountRows();
+    renderTotal();          // paint the hero + type pills immediately (…), before data lands
     showPane('home');
     // With a passphrase, confirm the RIGHT wallet opened: a wrong passphrase
     // still "works" but gives a different (empty) wallet — the fingerprint catches it.
@@ -463,14 +466,57 @@
     renderAccountRows(); renderTotal();
     refreshHomeActivity(g);
   }
-  function renderTotal() {
-    const total = sum(balances);
-    const pend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
-    $('#bal_total').innerHTML = (hideBal ? '••••' : coins(total)) + `<span class="u">${unit()}</span>`;
-    $('#bal_sub').textContent = pend ? `+ ${hideBal ? '•' : coins(pend)} pending  ›  view` : '';
-    $('#bal_sub').style.display = pend ? 'block' : 'none';
-    $('#bal_sub').style.cursor = pend ? 'pointer' : 'default';
+  // The Home headline shows the SELECTED script type, with a per-type selector
+  // (each pill carries its own balance, so 1 tBTC on Legacy is never invisible
+  // while viewing P2PK) plus a smaller all-accounts combined total underneath.
+  const activeType = () => (mode === 'watch' ? 'p2wpkh' : scriptType);
+  function renderTypeSel() {
+    const box = $('#type_sel'); if (!box) return;
+    const cur = activeType();
+    box.textContent = '';
+    typesFor().forEach((t) => {
+      const b = balances[t.id];
+      const amt = b == null ? '…' : hideBal ? '••' : coins(b.confirmed);
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'typepill' + (t.id === cur ? ' on' : '');
+      pill.innerHTML = `<span class="tn">${SHORT[t.id]}</span><span class="tv">${amt}</span>`;
+      pill.addEventListener('click', () => setActiveType(t.id));
+      box.appendChild(pill);
+    });
   }
+  async function setActiveType(id) {
+    if (mode === 'watch' || id === activeType()) return; // watch-only exposes SegWit only
+    scriptType = id;
+    renderTotal();
+    // upgrade the newly-selected type to full HD discovery (change addresses too)
+    if (id !== 'p2pk' && !discovered[id]) {
+      const g = gen;
+      try {
+        const disc = await window.OW.discover({ source, network, scriptType: id, passphrase });
+        if (g !== gen) return;
+        discovered[id] = disc; balances[id] = disc.balance;
+        renderTotal(); renderAccountRows();
+      } catch { /* keep the cheap index-0 read */ }
+    }
+  }
+  function renderTotal() {
+    const cur = activeType();
+    const active = balances[cur] || { confirmed: 0, pending: 0 };
+    const combined = sum(balances);
+    const combPend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
+    $('#bal_label').textContent = SHORT[cur] ? SHORT[cur].toUpperCase() : 'BALANCE';
+    $('#bal_total').innerHTML = (hideBal ? '••••' : coins(active.confirmed)) + `<span class="u">${unit()}</span>`;
+    const ap = active.pending || 0;
+    $('#bal_sub').textContent = ap ? `+ ${hideBal ? '•' : coins(ap)} pending  ›  view` : '';
+    $('#bal_sub').style.display = ap ? 'block' : 'none';
+    $('#bal_sub').style.cursor = ap ? 'pointer' : 'default';
+    const all = $('#bal_all');
+    const extra = combPend ? ` (+${hideBal ? '•' : coins(combPend)} pending)` : '';
+    all.innerHTML = `All accounts · <b>${hideBal ? '••••' : coins(combined)}</b> ${unit()}${extra}`;
+    renderTypeSel();
+  }
+  $('#bal_all').addEventListener('click', () => showPane('accounts'));
   $('#bal_sub').addEventListener('click', () => { const a = $('#home_activity'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   $('#bal_eye').addEventListener('click', () => { hideBal = !hideBal; renderTotal(); renderAccountRows(); });
 

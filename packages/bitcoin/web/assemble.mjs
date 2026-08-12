@@ -77,7 +77,18 @@ a{color:var(--mint)}
 .eye{margin-left:auto;cursor:pointer;color:inherit;background:none;border:0;padding:2px;min-height:0;opacity:.75;font-size:15px}
 .bal{font-size:36px;font-weight:800;letter-spacing:-.02em;margin:7px 0 2px;font-variant-numeric:tabular-nums}
 .bal .u{font-size:17px;font-weight:700;margin-left:4px;opacity:.7}
-.balsub{font-size:12px;font-weight:600;opacity:.65;margin-bottom:10px}
+.balsub{font-size:12px;font-weight:600;opacity:.65;margin-bottom:6px}
+/* per-script-type selector inside the hero (each pill shows its own balance) */
+.typesel{display:flex;gap:6px;overflow-x:auto;margin:0 -4px 13px;padding:1px 4px 3px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.typesel::-webkit-scrollbar{display:none}
+.typepill{flex:0 0 auto;display:flex;flex-direction:column;gap:1px;align-items:flex-start;background:rgba(26,18,5,.09);border:1px solid rgba(26,18,5,.12);border-radius:12px;padding:6px 11px;cursor:pointer;color:#1a1205;min-height:0;font-family:inherit;transition:background .15s,border-color .15s}
+.typepill:hover{border-color:rgba(26,18,5,.28)}
+.typepill .tn{font-size:10px;font-weight:800;letter-spacing:.04em;opacity:.62;text-transform:uppercase;white-space:nowrap}
+.typepill .tv{font-size:13.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.25}
+.typepill.on{background:#1a1205;color:#f6b53f;border-color:#1a1205;box-shadow:0 4px 12px -4px rgba(26,18,5,.5)}
+.typepill.on .tn{opacity:.8}
+.balall{font-size:12px;font-weight:600;opacity:.62;margin:0 0 10px;cursor:pointer}
+.balall b{font-weight:800;opacity:1}
 .hero .practice{background:rgba(26,18,5,.14);border:0;color:#1a1205;font-weight:700}
 .hero .practice.main{background:#2a1012;color:#ffb4b8;border:0}
 /* round quick actions */
@@ -392,9 +403,11 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-home">
   <div class="hero">
     <span class="wm"></span>
-    <div class="balrow">TOTAL BALANCE <button class="eye" id="bal_eye" title="hide">👁</button></div>
+    <div class="typesel" id="type_sel"></div>
+    <div class="balrow"><span id="bal_label">BALANCE</span> <button class="eye" id="bal_eye" title="hide">👁</button></div>
     <div class="bal" id="bal_total">—<span class="u" id="bal_unit">tBTC</span></div>
     <div class="balsub" id="bal_sub"></div>
+    <div class="balall" id="bal_all"></div>
     <span class="practice" id="chip_net"></span>
   </div>
   <div class="qa">
@@ -409,6 +422,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ ACCOUNTS ============ -->
 <section class="pane" id="pane-accounts">
+  <button class="back" data-nav="home">‹ Home</button>
   <h2>Accounts</h2>
   <p class="sub">One seed → every Bitcoin address type. Tap any to receive, send, or learn what makes it different.</p>
   <div id="acct_watchnote" class="warn" style="display:none">Watch-only (xpub): the SegWit account is visible; other types need the seed. Spending happens via the air-gap tools in Settings.</div>
@@ -535,6 +549,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ LEARN ============ -->
 <section class="pane" id="pane-learn">
+  <button class="back" data-nav="home">‹ Home</button>
   <h2>Learn Bitcoin</h2>
   <p class="sub">Every concept in plain English — then try it for real. Progress saves on this device.</p>
   <div class="prog"><i id="learn_bar"></i></div>
@@ -545,6 +560,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ SETTINGS ============ -->
 <section class="pane" id="pane-settings">
+  <button class="back" data-nav="home">‹ Home</button>
   <h2>Settings</h2>
   <p class="slbl">Wallet</p>
   <div class="sgroup">

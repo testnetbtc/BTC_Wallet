@@ -72,6 +72,21 @@ $('#mnemonic').value = SEED;
 click('#load');                                   // open wallet (network calls fail cleanly)
 await new Promise((r) => setTimeout(r, 300));
 
+// ---- Home per-script-type balance selector + back links (this session) ----
+ok('Home has a script-type selector', !!$('#type_sel'));
+const pills = () => [...$('#type_sel').querySelectorAll('.typepill')];
+ok('selector renders a pill per script type', pills().length === window.OW.scriptTypes().length);
+ok('headline label reflects the active type', /NATIVE SEGWIT/i.test($('#bal_label').textContent));
+ok('all-accounts combined line is present', /All accounts/i.test($('#bal_all').textContent));
+ok('every non-home tab has a ‹ Home back link', window.document.querySelectorAll('.back[data-nav="home"]').length >= 3);
+const taprootPill = pills().find((p) => /taproot/i.test(p.textContent));
+taprootPill && taprootPill.click();               // switch active type (sync re-label; async discovery fails cleanly)
+ok('tapping a type pill switches the headline', /TAPROOT/i.test($('#bal_label').textContent));
+const segwitPill = pills().find((p) => /native segwit/i.test(p.textContent));
+segwitPill && segwitPill.click();                 // back to native SegWit for the send flow below
+await new Promise((r) => setTimeout(r, 60));
+ok('switching back restores the SegWit headline', /NATIVE SEGWIT/i.test($('#bal_label').textContent));
+
 const HEX_A = 'aa'.repeat(60), HEX_B = 'bb'.repeat(60);   // "first build" vs "post-confirm rebuild"
 let buildCalls = 0, broadcastGot = null;
 const stubTx = (hex) => ({ txHex: hex, txid: 'f1'.repeat(32), fee: 300, feeRate: 2, vsize: 141, broadcastTxid: null });
