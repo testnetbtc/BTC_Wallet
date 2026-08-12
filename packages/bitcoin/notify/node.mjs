@@ -10,6 +10,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CFG = JSON.parse(readFileSync(join(HERE, '..', '.secrets', 'notify-node.json'), 'utf8'));
 const AUTH = 'Basic ' + Buffer.from(`${CFG.rpcUser}:${CFG.rpcPassword}`).toString('base64');
 export const NODE_NETWORK = CFG.network || 'mainnet';
+// Localhost intake: chainwatch's detectors POST public-feed events here and the
+// platform bot fans them out to subscribed users. Never exposed off 127.0.0.1.
+export const INTAKE = { port: CFG.intakePort || 8787, token: CFG.intakeToken || '' };
 
 export async function rpc(method, params = []) {
   const r = await fetch(CFG.rpcUrl, {

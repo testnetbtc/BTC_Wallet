@@ -37,7 +37,8 @@ h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05
 .step .n::before{content:counter(s)}
 .step b{font-size:14.5px}.step p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
 .cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0 0}
-.tgbtn{background:var(--tg);color:#04121c;font-weight:700;border:0;border-radius:11px;padding:13px 20px;font-size:15px;display:inline-flex;gap:9px;align-items:center;cursor:not-allowed;opacity:.75}
+.tgbtn{background:var(--tg);color:#04121c;font-weight:700;border:0;border-radius:11px;padding:13px 20px;font-size:15px;display:inline-flex;gap:9px;align-items:center;cursor:pointer;opacity:1;text-decoration:none}
+.tgbtn:hover{background:#3fb8f6;text-decoration:none}
 .note{background:#10241c;border:1px solid #1c5c3a;color:#bfe9cf;border-radius:12px;padding:15px 17px;margin:26px 0 0;font-size:14.5px;line-height:1.6}
 .note b{color:#e6edf3}
 .foot{color:var(--faint);font-size:13px;margin-top:36px;border-top:1px solid var(--line);padding-top:18px}
@@ -53,7 +54,7 @@ h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05
   <div class="hero">
     <h1>Get pinged on <span class="tg">Telegram</span> about your Bitcoin.</h1>
     <p>Custom, watch-only alerts — tell Olesia what to watch and a Telegram bot messages you when it happens. Paste an <b>address or xpub</b>; your keys are never involved and nothing you paste can spend a thing.</p>
-    <span class="dev">🛠️ In development — this page is a preview of what's coming</span>
+    <span class="dev" style="background:#10241c;border-color:#1c5c3a;color:var(--green)">✅ Live now — free, watch-only, no account or email needed</span>
   </div>
 
   <h2>What you can be alerted about</h2>
@@ -84,7 +85,7 @@ h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05
     </div>
   </div>
 
-  <h2>How it will work</h2>
+  <h2>How it works</h2>
   <div class="steps">
     <div class="step"><span class="n"></span><div><b>Open the Olesia bot on Telegram</b><p>One tap — no account, no email.</p></div></div>
     <div class="step"><span class="n"></span><div><b>Add what to watch</b><p>Paste an address or xpub (watch-only), a price level, or a fee target.</p></div></div>
@@ -92,8 +93,8 @@ h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.05
   </div>
 
   <div class="cta">
-    <button class="tgbtn" id="connect" disabled>✈️ Connect Telegram — coming soon</button>
-    <span class="foot" style="margin:0;border:0;padding:0">Want to know when it launches? Follow <a href="https://github.com/testnetbtc/BTC_Wallet">the repo</a>.</span>
+    <a class="tgbtn" id="connect" href="https://t.me/BTCNode_bot?start=web" target="_blank" rel="noopener">✈️ Open the Olesia bot on Telegram</a>
+    <span class="foot" style="margin:0;border:0;padding:0">Free while in beta · open source — see <a href="https://github.com/testnetbtc/BTC_Wallet">the repo</a>.</span>
   </div>
 
   <div class="note">

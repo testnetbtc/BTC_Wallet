@@ -11,11 +11,12 @@
 // like one is rejected with a warning, before it is ever logged or persisted.
 // The service holds no keys and cannot sign or move funds.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { net } from '../src/networks.js';
-import { tipHeight, fastestFee, scanBlock, btcUsd, NODE_NETWORK } from './node.mjs';
+import { tipHeight, fastestFee, scanBlock, btcUsd, NODE_NETWORK, INTAKE } from './node.mjs';
 import { classifyInput, xpubAddresses, XPUB_GAP } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS subs (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     chat_id   INTEGER NOT NULL,
-    type      TEXT NOT NULL,           -- addr | price | fee | blocks
+    type      TEXT NOT NULL,           -- addr | price | fee | blocks | feed
     params    TEXT NOT NULL,           -- JSON
     repeat    INTEGER DEFAULT 0,
     last_fired INTEGER DEFAULT 0,
@@ -56,6 +57,16 @@ db.exec(`
     ts     INTEGER,
     PRIMARY KEY (sub_id, k)
   );
+  -- Public-feed events received from chainwatch detectors (audit + dedup record).
+  CREATE TABLE IF NOT EXISTS events (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed   TEXT NOT NULL,
+    k      TEXT NOT NULL,              -- dedup key (usually txid)
+    btc    REAL,
+    payload TEXT NOT NULL,            -- JSON as received
+    ts     INTEGER,
+    UNIQUE (feed, k)
+  );
 `);
 const q = {
   upsertUser: db.prepare('INSERT INTO users(chat_id,created_at) VALUES(?,?) ON CONFLICT(chat_id) DO NOTHING'),
@@ -67,9 +78,32 @@ const q = {
   getSub: db.prepare('SELECT * FROM subs WHERE id=? AND chat_id=?'),
   deactivate: db.prepare('UPDATE subs SET active=0 WHERE id=?'),
   activeByType: db.prepare('SELECT * FROM subs WHERE active=1 AND type=?'),
+  subsByChatType: db.prepare('SELECT * FROM subs WHERE chat_id=? AND type=? AND active=1'),
   touchFired: db.prepare('UPDATE subs SET last_fired=? WHERE id=?'),
   markSeen: db.prepare('INSERT INTO seen(sub_id,k,ts) VALUES(?,?,?) ON CONFLICT(sub_id,k) DO NOTHING'),
   wasSeen: db.prepare('SELECT 1 FROM seen WHERE sub_id=? AND k=?'),
+  recordEvent: db.prepare('INSERT INTO events(feed,k,btc,payload,ts) VALUES(?,?,?,?,?) ON CONFLICT(feed,k) DO NOTHING'),
+};
+
+// --------------------------------------------------------------- public feeds
+// chainwatch's detectors produce these; users opt in per feed. `filter` feeds
+// accept a per-user minimum BTC size so people can tune out the noise.
+const FEEDS = {
+  coldcard: { emoji: '🃏', label: 'Coldcard exploit tracker', filter: false,
+    desc: 'Movements from the Jul–Aug 2026 Coldcard exploit wallets.' },
+  whales:   { emoji: '🐋', label: 'Whale → exchange moves', filter: true,
+    desc: 'Large holders sending to exchange deposit wallets (possible sell pressure).' },
+  satoshi:  { emoji: '🛰️', label: 'Satoshi-era coins', filter: false,
+    desc: 'Any movement of coins from the earliest blocks / known Satoshi-pattern wallets.' },
+  ofac:     { emoji: '⚖️', label: 'OFAC-sanctioned wallets', filter: false,
+    desc: 'Movements involving OFAC-SDN listed Bitcoin addresses.' },
+};
+const subscribedFeeds = (chatId) => {
+  const out = new Map();
+  for (const s of q.subsByChatType.all(chatId, 'feed')) {
+    try { const p = JSON.parse(s.params); out.set(p.feed, { id: s.id, ...p }); } catch { /* skip */ }
+  }
+  return out;
 };
 
 
@@ -98,10 +132,13 @@ function dispatch(chatId, text) {
 const HELP = [
   '<b>Olesia Bitcoin Alerts</b> — watch-only notifications.',
   '',
+  '<b>/menu</b> — set everything up by tapping (easiest)',
   '<b>/watch</b> &lt;address|xpub&gt; — incoming/outgoing tx alerts',
   '<b>/price</b> &lt;above|below&gt; &lt;usd&gt; [repeat] — BTC price threshold',
   '<b>/fee</b> below &lt;sat/vB&gt; — when fees drop below a target',
   '<b>/blocks</b> on — every new block + halving countdown',
+  '<b>/feeds</b> — opt into public intelligence feeds (Coldcard tracker,',
+  '   whale→exchange, Satoshi-era, OFAC)',
   '<b>/list</b> — your active alerts',
   '<b>/mute</b> 2h — pause all alerts for a while',
   '<b>/remove</b> &lt;id&gt; — cancel one alert',
@@ -175,6 +212,8 @@ function cmdList(chatId) {
     if (s.type === 'price') return `#${s.id} 💵 price ${p.dir} $${p.usd.toLocaleString()}${s.repeat ? ' ↻' : ''}`;
     if (s.type === 'fee') return `#${s.id} ⛽ fee below ${p.sat} sat/vB`;
     if (s.type === 'blocks') return `#${s.id} 🧱 new blocks`;
+    if (s.type === 'feed') { const f = FEEDS[p.feed]; return `#${s.id} ${f ? f.emoji : '📡'} ${f ? f.label : p.feed}`
+      + `${p.min_btc ? ` (≥${p.min_btc}₿)` : ''}`; }
     return `#${s.id} ${s.type}`;
   };
   return send(chatId, '<b>Your alerts:</b>\n' + rows.map(line).join('\n') + '\n\nRemove one: /remove &lt;id&gt;');
@@ -198,16 +237,194 @@ function cmdRemove(chatId, arg) {
   return send(chatId, `🗑 Removed alert #${id}.`);
 }
 
+// --------------------------------------------------- tap-button menu UX
+// Telegram IS the login: every chat_id is an authenticated account. Users
+// configure everything by tapping; commands stay for power users.
+async function answerCb(id, text) { return tg('answerCallbackQuery', { callback_query_id: id, text: text || '' }); }
+async function editMenu(chatId, mid, text, keyboard) {
+  return tg('editMessageText', { chat_id: chatId, message_id: mid, text, parse_mode: 'HTML',
+    disable_web_page_preview: true, reply_markup: { inline_keyboard: keyboard } });
+}
+async function sendMenu(chatId, text, keyboard) {
+  return tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML',
+    disable_web_page_preview: true, reply_markup: { inline_keyboard: keyboard } });
+}
+
+const MENU_INTRO = [
+  '<b>Olesia Bitcoin Alerts</b>',
+  'Your own private notifications, straight from our full node.',
+  '',
+  'Pick what to set up — tap a button, or type /help for commands.',
+].join('\n');
+
+function mainKb() {
+  return [
+    [{ text: '👁 Watch an address', callback_data: 'p:watch' }],
+    [{ text: '💵 Price alert', callback_data: 'p:price' }, { text: '⛽ Fee alert', callback_data: 'p:fee' }],
+    [{ text: '🧱 New-block alerts', callback_data: 't:blocks' }],
+    [{ text: '📡 Public intelligence feeds', callback_data: 'm:feeds' }],
+    [{ text: '📋 My alerts', callback_data: 'm:list' }],
+  ];
+}
+function feedsKb(chatId) {
+  const subd = subscribedFeeds(chatId);
+  const rows = [];
+  for (const [key, f] of Object.entries(FEEDS)) {
+    const on = subd.has(key);
+    rows.push([{ text: `${on ? '✅' : '▫️'} ${f.emoji} ${f.label}`, callback_data: `f:${key}` }]);
+    if (on && f.filter) {
+      const cur = subd.get(key).min_btc || 0;
+      rows.push([50, 100, 250].map((n) => ({
+        text: `${cur === n ? '• ' : ''}≥${n}₿`, callback_data: `w:${key}:${n}` })).concat(
+        [{ text: `${cur === 0 ? '• ' : ''}all`, callback_data: `w:${key}:0` }]));
+    }
+  }
+  rows.push([{ text: '‹ Back', callback_data: 'm:main' }]);
+  return rows;
+}
+const feedsIntro = () => ['<b>📡 Public intelligence feeds</b>',
+  'Opt in to on-chain events our node detects. Tap to toggle.', '',
+  ...Object.values(FEEDS).map((f) => `${f.emoji} <b>${f.label}</b> — ${f.desc}`)].join('\n');
+
+// pending free-text capture: after a button asks for a value, the user's next
+// message is routed to the matching command. In-memory is fine (a restart just
+// means the user taps again).
+const pending = new Map();
+const PENDING_PROMPT = {
+  watch: 'Send me a Bitcoin <b>address</b> or <b>xpub</b> to watch. (Never a seed phrase or private key.)',
+  price: 'Send a price target, e.g. <code>above 100000</code> or <code>below 90000</code>.',
+  fee:   'Send a fee target in sat/vB, e.g. <code>5</code> — I\'ll alert when fees drop below it.',
+};
+
+async function toggleFeed(chatId, key) {
+  if (!FEEDS[key]) return;
+  const subd = subscribedFeeds(chatId);
+  if (subd.has(key)) { q.deactivate.run(subd.get(key).id); return; }
+  if (!capOk(chatId)) return send(chatId, `You've hit the ${MAX_SUBS_PER_USER}-alert limit. Remove one with /remove first.`);
+  const params = FEEDS[key].filter ? { feed: key, min_btc: 100 } : { feed: key };
+  q.addSub.run(chatId, 'feed', JSON.stringify(params), 1, nows());
+}
+async function setFeedMin(chatId, key, min) {
+  const subd = subscribedFeeds(chatId);
+  if (!subd.has(key)) return;
+  q.deactivate.run(subd.get(key).id);
+  q.addSub.run(chatId, 'feed', JSON.stringify({ feed: key, min_btc: min }), 1, nows());
+}
+async function toggleBlocks(chatId) {
+  const rows = q.subsByChatType.all(chatId, 'blocks');
+  if (rows.length) { for (const r of rows) q.deactivate.run(r.id); return false; }
+  if (!capOk(chatId)) { await send(chatId, `You've hit the ${MAX_SUBS_PER_USER}-alert limit.`); return false; }
+  q.addSub.run(chatId, 'blocks', JSON.stringify({ network: 'mainnet' }), 1, nows());
+  return true;
+}
+
+async function onCallback(cbq) {
+  const chatId = cbq.message?.chat?.id;
+  const mid = cbq.message?.message_id;
+  const data = cbq.data || '';
+  if (!chatId) return;
+  q.upsertUser.run(chatId, nows());
+  try {
+    if (data === 'm:main') { await editMenu(chatId, mid, MENU_INTRO, mainKb()); return answerCb(cbq.id); }
+    if (data === 'm:feeds') { await editMenu(chatId, mid, feedsIntro(), feedsKb(chatId)); return answerCb(cbq.id); }
+    if (data === 'm:list') { await answerCb(cbq.id); return cmdList(chatId); }
+    if (data.startsWith('p:')) {
+      const kind = data.slice(2);
+      pending.set(chatId, kind);
+      await answerCb(cbq.id);
+      return send(chatId, PENDING_PROMPT[kind] || 'Send the value.');
+    }
+    if (data === 't:blocks') {
+      const on = await toggleBlocks(chatId);
+      return answerCb(cbq.id, on ? 'New-block alerts on' : 'New-block alerts off');
+    }
+    if (data.startsWith('f:')) {
+      await toggleFeed(chatId, data.slice(2));
+      await editMenu(chatId, mid, feedsIntro(), feedsKb(chatId));
+      return answerCb(cbq.id);
+    }
+    if (data.startsWith('w:')) {
+      const [, key, n] = data.split(':');
+      await setFeedMin(chatId, key, Number(n));
+      await editMenu(chatId, mid, feedsIntro(), feedsKb(chatId));
+      return answerCb(cbq.id, Number(n) ? `≥ ${n} BTC` : 'all sizes');
+    }
+    return answerCb(cbq.id);
+  } catch (e) { log('cb err', data, e.message); return answerCb(cbq.id); }
+}
+
+// ---------------------------------------------- public-feed intake + delivery
+// chainwatch's detectors POST events to 127.0.0.1 and we fan them out to the
+// users subscribed to that feed, honouring each user's size filter. Producers
+// (detectors) and delivery (this bot) are fully decoupled — that is what makes
+// the public feeds multi-tenant instead of one broadcast channel.
+function formatEvent(ev) {
+  const f = FEEDS[ev.feed];
+  const head = `${f ? f.emoji + ' <b>' + f.label + '</b>' : ev.feed}`;
+  const parts = [head];
+  if (ev.title) parts.push(ev.title);
+  if (ev.body) parts.push(ev.body);
+  if (ev.link) parts.push(`<a href="${ev.link}">view transaction</a>`);
+  return parts.join('\n');
+}
+function deliverEvent(ev) {
+  if (!FEEDS[ev.feed]) return { ok: false, why: 'unknown feed' };
+  const key = String(ev.key || ev.txid || '');
+  q.recordEvent.run(ev.feed, key, ev.btc ?? null, JSON.stringify(ev), nows());
+  let delivered = 0;
+  for (const s of q.activeByType.all('feed')) {
+    let p; try { p = JSON.parse(s.params); } catch { continue; }
+    if (p.feed !== ev.feed) continue;
+    if (p.min_btc && ev.btc != null && Number(ev.btc) < p.min_btc) continue;
+    const seenKey = `${ev.feed}:${key}`;
+    if (q.wasSeen.get(s.id, seenKey)) continue;
+    q.markSeen.run(s.id, seenKey, nows());
+    dispatch(s.chat_id, formatEvent(ev));
+    delivered++;
+  }
+  return { ok: true, delivered };
+}
+function startIntake() {
+  if (!INTAKE.token) { log('intake DISABLED (no intakeToken in notify-node.json)'); return; }
+  const srv = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') { res.writeHead(200); return res.end('ok'); }
+    if (req.method !== 'POST' || req.url !== '/event') { res.writeHead(404); return res.end(); }
+    if (req.headers['x-intake-token'] !== INTAKE.token) { res.writeHead(401); return res.end('unauthorized'); }
+    let raw = '';
+    req.on('data', (c) => { raw += c; if (raw.length > 65536) req.destroy(); });
+    req.on('end', () => {
+      let ev; try { ev = JSON.parse(raw); } catch { res.writeHead(400); return res.end('bad json'); }
+      try { const r = deliverEvent(ev); res.writeHead(r.ok ? 200 : 422);
+        res.end(JSON.stringify(r)); } catch (e) { log('intake err', e.message); res.writeHead(500); res.end('err'); }
+    });
+  });
+  // A port clash (or any listen error) must NOT take down personal alerts:
+  // log it and keep the bot running without the feed intake.
+  srv.on('error', (e) => log(`intake DISABLED — could not listen on ${INTAKE.port}: ${e.code || e.message}`));
+  srv.listen(INTAKE.port, '127.0.0.1', () => log(`intake listening on 127.0.0.1:${INTAKE.port}`));
+}
+
 async function onMessage(msg) {
   const chatId = msg.chat?.id;
   const text = (msg.text || '').trim();
   if (!chatId || !text) return;
   q.upsertUser.run(chatId, nows());
+
+  // A button asked for a value; capture this message as that value.
+  if (pending.has(chatId) && !text.startsWith('/')) {
+    const kind = pending.get(chatId); pending.delete(chatId);
+    if (kind === 'watch') return await cmdWatch(chatId, text);
+    if (kind === 'price') return await cmdPrice(chatId, text);
+    if (kind === 'fee') return await cmdFee(chatId, /^\s*\d/.test(text) ? `below ${text}` : text);
+  }
+
   const [cmd, ...rest] = text.split(/\s+/);
   const arg = rest.join(' ');
   const c = cmd.toLowerCase().replace(/@.*$/, '');
   try {
-    if (c === '/start' || c === '/help') return await send(chatId, HELP);
+    if (c === '/start' || c === '/menu') return await sendMenu(chatId, MENU_INTRO, mainKb());
+    if (c === '/help') return await send(chatId, HELP);
+    if (c === '/feeds') return await sendMenu(chatId, feedsIntro(), feedsKb(chatId));
     if (c === '/watch') return await cmdWatch(chatId, arg);
     if (c === '/price') return await cmdPrice(chatId, arg);
     if (c === '/fee') return await cmdFee(chatId, arg);
@@ -323,10 +540,11 @@ async function watchBlocks() {
 // ------------------------------------------------------------------- loops
 let offset = 0;
 async function pollTelegram() {
-  const r = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+  const r = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
   if (r.ok) for (const u of r.result) {
     offset = u.update_id + 1;
     if (u.message) await onMessage(u.message).catch((e) => log('msg err', e.message));
+    else if (u.callback_query) await onCallback(u.callback_query).catch((e) => log('cb err', e.message));
   }
 }
 async function loopTelegram() { for (;;) { try { await pollTelegram(); } catch (e) { log('poll err', e.message); await new Promise((r) => setTimeout(r, 3000)); } } }
@@ -341,16 +559,19 @@ const beat = () => { try { writeFileSync(HEARTBEAT, JSON.stringify({ t: Date.now
 
 log(`olesia-notify starting as @${BOT_USERNAME}`);
 tg('setMyCommands', { commands: [
+  { command: 'menu', description: 'Open the tap-button menu' },
   { command: 'watch', description: 'Watch an address or xpub' },
   { command: 'price', description: 'BTC price threshold alert' },
   { command: 'fee', description: 'Fee drops below a target' },
   { command: 'blocks', description: 'New block + halving alerts' },
+  { command: 'feeds', description: 'Public intelligence feeds' },
   { command: 'list', description: 'Your active alerts' },
   { command: 'mute', description: 'Pause alerts (e.g. /mute 2h)' },
   { command: 'remove', description: 'Cancel an alert by id' },
   { command: 'help', description: 'How this works' },
 ] });
 beat(); setInterval(beat, 60000).unref();
+startIntake();
 setInterval(runWatchers, 60000);
 runWatchers();
 loopTelegram();
