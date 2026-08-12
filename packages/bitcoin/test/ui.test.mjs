@@ -22,7 +22,8 @@ const dom = new JSDOM(html, {
     try { Object.defineProperty(w, 'crypto', { value: webcrypto, configurable: true }); } catch { /* already usable */ }
     w.matchMedia = w.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }));
     w.scrollTo = () => {};
-    w.fetch = () => Promise.reject(new Error('no network in UI test')); // nothing here should hit the network
+    // no real network: every fetch resolves non-ok so engine calls fail cleanly
+    w.fetch = () => Promise.resolve({ ok: false, status: 599, text: async () => 'no network in UI test', json: async () => ({}) });
     w.alert = () => {};
   },
 });
@@ -61,6 +62,39 @@ ok('pay mode restores the Send label', /send/i.test($('#send').textContent));
 // 5) the PIN keypad is present and the auto-submit length hook is wired
 ok('unlock keypad has a full 0-9 pad', $('#pad').querySelectorAll('button[data-k]').length >= 11);
 
-console.log(bad ? '\nUI TEST FAILED' : '\nUI TEST PASS — real DOM, real clicks, fee wiring safe');
+// 6) FREEZE REGRESSION — the user must approve the EXACT transaction broadcast.
+// Open a wallet, drive a real send through the real confirm sheet with a stubbed
+// engine, and prove: (a) the engine builds exactly ONCE, (b) the broadcast
+// receives byte-for-byte the hex that was built BEFORE the confirm screen —
+// so a fee-provider (or UTXO-set) change after confirmation cannot alter it.
+const SEED = 'immense rain burden meat one stock cigar dice enhance post jacket aerobic';
+$('#mnemonic').value = SEED;
+click('#load');                                   // open wallet (network calls fail cleanly)
+await new Promise((r) => setTimeout(r, 300));
+
+const HEX_A = 'aa'.repeat(60), HEX_B = 'bb'.repeat(60);   // "first build" vs "post-confirm rebuild"
+let buildCalls = 0, broadcastGot = null;
+const stubTx = (hex) => ({ txHex: hex, txid: 'f1'.repeat(32), fee: 300, feeRate: 2, vsize: 141, broadcastTxid: null });
+window.OW.send = async () => { buildCalls++; return stubTx(buildCalls === 1 ? HEX_A : HEX_B); };
+window.OW.decodeTx = ({ hex }) => ({ txid: 'f1'.repeat(32), vsize: 141, inputs: [], totalOut: 9700,
+  outputs: [{ vout: 0, address: 'tb1qexternal', amount: 9000, type: 'wpkh', opReturn: null },
+            { vout: 1, address: 'tb1qchange', amount: 700, type: 'wpkh', opReturn: null }] });
+window.OW.broadcastHex = async ({ hex }) => { broadcastGot = hex; return { txid: 'f1'.repeat(32), explorer: null }; };
+
+$('#to').value = 'tb1qexternal'; $('#amt').value = '9000';
+click('#send');
+// wait for the confirm sheet, then approve
+let waited = 0;
+while (!$('#confirm').classList.contains('on') && waited < 3000) { await new Promise((r) => setTimeout(r, 50)); waited += 50; }
+ok('confirm sheet opened from the BUILT transaction', $('#confirm').classList.contains('on'));
+ok('confirm sheet shows the frozen txid', $('#confirm').textContent.includes('f1f1f1f1'));
+click('#c_go');
+waited = 0;
+while (broadcastGot === null && waited < 3000) { await new Promise((r) => setTimeout(r, 50)); waited += 50; }
+ok('engine build was called exactly ONCE', buildCalls === 1);
+ok('broadcast received the EXACT pre-confirmation bytes', broadcastGot === HEX_A);
+ok('a post-confirm rebuild (different tx) can never be sent', broadcastGot !== HEX_B);
+
+console.log(bad ? '\nUI TEST FAILED' : '\nUI TEST PASS — real DOM, real clicks, frozen-bytes broadcast');
 window.close();
 process.exit(bad ? 1 : 0);

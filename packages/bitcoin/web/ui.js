@@ -372,8 +372,11 @@
       ], 'Sweep');
       if (!ok) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Sweeping…');
-      const s = await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: true });
-      const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${s.swept} sat — explorer ↗`;
+      // broadcast the EXACT transaction that was just confirmed — no rebuild
+      const s = dry.txHex
+        ? await window.OW.broadcastHex({ hex: dry.txHex, network })
+        : await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: true }); // p2pk path (per-UTXO txs)
+      const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${dry.swept} sat — explorer ↗`;
       btn.replaceWith(a); toast('✓ swept', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
@@ -759,6 +762,9 @@
   };
   const myAddress = () => window.OW.info(source, network, sendType, 0, passphrase).address;
 
+  // SECURITY INVARIANT: build ONCE, decode the actual transaction for display,
+  // confirm, then broadcast the EXACT SAME BYTES. After the confirmation sheet
+  // is shown, nothing is re-fetched, re-selected, re-priced, or re-signed.
   async function runSend(broadcast) {
     const msgOnly = sendMode === 'msg';
     const to = msgOnly ? myAddress() : $('#to').value.trim();
@@ -766,24 +772,33 @@
     if (msgOnly && !$('#msg').value.trim()) return toast('type the message you want to write on the chain', 'bad');
     try {
       toast('Building…');
-      const dry = await buildTx(false);        // dry-run first -> real fee shown
-      if (!broadcast) return renderResult(dry, false);
+      const built = await buildTx(false);      // signed but NOT broadcast — frozen bytes
+      if (!broadcast) return renderResult(built, false);
+      const frozenHex = built.txHex, frozenTxid = built.txid;
+      if (!frozenHex) throw new Error('engine did not return the built transaction — refusing to continue');
       const px = await usdPrice();
-      const amount = (sweepMode || msgOnly) ? dry.swept : Number($('#amt').value);
-      const msg = $('#msg').value.trim();
+      // render the confirmation from the transaction itself, not the form
+      const dec = window.OW.decodeTx({ hex: frozenHex, network });
+      const mine = myAddress();
       const rows = [];
-      if (msgOnly) rows.push(['Message', `“${msg.slice(0, 48)}${msg.length > 48 ? '…' : ''}”`, 'written permanently on-chain']);
-      else {
-        rows.push(['To', to]);
-        rows.push([sweepMode ? 'Amount (sweep)' : 'Amount', `${amount.toLocaleString()} sat`, `${coins(amount)} ${unit()}${px ? ' · ' + fmtUsd(amount, px) : ''}`]);
-        if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'permanent public message']);
+      for (const o of dec.outputs) {
+        if (o.type === 'op_return') rows.push(['OP_RETURN', `“${(o.opReturn || '').slice(0, 48)}”`, 'permanent public message']);
+        else if (o.address === mine) rows.push([msgOnly ? 'Back to you' : 'Change (back to you)', o.address, `${o.amount.toLocaleString()} sat`]);
+        else rows.push(['To', o.address || `(unknown script)`, `${o.amount.toLocaleString()} sat · ${coins(o.amount)} ${unit()}${px ? ' · ' + fmtUsd(o.amount, px) : ''}`]);
       }
-      rows.push(['Network fee', `${dry.fee.toLocaleString()} sat`, `${dry.feeRate} sat/vB${px ? ' · ' + fmtUsd(dry.fee, px) : ''}`]);
+      rows.push(['Network fee', `${built.fee.toLocaleString()} sat`, `${built.feeRate} sat/vB${px ? ' · ' + fmtUsd(built.fee, px) : ''}`]);
+      // abnormal-fee tripwires: % of what leaves the wallet, and absolute rate
+      const paidOut = dec.outputs.filter((o) => o.type !== 'op_return' && o.address !== mine).reduce((a, o) => a + o.amount, 0);
+      const feePct = paidOut > 0 ? (built.fee / paidOut) * 100 : 0;
+      if (feePct > 10) rows.push(['⚠ UNUSUALLY HIGH FEE', `${feePct.toFixed(1)}% of the amount sent`, 'check the fee field before confirming']);
+      if (built.feeRate > 200) rows.push(['⚠ HIGH FEE RATE', `${built.feeRate} sat/vB`, 'typical is 1–20; confirm this is deliberate']);
       rows.push(['From', SHORT[sendType] + ' · ' + network]);
+      rows.push(['txid', frozenTxid.slice(0, 16) + '…', 'this exact transaction will be sent']);
       const okGo = await confirmSheet(msgOnly ? 'Write this on the chain?' : sweepMode ? 'Sweep everything?' : 'Send this?', rows, msgOnly ? 'Write it' : 'Confirm & send');
       if (!okGo) return toast('Cancelled — nothing sent.');
       toast('Broadcasting…');
-      renderResult(await buildTx(true), true);
+      const res = await window.OW.broadcastHex({ hex: frozenHex, network });
+      renderResult({ ...built, broadcastTxid: res.txid, explorer: res.explorer }, true);
     } catch (e) {
       let m = e.message;
       // the most common tripwire: trying to spend from an empty script-type account

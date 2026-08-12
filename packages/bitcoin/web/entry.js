@@ -10,7 +10,7 @@ import {
   walletAddress, walletInfo, statusFor, historyFor, isXpub,
   prepareAndSend, prepareSweep, prepareUnsigned, signUnsigned, broadcastSigned,
   fundP2PK, p2pkOutpoints, spendP2PK, importP2PK,
-  inspectWIF, sweepWIF,
+  inspectWIF, sweepWIF, decodeRawTx, broadcastRaw,
 } from '../src/send.js';
 import { accountXpub, normalizeMnemonic } from '../src/wallet.js';
 import { sealSeed, openSeed } from '../src/vault.js';
@@ -95,6 +95,10 @@ window.OW = {
 
   // import an encrypted backup .json exported by the cold generator (offline.olesia.io)
   importBackup: ({ json, password }) => decryptColdBackup(json, password),
+
+  // freeze-and-broadcast: decode a signed tx for display; broadcast EXACT bytes
+  decodeTx: ({ hex, network }) => decodeRawTx({ hex: T(hex), network }),
+  broadcastHex: ({ hex, network }) => broadcastRaw({ hex: T(hex), network }),
 
   // single private key (WIF): inspect every address format + sweep any funded one
   wifInspect: ({ wif, network }) => inspectWIF({ wif: T(wif), network }),

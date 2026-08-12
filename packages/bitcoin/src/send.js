@@ -1,6 +1,7 @@
 // High-level: resolve a wallet (any script type), fetch balance/UTXOs, build+sign a
 // tx (optionally with an OP_RETURN message), and optionally broadcast. Testnet-first.
 import * as btc from '@scure/btc-signer';
+import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
 import { deriveKey } from './wallet.js';
 import { deriveScript } from './scripts.js';
 import { getUTXOs, getBalance, getTxHistory, getTxHex, getFeeRate, broadcast, getTx, getOutspend } from './esplora.js';
@@ -136,6 +137,43 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
   return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
+// ---- freeze-and-broadcast primitives (build once, confirm once, send SAME bytes) ----
+// Decode a fully-signed raw transaction so the confirmation UI can be rendered
+// from the TRANSACTION ITSELF (the source of truth), never from form values.
+export function decodeRawTx({ hex, network }) {
+  const n = net(network);
+  const tx = btc.Transaction.fromRaw(hexToBytes(hex), { allowUnknownOutputs: true, allowUnknownInputs: true });
+  const outputs = [];
+  for (let i = 0; i < tx.outputsLength; i++) {
+    const o = tx.getOutput(i);
+    let address = null, opReturn = null, type = 'unknown';
+    if (o.script && o.script[0] === 0x6a) {
+      type = 'op_return';
+      try { const dec = btc.Script.decode(o.script); const data = dec.find((x) => x instanceof Uint8Array); opReturn = data ? new TextDecoder().decode(data) : ''; } catch { opReturn = ''; }
+    } else {
+      try { const d = btc.OutScript.decode(o.script); type = d.type; address = btc.Address(n.btc).encode(d); } catch { /* unknown script */ }
+    }
+    outputs.push({ vout: i, address, amount: Number(o.amount), type, opReturn });
+  }
+  const inputs = [];
+  for (let i = 0; i < tx.inputsLength; i++) {
+    const inp = tx.getInput(i);
+    inputs.push({ txid: bytesToHex(inp.txid), vout: inp.index });
+  }
+  return { txid: tx.id, vsize: tx.vsize, inputs, outputs, totalOut: outputs.reduce((a, o) => a + o.amount, 0) };
+}
+
+// Broadcast EXACT bytes previously shown to the user. The txid is recomputed
+// from the hex itself and (when the API echoes one) cross-checked — a mismatch
+// aborts loudly rather than reporting the wrong transaction as sent.
+export async function broadcastRaw({ hex, network }) {
+  const expected = decodeRawTx({ hex, network }).txid;
+  const got = await broadcast(hex, network);
+  const txid = (got || '').trim() || expected;
+  if (txid !== expected) throw new Error(`broadcast txid mismatch — expected ${expected}, network reported ${txid}`);
+  return { txid, explorer: net(network).explorer + txid };
+}
+
 // ---- single private key (WIF): inspect all formats, sweep any funded one ----
 export async function inspectWIF({ wif, network }) {
   const rows = wifAddresses(wif, network);
@@ -169,7 +207,8 @@ export async function sweepWIF({ wif, network, scriptType, toAddress, message = 
   const feeRate = await getFeeRate(network, 6);
   const built = buildSweepTx({ utxos: withPrev, key, toAddress: (toAddress || '').trim(), feeRate, networkName: network, message });
   const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
-  return { txid, swept: built.swept, fee: built.fee, explorer: doBroadcast ? net(network).explorer + txid : null };
+  // txHex returned so the caller can freeze these bytes: confirm, then broadcastRaw
+  return { txid, txHex: built.txHex, swept: built.swept, fee: built.fee, feeRate, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
 // ---- air-gap PSBT flow (P2WPKH / xpub watch-only) ----
