@@ -517,7 +517,7 @@
     $('#bal_sub').style.cursor = ap ? 'pointer' : 'default';
     const all = $('#bal_all');
     const extra = combPend ? ` (+${hideBal ? '•' : coins(combPend)} pending)` : '';
-    all.innerHTML = `All accounts · <b>${hideBal ? '••••' : coins(combined)}</b> ${unit()}${extra}`;
+    all.innerHTML = `All types · <b>${hideBal ? '••••' : coins(combined)}</b> ${unit()}${extra}`;
     renderTypeSel();
   }
   $('#bal_all').addEventListener('click', () => showPane('accounts'));
@@ -799,7 +799,7 @@
     const el = $('#send_empty');
     if (mode === 'watch' || (b && b.confirmed > 0)) { el.style.display = 'none'; return; }
     el.style.display = 'block';
-    el.innerHTML = `This <b>${SHORT[sendType]}</b> account has no confirmed coins to spend${b && b.pending ? ' (some are still pending here)' : ''}. Pick a funded account in the <b>Account</b> selector above.` + fundedHint(sendType);
+    el.innerHTML = `This <b>${SHORT[sendType]}</b> address type has no confirmed coins to spend${b && b.pending ? ' (some are still pending here)' : ''}. Pick a funded one in the <b>Address type</b> selector above.` + fundedHint(sendType);
   }
   async function selectSendType(type) {
     sendType = type;
@@ -921,7 +921,7 @@
       let m = e.message;
       // the most common tripwire: trying to spend from an empty script-type account
       if (/no UTXOs|insufficient|not enough|no coins/i.test(m)) {
-        m = `The ${SHORT[sendType]} account has no spendable coins here. Switch the Account selector at the top of this screen to a funded one.` + fundedHint(sendType);
+        m = `The ${SHORT[sendType]} address type has no spendable coins here. Switch the Address type selector at the top of this screen to a funded one.` + fundedHint(sendType);
         updateEmptyBanner(balances[sendType]);
       }
       toast('✗ ' + m, 'bad');
@@ -950,7 +950,7 @@
     ['Entropy', 'A wallet is a very large secret number. If it’s <b>random enough</b>, nobody can ever guess it — there are more possible keys (2<sup>256</sup>) than atoms in the observable universe. Weak randomness is how early browser wallets were drained. Olesia draws entropy from your OS’s cryptographic generator.'],
     ['The seed phrase', 'That number is encoded as <b>12 or 24 words</b> (BIP-39). The words <i>are</i> the wallet — no reset, no recovery without them. Write them on paper, in order. A photo in your camera roll is a photo in someone’s cloud.'],
     ['Keys', 'From the seed come <b>private keys</b>; each has a <b>public key</b> made by one-way maths. You sign with the private key; anyone can verify with the public one. Olesia signs with RFC-6979 deterministic nonces — the classic nonce-reuse mistake is impossible by construction.'],
-    ['Addresses', 'An address is <b>a lock, not a place</b> — a friendly encoding of the rule “satisfy this script to spend”. Different script types are different locks, which is why one seed gives you five different addresses. Explore them in Accounts.'],
+    ['Addresses', 'An address is <b>a lock, not a place</b> — a friendly encoding of the rule “satisfy this script to spend”. Different script types are different locks, which is why one seed gives you five different addresses. Explore them under Addresses.'],
     ['UTXOs', 'Bitcoin has no balance field. You own discrete chunks — <b>unspent transaction outputs</b> — like odd-denomination coins in a pocket. A payment consumes some coins and mints new ones: one to the recipient, change back to you.'],
     ['Fees', 'Miners include transactions that pay them, priced in <b>sat/vB</b>. Busier network → higher rate to confirm fast. <b>Auto</b> in the Send screen asks the network for a live estimate; on testnets fees barely matter, so experiment freely.'],
     ['Networks', '<b>Testnet3/4</b> and <b>Signet</b> share mainnet’s rules but use worthless coins — perfect for practice. <b>Mainnet</b> is real money. Every test network uses the same key maths, so what you learn here is the real thing, pointed at a playground.'],

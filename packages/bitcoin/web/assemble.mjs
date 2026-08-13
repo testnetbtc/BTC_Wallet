@@ -423,16 +423,16 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <!-- ============ ACCOUNTS ============ -->
 <section class="pane" id="pane-accounts">
   <button class="back" data-nav="home">‹ Home</button>
-  <h2>Accounts</h2>
-  <p class="sub">One seed → every Bitcoin address type. Tap any to receive, send, or learn what makes it different.</p>
-  <div id="acct_watchnote" class="warn" style="display:none">Watch-only (xpub): the SegWit account is visible; other types need the seed. Spending happens via the air-gap tools in Settings.</div>
+  <h2>Address types</h2>
+  <p class="sub">One seed → every Bitcoin address type (each a different <b>script type</b> under the hood). Tap any to receive, send, or learn what makes it different.</p>
+  <div id="acct_watchnote" class="warn" style="display:none">Watch-only (xpub): the SegWit address type is visible; other types need the seed. Spending happens via the air-gap tools in Settings.</div>
   <div id="acct_list"></div>
 </section>
 
 <!-- ============ ACCOUNT DETAIL ============ -->
 <section class="pane" id="pane-account">
-  <button class="back" id="back_accounts">‹ Accounts</button>
-  <h2 id="acc_title">Account</h2>
+  <button class="back" id="back_accounts">‹ Address types</button>
+  <h2 id="acc_title">Address type</h2>
   <p class="sub" style="margin-bottom:4px"><span id="acc_one"></span> · <a id="acc_moretog" style="cursor:pointer">about ▾</a></p>
   <p class="hint mono" style="margin:0 0 10px;font-size:11.5px">derivation path <span id="acc_path" style="color:var(--accent)"></span> <span class="help" data-target="tip_path">?</span></p>
   <div class="tiptext" id="tip_path" style="margin:0 0 10px">The route from your seed to this account's key: <b>m / purpose' / coin' / account' / chain / index</b>. The first number is the script-type standard (44'=legacy, 49'=nested, 84'=SegWit, 86'=Taproot); coin is 0' for mainnet, 1' for test networks. Same seed + same path = same keys, in any BIP-compliant wallet — that's why your seed restores anywhere.</div>
@@ -467,8 +467,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <div id="lab" style="display:none">
   <div class="card">
     <label style="margin-top:0">🧪 P2PK Lab <span class="help" data-target="tip_lab">?</span></label>
-    <div class="tiptext" id="tip_lab">P2PK has <b>no address</b>, so no ordinary wallet can pay it and explorers can't show its balance. The trick: fund your <b>SegWit</b> account first, then move coins into P2PK here — Olesia builds the raw <code>&lt;pubkey&gt; OP_CHECKSIG</code> output itself and remembers the exact coin it created.</div>
-    <div class="warn" id="p2pk_need" style="display:none">Fund your <b>SegWit</b> account first (it pays for the move) — there's a faucet link on its page.</div>
+    <div class="tiptext" id="tip_lab">P2PK has <b>no address</b>, so no ordinary wallet can pay it and explorers can't show its balance. The trick: fund your <b>SegWit</b> address first, then move coins into P2PK here — Olesia builds the raw <code>&lt;pubkey&gt; OP_CHECKSIG</code> output itself and remembers the exact coin it created.</div>
+    <div class="warn" id="p2pk_need" style="display:none">Fund your <b>SegWit</b> address first (it pays for the move) — there's a faucet link on its page.</div>
     <label>Move into P2PK (sats)</label>
     <div class="field"><input id="p2pk_amt" placeholder="e.g. 20000" inputmode="numeric"><button id="p2pk_fundbtn">Fund P2PK</button></div>
     <p class="hint" id="p2pk_srcbal">—</p>
@@ -493,13 +493,13 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <h2>Send</h2>
   <p class="sub">From <b id="send_from" style="color:var(--text)">—</b> · <span id="send_bal">—</span></p>
   <div class="card" id="send_typecard" style="padding:10px 14px">
-    <label style="margin:0 0 6px;font-size:13px;color:var(--muted)">Account — the script type you spend from <span class="help" data-target="tip_sendtype">?</span></label>
+    <label style="margin:0 0 6px;font-size:13px;color:var(--muted)">Address type — the script type you spend from <span class="help" data-target="tip_sendtype">?</span></label>
     <div class="tiptext" id="tip_sendtype">Each script type (Legacy, Nested SegWit, Native SegWit, Taproot) is its own account with its own addresses and its own balance, all from the same seed. Switch here to spend from a different one — you can only spend coins that actually sit in the account you pick.</div>
     <select id="send_type"></select>
   </div>
   <div id="send_empty" class="warn" style="display:none"></div>
   <div id="send_wo" class="warn" style="display:none">Watch-only: this wallet can't sign. Build an unsigned PSBT in <b>Settings → Air-gap tools</b>, sign it offline, broadcast it there.</div>
-  <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK account and use <b>Spend a P2PK coin out</b>.</div>
+  <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK type and use <b>Spend a P2PK coin out</b>.</div>
   <div class="card" style="padding:10px 14px">
     <label style="margin:0 0 8px;font-size:13px;color:var(--muted)">What do you want to do?</label>
     <div class="feeps" id="send_mode">
@@ -625,7 +625,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 </main>
 <nav><div class="navin">
   <button data-nav="home" class="on"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg></span>Home</button>
-  <button data-nav="accounts"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg></span>Accounts</button>
+  <button data-nav="accounts"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg></span>Addresses</button>
   <button data-nav="learn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5zM19 19a2 2 0 01-2 2H6"/><path d="M8 3v14"/></svg></span>Learn</button>
   <button data-nav="settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3h0a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6h0a1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9v0a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></span>Settings</button>
 </div></nav>

@@ -77,7 +77,7 @@ ok('Home has a script-type selector', !!$('#type_sel'));
 const pills = () => [...$('#type_sel').querySelectorAll('.typepill')];
 ok('selector renders a pill per script type', pills().length === window.OW.scriptTypes().length);
 ok('headline label reflects the active type', /NATIVE SEGWIT/i.test($('#bal_label').textContent));
-ok('all-accounts combined line is present', /All accounts/i.test($('#bal_all').textContent));
+ok('all-types combined line is present', /All types/i.test($('#bal_all').textContent));
 ok('every non-home tab has a ‹ Home back link', window.document.querySelectorAll('.back[data-nav="home"]').length >= 3);
 const taprootPill = pills().find((p) => /taproot/i.test(p.textContent));
 taprootPill && taprootPill.click();               // switch active type (sync re-label; async discovery fails cleanly)
