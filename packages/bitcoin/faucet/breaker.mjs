@@ -19,7 +19,7 @@
 // Metrics watched over the window: claims, sats dispensed, distinct destination
 // addresses, UTXOs consumed, fee spent, and the failed/rejected-claim rate.
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, renameSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -59,6 +59,11 @@ export class VelocityBreaker {
     this.persist = opts.persist !== false;       // tests pass persist:false
     this.stateFile = opts.stateFile || STATE_FILE;   // injectable for tests
     this.tripLog = opts.tripLog || TRIP_LOG;
+    // RT-7: bound the trip log. At/over this size it rotates once (current -> .1) so a
+    // single generation of history is kept. Injectable for tests. Rotation is OPERATIONAL
+    // evidence only — every logging/rotation error is swallowed and NEVER affects whether
+    // the breaker trips or stays latched (see _appendTripLog).
+    this.tripLogMaxBytes = opts.tripLogMaxBytes || 1024 * 1024;   // ~1 MiB
     this.alert = opts.alert || defaultAlert;
     this.payouts = [];                            // { token, at, address, sats, utxos, fee, state }
     this.rejects = [];                            // { at, kind }
@@ -162,7 +167,7 @@ export class VelocityBreaker {
     const cleared = this.trip;
     this.tripped = false; this.trip = null;
     this.payouts = []; this.rejects = []; this.pendingByToken.clear();
-    if (this.persist) { this._save(); try { appendFileSync(this.tripLog, JSON.stringify({ event: 'reset', at: now, who, reason, cleared }) + '\n'); } catch {} }
+    if (this.persist) { this._save(); this._appendTripLog({ event: 'reset', at: now, who, reason, cleared }); }
     return true;
   }
 
@@ -199,7 +204,20 @@ export class VelocityBreaker {
       renameSync(tmp, this.stateFile);
     } catch { /* best-effort */ }
   }
-  _logTrip() { try { appendFileSync(this.tripLog, JSON.stringify({ event: 'trip', ...this.trip, recentPayouts: this.payouts.slice(-50), recentRejects: this.rejects.slice(-50) }) + '\n'); } catch {} }
+  _logTrip() { this._appendTripLog({ event: 'trip', ...this.trip, recentPayouts: this.payouts.slice(-50), recentRejects: this.rejects.slice(-50) }); }
+
+  // RT-7: append one JSON line to the trip log, rotating once at the size cap. This is
+  // deliberately fail-soft in TWO layers: a rotation error (statSync/rename — no file yet,
+  // dir unavailable, permission) still lets the append attempt proceed, and ANY append
+  // error is swallowed. By the time this runs the breaker is already tripped/reset and the
+  // safety latch already persisted via _save(); logging can never block or unwind that.
+  _appendTripLog(entry) {
+    try {
+      try { if (statSync(this.tripLog).size >= this.tripLogMaxBytes) renameSync(this.tripLog, this.tripLog + '.1'); }
+      catch { /* no file yet, or rotation failed -> just append; logging must never gate a trip */ }
+      appendFileSync(this.tripLog, JSON.stringify(entry) + '\n');
+    } catch { /* operational evidence only — not the safety mechanism */ }
+  }
 }
 
 // Best-effort alert. If .secrets/telegram.json carries an `adminChatId`, DM it;

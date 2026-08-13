@@ -8,7 +8,7 @@
 // realistic request shape: async parse, then the sync decision). In both cases the
 // number of authorised payouts must be EXACTLY the limit — never limit+1.
 import { VelocityBreaker, validateLimits } from '../faucet/breaker.mjs';
-import { writeFileSync, readFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -173,5 +173,44 @@ const T = 1_000_000;
   ok('RT-4: valid untripped latch loads untripped', mk().tripped === false);
 }
 
-console.log(bad ? '\nBREAKER TEST FAILED' : '\nBREAKER TEST PASS — velocity breaker is atomic, fail-closed, and reset-gated');
+// ── RT-7 regression: trip log is bounded (rotates once at the cap) and logging
+//    failure NEVER weakens the breaker (it still trips + latches) ──
+{
+  const dir = mkdtempSync(join(tmpdir(), 'breaker-rt7-'));
+  const stateFile = join(dir, 'state.json'), tripLog = join(dir, 'trips.log');
+  const CAP = 2048;   // tiny cap so the test is fast/deterministic
+  const mkb = () => new VelocityBreaker({ alert: () => {}, stateFile, tripLog, tripLogMaxBytes: CAP, limits: { maxClaimsPerMin: 1 } });
+  const tripOnce = (b, tag) => { b.authorize({ address: tag + '1', sats: 1, utxos: 1, fee: 1 }, 1e6); b.authorize({ address: tag + '2', sats: 1, utxos: 1, fee: 1 }, 1e6); };
+
+  // below the boundary: one trip stays in the single log file, no rotation yet
+  let b = mkb(); tripOnce(b, 'a');
+  ok('RT-7: below cap -> log exists, no .1 rotation', existsSync(tripLog) && !existsSync(tripLog + '.1'));
+  ok('RT-7: breaker actually tripped + latched below cap', b.tripped === true && JSON.parse(readFileSync(stateFile, 'utf8')).tripped === true);
+
+  // push the file to near/over the boundary, then a reset append crosses it -> rotation
+  writeFileSync(tripLog, 'x'.repeat(CAP));                 // exactly at the cap
+  b.reset('rt7 boundary', 'test');                        // append at/over cap -> rotate first
+  ok('RT-7: at/over cap -> rotated current -> .1', existsSync(tripLog + '.1'));
+  ok('RT-7: fresh current log started after rotation (< cap, holds newest line)',
+     existsSync(tripLog) && statSync(tripLog).size < CAP && /"event":"reset"/.test(readFileSync(tripLog, 'utf8')));
+  ok('RT-7: rotated .1 preserved the old bounded history', statSync(tripLog + '.1').size >= CAP);
+
+  // restart after rotation: the breaker still loads its latch correctly
+  ok('RT-7: restart after rotation loads cleanly (untripped latch)', mkb().tripped === false);
+
+  // LOGGING FAILURE must not weaken safety: point tripLog at an unwritable path
+  // (a dir component that is actually a file) so append/rotate throw — the breaker
+  // must STILL trip in-memory and STILL persist the safety latch.
+  const wedge = join(dir, 'wedge'); writeFileSync(wedge, 'not-a-dir');
+  const badLog = join(wedge, 'nope', 'trips.log');        // parent is a file -> fs ops throw
+  const b2 = new VelocityBreaker({ alert: () => {}, stateFile: join(dir, 's2.json'), tripLog: badLog, tripLogMaxBytes: CAP, limits: { maxClaimsPerMin: 1 } });
+  let threw = false;
+  try { tripOnce(b2, 'b'); } catch { threw = true; }
+  ok('RT-7: a logging/rotation error does NOT throw out of the breaker', threw === false);
+  ok('RT-7: breaker STILL trips despite logging failure', b2.tripped === true);
+  ok('RT-7: safety latch STILL persisted despite logging failure', JSON.parse(readFileSync(join(dir, 's2.json'), 'utf8')).tripped === true);
+  ok('RT-7: post-trip authorise still denied (fail-closed) despite logging failure', b2.authorize({ address: 'q', sats: 1, utxos: 1, fee: 1 }, 1e6).ok === false);
+}
+
+console.log(bad ? '\nBREAKER TEST FAILED' : '\nBREAKER TEST PASS — velocity breaker is atomic, fail-closed, reset-gated, bounded-log');
 process.exit(bad ? 1 : 0);
