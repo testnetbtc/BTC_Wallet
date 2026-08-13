@@ -3,6 +3,10 @@
 (function () {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
+  // HTML-escape for the rare cases where non-constant text lands in an innerHTML
+  // template. Explorer-derived strings (txids, addresses) are charset-constrained
+  // in practice, but we never trust a remote source to stay well-formed.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // ---------- state ----------
   let source = '', mode = '', network = 'testnet4', scriptType = 'p2wpkh', passphrase = '';
@@ -376,7 +380,7 @@
         const d = document.createElement('div'); d.style.cssText = 'padding:9px 0;border-top:1px solid var(--line-soft)';
         const balTxt = r.type === 'p2pk' ? 'no address — explorers can’t show P2PK balances' : `${coins(total)} ${unit()}${total ? '' : ' (empty)'}`;
         d.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--muted)">${SHORT[r.type]}</div>
-          <div class="mono" style="font-size:11px;color:var(--faint)">${r.address || '(bare public key)'}</div>
+          <div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.address || '(bare public key)')}</div>
           <div style="font-size:12.5px;margin-top:2px;color:${funded ? 'var(--mint)' : 'var(--text)'}">${balTxt}</div>`;
         if (funded) {
           const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Sweep this →'; b.style.marginTop = '6px';
@@ -543,12 +547,22 @@
       if (!txs.length) { box.innerHTML = '<div class="hint" style="padding:8px 0">No transactions yet — get coins from the faucet to start.</div>'; return; }
       const base = window.OW.explorer(network);
       txs.slice(0, 6).forEach((t) => {
-        const d = document.createElement('div'); d.className = 'tx'; d.style.cursor = 'pointer';
         const dir = t.net >= 0;
-        d.innerHTML = `<span class="ti" style="color:${dir ? 'var(--mint)' : 'var(--accent)'}">${dir ? '↙' : '↗'}</span>
-          <span><b>${dir ? 'Received' : 'Sent'}</b><br><span style="font-size:11.5px;color:var(--faint)">${t.confirmed ? '✓ confirmed' : '⧗ pending'} · ${t.txid.slice(0, 10)}… · open ↗</span></span>
-          <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--text)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
-        d.addEventListener('click', () => window.open(base + t.txid, '_blank', 'noopener'));
+        // Built with textContent/createElement (not innerHTML): the explorer-supplied
+        // txid is never interpreted as markup, whatever a remote source returns.
+        const d = document.createElement('div'); d.className = 'tx'; d.style.cursor = 'pointer';
+        const ti = document.createElement('span'); ti.className = 'ti';
+        ti.style.color = dir ? 'var(--mint)' : 'var(--accent)'; ti.textContent = dir ? '↙' : '↗';
+        const mid = document.createElement('span');
+        const b = document.createElement('b'); b.textContent = dir ? 'Received' : 'Sent';
+        const meta = document.createElement('span'); meta.style.cssText = 'font-size:11.5px;color:var(--faint)';
+        meta.textContent = `${t.confirmed ? '✓ confirmed' : '⧗ pending'} · ${String(t.txid).slice(0, 10)}… · open ↗`;
+        mid.append(b, document.createElement('br'), meta);
+        const v = document.createElement('span'); v.className = 'v';
+        v.style.color = dir ? 'var(--mint)' : 'var(--text)';
+        v.textContent = `${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat`;
+        d.append(ti, mid, v);
+        d.addEventListener('click', () => window.open(base + encodeURIComponent(t.txid), '_blank', 'noopener'));
         box.appendChild(d);
       });
     } catch { /* home activity is best-effort */ }

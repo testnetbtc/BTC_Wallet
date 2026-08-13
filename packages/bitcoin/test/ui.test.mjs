@@ -87,6 +87,19 @@ segwitPill && segwitPill.click();                 // back to native SegWit for t
 await new Promise((r) => setTimeout(r, 60));
 ok('switching back restores the SegWit headline', /NATIVE SEGWIT/i.test($('#bal_label').textContent));
 
+// ---- XSS regression: a malicious explorer txid must render as inert TEXT ----
+// (audit L-2) refreshHomeActivity builds rows from explorer data; a compromised
+// or hostile explorer could return a txid containing markup.
+window.__xss = 0;
+window.OW.history = async () => [{ txid: '<img src=x onerror=window.__xss=1>deadbeef', net: 1234, confirmed: true }];
+window.OW.explorer = () => 'https://example.test/tx/';
+click('#home_refresh');
+await new Promise((r) => setTimeout(r, 250));
+const act = $('#home_activity');
+ok('malicious explorer txid creates no <img> node', act.querySelector('img') === null);
+ok('malicious explorer txid does not execute (onerror never fires)', window.__xss === 0);
+ok('txid characters are shown as inert text', act.textContent.includes('<img'));
+
 const HEX_A = 'aa'.repeat(60), HEX_B = 'bb'.repeat(60);   // "first build" vs "post-confirm rebuild"
 let buildCalls = 0, broadcastGot = null;
 const stubTx = (hex) => ({ txHex: hex, txid: 'f1'.repeat(32), fee: 300, feeRate: 2, vsize: 141, broadcastTxid: null });
