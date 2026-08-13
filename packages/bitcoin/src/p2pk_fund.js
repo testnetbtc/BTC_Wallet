@@ -46,7 +46,7 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
 
   // BIP-143 preimage components
   const scriptCode = concatBytes(hexToBytes('1976a914'), hash160(pubkey), hexToBytes('88ac')); // self-length-prefixed
-  const nSeq = hexToBytes('ffffffff');
+  const nSeq = hexToBytes('fdffffff');   // BIP-125 RBF opt-in (0xfffffffd, little-endian)
   const hashPrevouts = dsha(concatBytes(...utxos.map((u) => concatBytes(revTxid(u.txid), u32(u.vout)))));
   const hashSequence = dsha(concatBytes(...utxos.map(() => nSeq)));
   const hashOutputs = dsha(concatBytes(...outs.map((o) => concatBytes(u64(o.amount), withLen(o.script)))));
@@ -99,7 +99,7 @@ export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, fee
   const outs = [concatBytes(u64(sent), withLen(destScript))];
   if (orScript) outs.push(concatBytes(u64(0), withLen(orScript)));
   const outsSer = concatBytes(varint(outs.length), ...outs);
-  const nSeq = hexToBytes('ffffffff');
+  const nSeq = hexToBytes('fdffffff');   // BIP-125 RBF opt-in (0xfffffffd, little-endian)
   const body = (scriptSigField) => concatBytes(
     u32(2), varint(1), revTxid(utxo.txid), u32(utxo.vout), scriptSigField, nSeq,
     outsSer, u32(0),

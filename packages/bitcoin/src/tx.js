@@ -41,11 +41,16 @@ export function opReturnScript(message) {
   return btc.Script.encode(['RETURN', data]);
 }
 
+// Opt in to BIP-125 Replace-By-Fee on every input (sequence < 0xfffffffe), so a
+// stuck transaction can always be fee-bumped — across all script types and both
+// the receive and change chains.
+const RBF_SEQUENCE = 0xfffffffd;
+
 // Build a PSBT input for a UTXO owned by `w` (from deriveKey or deriveScript).
 // SegWit types (P2WPKH/P2SH-P2WPKH/P2TR) need only witnessUtxo; legacy types
 // (P2PKH, P2PK) need the full previous transaction as nonWitnessUtxo (u.prevTxHex).
 function buildInput(u, w) {
-  const inp = { txid: hexToBytes(u.txid), index: u.vout, ...w.spend };
+  const inp = { txid: hexToBytes(u.txid), index: u.vout, ...w.spend, sequence: RBF_SEQUENCE };
   if (w.segwit === false) {
     if (!u.prevTxHex) throw new Error(`spending a legacy input needs its previous transaction (none for ${u.txid}:${u.vout})`);
     inp.nonWitnessUtxo = hexToBytes(u.prevTxHex);

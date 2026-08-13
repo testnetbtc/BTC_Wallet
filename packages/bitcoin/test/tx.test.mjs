@@ -40,6 +40,7 @@ const parsed = btc.Transaction.fromRaw(hexToBytes(res.txHex), { allowUnknownOutp
 ok('1 input', parsed.inputsLength === 1);
 ok('input txid round-trips (endianness)', bytesToHex(parsed.getInput(0).txid) === MOCK_TXID);
 ok('input is finalized (has witness)', !!parsed.getInput(0).finalScriptWitness);
+ok('input signals BIP-125 RBF (sequence < 0xfffffffe)', parsed.getInput(0).sequence < 0xfffffffe);
 
 // outputs: recipient (20000) + OP_RETURN (0) + change
 let sawRecipient = false, sawOpReturn = false, sawChange = false;

@@ -40,7 +40,7 @@ ok('varint 0x100000000 -> ff + LE64', vh(0x100000000) === 'ff0000000001000000');
 
 // ---- 2. FUND: structure via Core + independent BIP-143 sig verification ----
 const fund = buildFundP2PK({ utxos: [{ txid: '11'.repeat(32), vout: 0, value: 100000 }], privKey: priv, pubkey: pub, targetScript: target, changeScript: wpkh.script, amount: 60000, feeRate: 2 });
-ok('fund txHex is deterministic (regression pin)', fund.txid === '6094ae16a76d5a169ffcd1f083abe9bf4cd2897cfb836154ea4fe27589eb8cc3');
+ok('fund txHex is deterministic (regression pin)', fund.txid === 'accb9dcb429f96a011eb0e002fc29e91c37670ea12b3d40b8302b22043579134');
 ok('fund fee = inputs - outputs (exact)', fund.fee === 100000 - 60000 - fund.change);
 const fd = decode(fund.txHex);
 if (fd) {
@@ -55,7 +55,7 @@ if (fd) {
 {
   const scriptCode = concatBytes(hexToBytes('1976a914'), hash160(pub), hexToBytes('88ac'));
   const outs = [{ script: target, amount: 60000n }, { script: wpkh.script, amount: BigInt(fund.change) }];
-  const nSeq = hexToBytes('ffffffff');
+  const nSeq = hexToBytes('fdffffff');   // matches the builder's BIP-125 RBF sequence
   const hashPrevouts = dsha(concatBytes(rev('11'.repeat(32)), u32(0)));
   const hashSequence = dsha(nSeq);
   const hashOutputs = dsha(concatBytes(...outs.map((o) => concatBytes(u64(o.amount), wl(o.script)))));
@@ -83,7 +83,7 @@ if (sd) {
 }
 // independent legacy sighash: serialize with the input's scriptSig = the P2PK script
 {
-  const nSeq = hexToBytes('ffffffff');
+  const nSeq = hexToBytes('fdffffff');   // matches the builder's BIP-125 RBF sequence
   const sentSat = BigInt(spend.sent);
   const orData = new TextEncoder().encode('Satoshi');
   const orScript = concatBytes(Uint8Array.of(0x6a, orData.length), orData);

@@ -60,6 +60,7 @@ for (const type of scriptTypeList()) {
   const dec = decode(res.txHex);
   if (dec) ok(`${type.padEnd(12)} [node] decodes, ${dec.vin.length} in / ${dec.vout.length} out, fee ${res.fee}`, dec.txid === res.txid && dec.vin.length >= 1);
   else console.log(`${type.padEnd(12)} node decode skipped (bitcoin-cli unreachable)`);
+  if (dec) ok(`${type.padEnd(12)} all inputs signal BIP-125 RBF`, dec.vin.every((v) => v.sequence < 0xfffffffe));
 }
 
 console.log(bad ? '\nSCRIPT-TYPES TEST FAILED' : '\nSCRIPT-TYPES TEST PASS — spend works for every script type');

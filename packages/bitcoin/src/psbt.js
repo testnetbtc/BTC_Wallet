@@ -32,6 +32,7 @@ export function buildUnsignedPSBT({ utxos, wo, recipients = [], message = null,
   const inputs = utxos.map((u) => ({
     txid: hexToBytes(u.txid), index: u.vout,
     witnessUtxo: { script: wo.script, amount: BigInt(u.value) },
+    sequence: 0xfffffffd,   // BIP-125 RBF opt-in (air-gap flow too)
   }));
   const sel = btc.selectUTXO(inputs, outputs, 'default', {
     changeAddress: changeAddress || wo.address, feePerByte: BigInt(feeRate),
