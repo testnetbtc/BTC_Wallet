@@ -19,6 +19,14 @@ const noHook = () => {};
 // Resolve the on-chain status of a claim's local tx.
 // -> { r:'confirmed', height, blockHash } | { r:'seen' } | { r:'conflicted', by } | { r:'absent' }
 // Throws if the reconciliation source is unavailable (caller -> UNCERTAIN).
+//
+// RT-2A — an EXTERNAL explorer (chain.authoritative === false) is ADVISORY only. Its
+// results here can drive SEEN (observational) or trigger a rebroadcast of the EXACT
+// stored bytes (idempotent — same txid), but they must NEVER: release a reserved input,
+// justify a second/replacement payment, or turn "explorer hasn't indexed it yet" into
+// "never broadcast". Absence therefore resolves to a same-bytes rebroadcast and, once
+// attempts are exhausted, to UNCERTAIN (held) — not to failure and not to a new tx. Only
+// an AUTHORITATIVE source (our own node) may later retire a reservation via the ledger.
 export async function reconcileState(chain, network, localTxid, reserved) {
   const tx = await chain.lookup(network, localTxid);        // may throw
   if (tx && tx.found) return tx.confirmed ? { r: 'confirmed', height: tx.height, blockHash: tx.blockHash } : { r: 'seen' };
@@ -112,8 +120,11 @@ export const txidOf = (rawTxHex, network = 'testnet4') => decodeRawTx({ hex: raw
 
 // Real chain adapter over our esplora layer (mempool.space for testnet; own node
 // for mainnet broadcast). lookup/outspend translate 404/absence into {found:false}.
+// RT-2A: authoritative=false marks this as an ADVISORY external explorer — the ledger
+// must not retire reservations on its say-so. An own-node adapter would set true.
 export function realChain() {
   return {
+    authoritative: false,
     async lookup(network, txid) {
       try { const t = await getTx(txid, network); return { found: true, confirmed: !!t.status?.confirmed, height: t.status?.block_height ?? null, blockHash: t.status?.block_hash ?? null }; }
       catch (e) { if (/not found|404|no such/i.test(String(e.message))) return { found: false }; throw e; }
