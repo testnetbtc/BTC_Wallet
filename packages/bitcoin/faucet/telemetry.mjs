@@ -46,7 +46,20 @@ export function breakerView(status) {
     const value = Number(m[mk] || 0), limit = Number(L[lk] || 0);
     return { key: mk, label, value, limit, level: warningLevel(value, limit, tripped && s.trip && s.trip.metric === mk) };
   });
-  return { state: tripped ? 'PAUSED' : 'RUNNING', tripped, trip: s.trip || null, metrics: rows };
+  return { state: tripped ? 'TRIPPED' : 'RUNNING', tripped, trip: s.trip || null, metrics: rows };
+}
+
+// RT-3: the dashboard must NOT fail open to RUNNING when it cannot trust the
+// telemetry. Distinguish four states so "can't read state" and "faucet is down"
+// never look healthy:
+//   UNKNOWN  — telemetry missing/unreadable/unparseable
+//   STALE    — telemetry older than staleMs (faucet stopped writing / is down)
+//   TRIPPED  — breaker latched
+//   RUNNING  — fresh, readable, not tripped
+export function dashboardStatus({ readable, ageMs, tripped }, staleMs) {
+  if (!readable) return 'UNKNOWN';
+  if (ageMs == null || ageMs > staleMs) return 'STALE';
+  return tripped ? 'TRIPPED' : 'RUNNING';
 }
 
 // Heartbeat freshness. `beat` is { t: ms } (or a file mtime in ms). Stale if older

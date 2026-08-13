@@ -4,7 +4,7 @@
 // per-IP + per-address rate limits, a fixed small drip, a global daily cap, and
 // (when configured) a Cloudflare Turnstile human check.
 import http from 'node:http';
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as btc from '@scure/btc-signer';
@@ -70,12 +70,16 @@ const TELEMETRY_FILE = join(HERE, '..', '.secrets', 'faucet-telemetry.json');
 const FAUCET_ADDRS = Object.fromEntries([...NETWORKS].map((n) => [n, walletAddress(MNEMONIC, n, 'p2wpkh')]));
 function writeTelemetry() {
   try {
-    writeFileSync(TELEMETRY_FILE, JSON.stringify({
+    // Atomic write (tmp + rename) so the dashboard never reads a half-written file
+    // and mis-reports state (RT-3).
+    const body = JSON.stringify({
       t: Date.now(), startedAt: STARTED_AT, lastPayoutAt, drip: DRIP,
       networks: [...NETWORKS], faucetAddresses: FAUCET_ADDRS,
       reservedUtxos: reserved.size, breaker: breaker.status(),
       recentPayouts, recentRejects,
-    }));
+    });
+    writeFileSync(TELEMETRY_FILE + '.tmp', body);
+    renameSync(TELEMETRY_FILE + '.tmp', TELEMETRY_FILE);
   } catch { /* best-effort */ }
 }
 setInterval(writeTelemetry, 3000).unref();

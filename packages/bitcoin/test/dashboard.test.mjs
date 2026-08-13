@@ -1,6 +1,6 @@
 // Tests for the read-only dashboard: pure telemetry helpers, redaction (no secret
 // can surface), read-only HTTP behaviour, and inert rendering of hostile content.
-import { warningLevel, redact, breakerView, heartbeatStatus } from '../faucet/telemetry.mjs';
+import { warningLevel, redact, breakerView, heartbeatStatus, dashboardStatus } from '../faucet/telemetry.mjs';
 import { server, PAGE } from '../faucet/dashboard.mjs';
 
 let bad = 0;
@@ -47,7 +47,18 @@ ok('warn: zero limit → normal (no divide-by-zero)', warningLevel(5, 0) === 'no
   ok('breakerView: six metric rows', v.metrics.length === 6);
   ok('breakerView: claims 24/30 → near', v.metrics.find((m) => m.key === 'claims').level === 'near');
   const tv = breakerView({ ...status, tripped: true, trip: { metric: 'claimsPerMin' } });
-  ok('breakerView: state PAUSED when tripped', tv.state === 'PAUSED');
+  ok('breakerView: state TRIPPED when tripped', tv.state === 'TRIPPED');
+}
+
+// ── RT-3: dashboard status never fails open to RUNNING when telemetry is untrustworthy ──
+{
+  const S = 15000;
+  ok('RT-3: unreadable telemetry -> UNKNOWN (not RUNNING)', dashboardStatus({ readable: false, ageMs: null, tripped: false }, S) === 'UNKNOWN');
+  ok('RT-3: stale telemetry -> STALE (not RUNNING)', dashboardStatus({ readable: true, ageMs: 60000, tripped: false }, S) === 'STALE');
+  ok('RT-3: null age -> STALE', dashboardStatus({ readable: true, ageMs: null, tripped: false }, S) === 'STALE');
+  ok('RT-3: fresh + tripped -> TRIPPED', dashboardStatus({ readable: true, ageMs: 1000, tripped: true }, S) === 'TRIPPED');
+  ok('RT-3: fresh + not tripped -> RUNNING', dashboardStatus({ readable: true, ageMs: 1000, tripped: false }, S) === 'RUNNING');
+  ok('RT-3: a down faucet (stale) never reads RUNNING', dashboardStatus({ readable: true, ageMs: 3600000, tripped: false }, S) !== 'RUNNING');
 }
 
 // ── heartbeat staleness ──
@@ -89,7 +100,7 @@ await new Promise((resolve) => {
   if (JSDOM) {
     const evil = '<img src=x onerror=window.__xss=1>deadbeef';
     const payload = {
-      now: Date.now(), breaker: breakerView({ tripped: false, limits: { maxClaimsPerMin: 30 }, metrics: { claims: 1 } }),
+      now: Date.now(), status: 'RUNNING', telemetryReadable: true, breaker: breakerView({ tripped: false, limits: { maxClaimsPerMin: 30 }, metrics: { claims: 1 } }),
       reservedUtxos: 0, lastPayoutAt: null, startedAt: Date.now(), telemetryAgeMs: 100, drip: 100000,
       networks: ['testnet4'], balances: { testnet4: { balanceSat: 1, confirmedUtxos: 1, bankCoins: 1, unconfirmedUtxos: 0 } },
       recentPayouts: [{ at: Date.now(), network: 'testnet4', address: evil, sats: 100000, state: 'ok' }],

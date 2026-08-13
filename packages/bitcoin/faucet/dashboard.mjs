@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { getUTXOs } from '../src/esplora.js';
-import { redact, breakerView, heartbeatStatus, READONLY_RPC } from './telemetry.mjs';
+import { redact, breakerView, heartbeatStatus, dashboardStatus, READONLY_RPC } from './telemetry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SECRETS = join(HERE, '..', '.secrets');
@@ -17,6 +17,7 @@ const TELEMETRY_FILE = join(SECRETS, 'faucet-telemetry.json');
 const TRIPS_LOG = join(SECRETS, 'breaker-trips.log');
 const NODE_CFG = existsSync(join(SECRETS, 'notify-node.json')) ? JSON.parse(readFileSync(join(SECRETS, 'notify-node.json'), 'utf8')) : null;
 const BANK_COIN = 110_000;
+const TELEMETRY_STALE_MS = 15_000;   // faucet writes every 3s; 5 missed writes -> STALE
 
 const HB_FILES = [
   { key: 'nostr', label: 'Nostr bot', file: join(SECRETS, 'nostr-heartbeat.json'), staleMs: 5 * 60e3 },
@@ -75,7 +76,10 @@ function readTrips(n = 8) {
 
 async function apiPayload() {
   const now = Date.now();
-  let tel = {}; try { tel = JSON.parse(readFileSync(TELEMETRY_FILE, 'utf8')); } catch {}
+  // RT-3: track whether the telemetry is actually READABLE + fresh, so the status
+  // is UNKNOWN/STALE rather than a fail-open RUNNING when we can't trust it.
+  let tel = {}, readable = false;
+  try { const parsed = JSON.parse(readFileSync(TELEMETRY_FILE, 'utf8')); if (parsed && typeof parsed === 'object' && Number.isFinite(parsed.t)) { tel = parsed; readable = true; } } catch { readable = false; }
   const beats = { faucet: { label: 'Faucet', ...heartbeatStatus({ t: tel.t }, 15_000, now) } };
   for (const hb of HB_FILES) {
     let b = null;
@@ -83,13 +87,18 @@ async function apiPayload() {
     beats[hb.key] = { label: hb.label, ...heartbeatStatus(b, hb.staleMs, now) };
   }
   const [node, balances] = await Promise.all([nodeHealth(), bankData(tel.faucetAddresses || {}, tel.networks || [], now)]);
+  const bv = breakerView(tel.breaker);
+  const telemetryAgeMs = readable ? Math.max(0, now - tel.t) : null;
+  const status = dashboardStatus({ readable, ageMs: telemetryAgeMs, tripped: bv.tripped }, TELEMETRY_STALE_MS);
   return redact({
     now,
-    breaker: breakerView(tel.breaker),
+    status,                       // RUNNING | TRIPPED | UNKNOWN | STALE
+    telemetryReadable: readable,
+    breaker: bv,
     reservedUtxos: tel.reservedUtxos ?? null,
     lastPayoutAt: tel.lastPayoutAt ?? null,
     startedAt: tel.startedAt ?? null,
-    telemetryAgeMs: tel.t ? now - tel.t : null,
+    telemetryAgeMs,
     drip: tel.drip ?? null,
     networks: tel.networks || [],
     balances,
@@ -142,7 +151,9 @@ header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px
 h1{font-size:18px;margin:0;letter-spacing:-.01em}
 .pill{font-weight:800;font-size:13px;padding:5px 12px;border-radius:999px}
 .pill.RUNNING{background:#10331d;color:var(--good);border:1px solid #1c5c34}
-.pill.PAUSED{background:#3a1416;color:var(--bad);border:1px solid #7a2327}
+.pill.TRIPPED{background:#3a1416;color:var(--bad);border:1px solid #7a2327}
+.pill.STALE{background:#2a1e08;color:var(--warn);border:1px solid #6b4e12}
+.pill.UNKNOWN{background:#1b222c;color:var(--mut);border:1px solid var(--line)}
 .upd{color:var(--faint);font-size:12px;margin-left:auto}
 h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:22px 0 8px;font-weight:700}
 .grid{display:grid;gap:10px}.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
@@ -193,11 +204,13 @@ function fill(node,child){node.textContent='';if(child)node.append(child);}
 function emptyMsg(t){return el('div',{class:'empty',text:t});}
 async function tick(){
   let d;try{d=await (await fetch('/api',{cache:'no-store'})).json();}catch(e){$('#upd').textContent='fetch failed';return;}
-  const st=$('#state');st.textContent=d.breaker.state;st.className='pill '+d.breaker.state;
-  $('#upd').textContent='updated '+new Date(d.now).toLocaleTimeString()+' · telemetry '+age(d.telemetryAgeMs)+' old';
-  // trip banner
+  const st=$('#state');st.textContent=d.status;st.className='pill '+d.status;
+  $('#upd').textContent='updated '+new Date(d.now).toLocaleTimeString()+' · telemetry '+(d.telemetryReadable?age(d.telemetryAgeMs)+' old':'UNREADABLE');
+  // status banner
   const tr=$('#triprow');tr.textContent='';
-  if(d.breaker.tripped&&d.breaker.trip){const t=d.breaker.trip;tr.append(el('div',{class:'card',style:'border-color:#7a2327'},el('b',{text:'PAUSED — breaker tripped: '}),el('span',{text:t.metric+' = '+num(t.value)+' (> '+num(t.threshold)+')'})));}
+  if(d.status==='TRIPPED'&&d.breaker.trip){const t=d.breaker.trip;tr.append(el('div',{class:'card',style:'border-color:#7a2327'},el('b',{text:'TRIPPED — breaker: '}),el('span',{text:t.metric+' = '+num(t.value)+(t.threshold!=null?' (> '+num(t.threshold)+')':'')})));}
+  else if(d.status==='UNKNOWN'){tr.append(el('div',{class:'card',style:'border-color:var(--line)'},el('b',{text:'UNKNOWN — '}),el('span',{text:'faucet telemetry is missing or unreadable; breaker state cannot be confirmed.'})));}
+  else if(d.status==='STALE'){tr.append(el('div',{class:'card',style:'border-color:#6b4e12'},el('b',{text:'STALE — '}),el('span',{text:'telemetry is '+age(d.telemetryAgeMs)+' old; the faucet may be down. State shown is last-known, not live.'})));}
   fill($('#metrics'),(()=>{const g=document.createDocumentFragment();d.breaker.metrics.forEach(m=>g.append(metricCard(m)));return g;})());
   // liquidity
   const liq=document.createDocumentFragment();
