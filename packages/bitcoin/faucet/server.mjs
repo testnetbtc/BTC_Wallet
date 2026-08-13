@@ -171,7 +171,7 @@ const server = http.createServer((req, res) => {
       try {
         // 1) client idempotency-key replay/conflict (RT-2 §5/§6)
         if (clientKey) {
-          const byKey = ledger.getByClientKey(String(clientKey).slice(0, 200));
+          const byKey = ledger.getByClientKey(network, String(clientKey).slice(0, 200));
           if (byKey) {
             if (byKey.request_fingerprint !== fp) return json(res, 409, { error: 'idempotency-key reused with a different request', claimId: byKey.claim_id });
             return claimResponse(res, byKey);       // idempotent replay -> recover/return the same claim

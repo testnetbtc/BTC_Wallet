@@ -36,7 +36,14 @@ const ALLOWED = {
 };
 export function transitionAllowed(from, to) { return !!(ALLOWED[from] && ALLOWED[from].has(to)); }
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+// States for which a durably-reserved outpoint MUST NOT be returned to ordinary coin
+// selection (RT-2C reservation retention). This deliberately includes UNCERTAIN and
+// FAILED_SAFE: an ambiguous/failed claim may in fact have broadcast successfully, so its
+// input stays reserved until an AUTHORITATIVE source proves the outpoint is consumed.
+// CONFIRMED/CONFLICTED are excluded here only because a separate authoritative retire()
+// removes their rows; while the source is a non-authoritative external explorer nothing
+// is retired, so in practice every reservation is held. See RESERVATION_HELD note below.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT) STRICT;
 CREATE TABLE IF NOT EXISTS claims (
@@ -70,7 +77,11 @@ CREATE TABLE IF NOT EXISTS claims (
   error_detail_safe TEXT
 ) STRICT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_entitlement ON claims(network, canon, claim_day);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_clientkey ON claims(client_idempotency_key) WHERE client_idempotency_key IS NOT NULL;
+-- RT-2B: the client idempotency key is only a per-network retry handle, NOT a global
+-- identity. Scoping by network stops two unrelated clients that independently pick the
+-- same key string (e.g. "claim-1") from colliding. The AUTHORITATIVE payout-entitlement
+-- constraint remains uq_entitlement above; this index never widens or narrows that.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_clientkey_net ON claims(network, client_idempotency_key) WHERE client_idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_state ON claims(state);
 CREATE INDEX IF NOT EXISTS ix_day ON claims(claim_day);
 CREATE TABLE IF NOT EXISTS reservations (
@@ -103,7 +114,14 @@ export class ClaimLedger {
   _migrate() {
     const row = this.db.prepare('SELECT v FROM meta WHERE k = ?').get('schema_version');
     if (!row) { this.db.prepare('INSERT INTO meta(k,v) VALUES(?,?)').run('schema_version', String(SCHEMA_VERSION)); return; }
-    const v = Number(row.v);
+    let v = Number(row.v);
+    // v1 -> v2 (RT-2B): drop the GLOBALLY-unique client-key index; scope it by network.
+    // The CREATE in SCHEMA already added uq_clientkey_net; here we only retire the old one.
+    if (v === 1) {
+      this.db.exec('DROP INDEX IF EXISTS uq_clientkey');
+      this.db.prepare('UPDATE meta SET v=? WHERE k=?').run('2', 'schema_version');
+      v = 2;
+    }
     if (v !== SCHEMA_VERSION) throw new Error(`unexpected schema version ${v} (want ${SCHEMA_VERSION})`);
   }
 
@@ -123,7 +141,9 @@ export class ClaimLedger {
   getByEntitlement(network, canon, claimDay) {
     return this.db.prepare('SELECT * FROM claims WHERE network=? AND canon=? AND claim_day=?').get(network, canon, claimDay) || null;
   }
-  getByClientKey(key) { return key ? (this.db.prepare('SELECT * FROM claims WHERE client_idempotency_key=?').get(key) || null) : null; }
+  // RT-2B: client keys are scoped per network, so the lookup MUST pass network too —
+  // otherwise one network's key could match another's claim.
+  getByClientKey(network, key) { return key ? (this.db.prepare('SELECT * FROM claims WHERE network=? AND client_idempotency_key=?').get(network, key) || null) : null; }
   get(claimId) { return this.db.prepare('SELECT * FROM claims WHERE claim_id=?').get(claimId) || null; }
   // durable global daily count (across all networks) for the soft daily cap
   dayCount(claimDay) { return this.db.prepare('SELECT COUNT(*) c FROM claims WHERE claim_day=?').get(claimDay).c; }
