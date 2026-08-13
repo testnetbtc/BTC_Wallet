@@ -1,0 +1,18 @@
+[Unit]
+Description=Bitcoin Core signet pruned node (Olesia faucet/wallet, own-node reconciliation + alerts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/usr/local/bin/bitcoind -datadir=/var/lib/bitcoind-signet -conf=/var/lib/bitcoind-signet/bitcoin.conf
+Restart=on-failure
+RestartSec=45
+TimeoutStopSec=300
+Nice=5
+# testnet only, no funds; read-only public P2P. Keep it contained.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
