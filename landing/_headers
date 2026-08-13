@@ -20,7 +20,7 @@
   Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /faucet/*
-  Content-Security-Policy: default-src 'none'; script-src 'sha256-Db8qhxCZXgw52hC6c8rASlpVc21i/uTSF+q57YBN1Rs=' https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'self' https://faucet.olesia.io https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'sha256-OxJwxoEp1gSndGLMr74H0spw1WfDChUnfJ+KmGqgqhs=' https://challenges.cloudflare.com; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'self' https://faucet.olesia.io https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 
 /p2pk/*
   Content-Security-Policy: default-src 'none'; script-src 'sha256-+K8jAkfPezm3sW5RNMNJzKTWpU+iQQYxvNPnh4usf0E='; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; connect-src 'self' https://mempool.space; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

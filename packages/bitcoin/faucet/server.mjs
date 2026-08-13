@@ -21,7 +21,7 @@ const MNEMONIC = secret('faucet.json').mnemonic;
 const INTERNAL_TOKEN = existsSync(join(HERE, '..', '.secrets', 'internal.json')) ? secret('internal.json').faucetInternalToken : '';
 const PORT = 8790;
 const DRIP = 100_000;                       // 0.001 tBTC per claim (~249k grants at current pot; 500/day cap is the real guard)
-const NETWORKS = new Set(['testnet3', 'testnet4']);
+const NETWORKS = new Set(['testnet3', 'testnet4', 'signet']);
 const ALLOW_ORIGIN = new Set(['https://faucet.olesia.io', 'https://olesia.io', 'https://app.olesia.io']);
 // Turnstile secret from a 600 file (preferred) or env. Absent -> human check off.
 const TURNSTILE_SECRET = (existsSync(join(HERE, '..', '.secrets', 'turnstile.json')) ? secret('turnstile.json').secret : '') || process.env.TURNSTILE_SECRET || '';
