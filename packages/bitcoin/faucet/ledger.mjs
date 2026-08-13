@@ -229,11 +229,21 @@ export class ClaimLedger {
     const r = this.db.prepare(`SELECT MIN(created_at) m FROM claims WHERE state IN (${NON_TERMINAL.map(() => '?').join(',')})`).get(...NON_TERMINAL);
     return r && r.m ? this.now() - r.m : null;
   }
-  // outpoints reserved by any NON-terminal claim (so live selection can avoid them)
-  activeReservations() {
-    return this.db.prepare(`SELECT r.network, r.txid, r.vout FROM reservations r JOIN claims c ON c.claim_id=r.claim_id WHERE c.state IN (${NON_TERMINAL.map(() => '?').join(',')})`).all(...NON_TERMINAL);
-  }
-  releaseReservations(claimId) { this.db.prepare('DELETE FROM reservations WHERE claim_id=?').run(claimId); }
+  // RT-2C — RESERVATION RETENTION. Every reservation row still present is HELD: live
+  // coin selection must avoid all of these outpoints. A reservation row is only ever
+  // removed by retireReservations() below, which is called EXCLUSIVELY on an
+  // authoritative CONFIRMED/CONFLICTED result. While the reconciliation source is a
+  // non-authoritative external explorer (RT-2A) nothing is retired, so this returns the
+  // full set — i.e. NO timeout, restart, missing-explorer result or UNCERTAIN/FAILED_SAFE
+  // state can silently return a reserved input to ordinary coin selection. That failure
+  // sequence (TX-A broadcast, response lost, reservation released, coin reused, TX-B
+  // built, TX-A later confirms) is therefore impossible.
+  activeReservations() { return this.db.prepare('SELECT network, txid, vout, claim_id FROM reservations').all(); }
+  // Retire a claim's reservations. SAFE ONLY when an AUTHORITATIVE source has proven the
+  // reserved outpoint is consumed — CONFIRMED (our exact tx) or CONFLICTED (a different
+  // tx). Never call this from external-explorer data or on UNCERTAIN/FAILED_SAFE. The
+  // claim's reserved_outpoints + local_txid stay on the claim row for audit history.
+  retireReservations(claimId) { this.db.prepare('DELETE FROM reservations WHERE claim_id=?').run(claimId); }
 
   close() { try { this.db.close(); } catch {} }
 }
