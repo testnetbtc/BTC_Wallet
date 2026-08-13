@@ -11,6 +11,7 @@ import * as btc from '@scure/btc-signer';
 import { prepareAndSend, statusFor, walletAddress } from '../src/send.js';
 import { getUTXOs } from '../src/esplora.js';
 import { net } from '../src/networks.js';
+import { VelocityBreaker } from './breaker.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const secret = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
@@ -45,6 +46,13 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 // UTXO reservation: outpoints an in-flight claim has already picked. Selection +
 // reservation happen in one synchronous block (single-process Node), so two
 // concurrent claims can never build conflicting txs on the same coin.
+// Aggregate velocity circuit-breaker — independent of the per-claimant caps above.
+// Optional threshold overrides live in .secrets/breaker.json. SIGHUP re-reads the
+// persisted latch so `breaker.mjs reset` + `systemctl reload` clears a trip.
+const breakerLimits = existsSync(join(HERE, '..', '.secrets', 'breaker.json')) ? secret('breaker.json') : {};
+const breaker = new VelocityBreaker({ limits: breakerLimits });
+process.on('SIGHUP', () => { breaker.reloadState(); console.log('SIGHUP: breaker state reloaded — tripped =', breaker.tripped); });
+
 const reserved = new Set();
 const opKey = (u) => `${u.txid}:${u.vout}`;
 const reserve = (coins) => { coins.forEach((u) => reserved.add(opKey(u))); return coins; };
@@ -109,7 +117,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && path === '/info') {
     Promise.all([...NETWORKS].map((n) => statusFor(MNEMONIC, n, 'p2wpkh').then((s) => [n, s.balance.confirmed]).catch(() => [n, null])))
-      .then((bals) => json(res, 200, { drip: DRIP, networks: [...NETWORKS], balances: Object.fromEntries(bals) }))
+      .then((bals) => json(res, 200, { drip: DRIP, networks: [...NETWORKS], balances: Object.fromEntries(bals), paused: breaker.tripped }))
       .catch((e) => json(res, 502, { error: e.message }));
     return;
   }
@@ -118,17 +126,26 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > MAX_BODY) req.destroy(); });
     req.on('end', async () => {
-      let o; try { o = JSON.parse(body); } catch { return json(res, 400, { error: 'bad request' }); }
+      // A rejected claim is recorded to the breaker's failure-rate metric (probe/attack
+      // signal). The breaker's OWN 503 is deliberately NOT recorded (no feedback loop).
+      const rej = (code, err, kind) => { breaker.recordReject(kind); return json(res, code, { error: err }); };
+      let o; try { o = JSON.parse(body); } catch { return rej(400, 'bad request', 'bad-json'); }
       const network = String(o.network || '');
       const address = String(o.address || '').trim();
-      if (!NETWORKS.has(network)) return json(res, 400, { error: `network must be one of: ${[...NETWORKS].join(', ')}` });
-      try { btc.Address(net(network).btc).decode(address); } catch { return json(res, 400, { error: `invalid ${network} address` }); }
+      if (!NETWORKS.has(network)) return rej(400, `network must be one of: ${[...NETWORKS].join(', ')}`, 'bad-network');
+      try { btc.Address(net(network).btc).decode(address); } catch { return rej(400, `invalid ${network} address`, 'bad-address'); }
       const internal = INTERNAL_TOKEN && req.headers['x-faucet-internal'] === INTERNAL_TOKEN;
-      if (!internal && !(await turnstileOk(o.token, clientIp(req)))) return json(res, 403, { error: 'human check failed' });
+      if (!internal && !(await turnstileOk(o.token, clientIp(req)))) return rej(403, 'human check failed', 'turnstile');
       const now = Date.now();
-      if (limited('global', '', now)) return json(res, 429, { error: 'faucet daily cap reached — try tomorrow' });
-      if (!internal && limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
-      if (limited('addr', address, now)) return json(res, 429, { error: 'this address already got coins today' });
+      if (limited('global', '', now)) return rej(429, 'faucet daily cap reached — try tomorrow', 'cap-global');
+      if (!internal && limited('ip', clientIp(req), now)) return rej(429, 'rate limit — one claim per IP per hour (max 3)', 'cap-ip');
+      if (limited('addr', address, now)) return rej(429, 'this address already got coins today', 'cap-addr');
+      // ── Aggregate velocity circuit-breaker — synchronous, atomic authorise ──
+      // Independent of the caps above; applies to internal claims too (aggregate
+      // spend safety). Fails closed and stays closed until an admin reset.
+      const estFee = (DRIP_FEERATE[network] || 2) * 250;   // ~250 vB drip; reconciled on settle
+      const auth = breaker.authorize({ address, sats: DRIP, utxos: 2, fee: estFee }, now);
+      if (!auth.ok) return json(res, 503, { error: 'faucet temporarily paused — safety limit reached, try later' });
       let coins = null;
       try {
         const opts = { source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: DRIP_FEERATE[network] || 2, broadcast: true };
@@ -136,8 +153,9 @@ const server = http.createServer((req, res) => {
         // Confirmed bank coins if we have them; only chain off unconfirmed as a last resort.
         if (coins && coins.length) opts.utxos = coins; else opts.allowUnconfirmed = true;
         const r = await prepareAndSend(opts);
+        breaker.settle(auth.token, { sats: DRIP, utxos: (coins && coins.length) || 1, fee: r.fee });
         json(res, 200, { txid: r.broadcastTxid, amount: DRIP, explorer: r.explorer });
-      } catch (e) { json(res, 400, { error: String(e.message).slice(0, 200) }); }
+      } catch (e) { breaker.fail(auth.token, String(e.message).slice(0, 80)); json(res, 400, { error: String(e.message).slice(0, 200) }); }
       finally { release(coins); }   // free the reserved coins once broadcast (or its failure) is done
     });
     return;

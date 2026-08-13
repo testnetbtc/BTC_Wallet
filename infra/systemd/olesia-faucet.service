@@ -7,6 +7,9 @@ Wants=network-online.target
 Type=simple
 User=faucet
 ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/faucet/server.mjs
+# `systemctl reload` sends SIGHUP -> the process re-reads the breaker latch, so an
+# admin `node faucet/breaker.mjs reset` is applied without a full restart.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=10
 # to enable the Cloudflare Turnstile human-check later, drop the secret here:
