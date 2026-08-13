@@ -22,6 +22,10 @@ const INTERNAL_TOKEN = existsSync(join(HERE, '..', '.secrets', 'internal.json'))
 const PORT = 8790;
 const DRIP = 100_000;                       // 0.001 tBTC per claim (~249k grants at current pot; 500/day cap is the real guard)
 const NETWORKS = new Set(['testnet3', 'testnet4', 'signet']);
+// Per-network drip fee (sat/vB). Testnet3/4 mempools are usually empty so 2 is
+// plenty; SIGNET is frequently congested (large spam backlogs), so it needs a
+// competitive rate or drips sit unconfirmed for hours.
+const DRIP_FEERATE = { testnet3: 2, testnet4: 2, signet: 8 };
 const ALLOW_ORIGIN = new Set(['https://faucet.olesia.io', 'https://olesia.io', 'https://app.olesia.io']);
 // Turnstile secret from a 600 file (preferred) or env. Absent -> human check off.
 const TURNSTILE_SECRET = (existsSync(join(HERE, '..', '.secrets', 'turnstile.json')) ? secret('turnstile.json').secret : '') || process.env.TURNSTILE_SECRET || '';
@@ -116,7 +120,7 @@ const server = http.createServer((req, res) => {
       if (!internal && limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
       if (limited('addr', address, now)) return json(res, 429, { error: 'this address already got coins today' });
       try {
-        const opts = { source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: 2, broadcast: true };
+        const opts = { source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: DRIP_FEERATE[network] || 2, broadcast: true };
         const coins = await pickFaucetCoins(network).catch(() => null);
         // Confirmed bank coins if we have them; only chain off unconfirmed as a last resort.
         if (coins && coins.length) opts.utxos = coins; else opts.allowUnconfirmed = true;
