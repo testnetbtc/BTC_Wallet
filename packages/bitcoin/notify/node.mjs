@@ -49,8 +49,8 @@ function addrOf(spk) {
   if (!spk) return null;
   return spk.address || (spk.addresses || [null])[0];
 }
+// RT-10: always returns the block hash (needed for reorg tracking even with no hits).
 export async function scanBlock(height, watched) {
-  if (!watched.size) return [];
   const hash = await rpc('getblockhash', [height]);
   const blk = await rpc('getblock', [hash, 3]);
   const hits = [];
@@ -64,8 +64,10 @@ export async function scanBlock(height, watched) {
       if (a && watched.has(a)) hits.push({ address: a, txid: tx.txid, direction: 'in' });
     }
   }
-  return hits;
+  return { hash, hits };
 }
+// RT-10: canonical hash of a height (reorg detection). Throws if the height is unknown.
+export const getBlockHash = (height) => rpc('getblockhash', [height]);
 
 // --- price: the ONE off-chain feed. A node cannot know fiat price. ------
 // Sourced directly from an exchange ticker (Kraken), not a block explorer.

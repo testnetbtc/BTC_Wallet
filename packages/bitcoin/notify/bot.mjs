@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { net } from '../src/networks.js';
-import { tipHeight, fastestFee, scanBlock, btcUsd, NODE_NETWORK, INTAKE } from './node.mjs';
+import { tipHeight, fastestFee, scanBlock, getBlockHash, btcUsd, NODE_NETWORK, INTAKE } from './node.mjs';
+import { ChainTracker } from './chaintracker.mjs';
+import { scanAddressesOnce } from './addrwatch.mjs';
 import { classifyInput, xpubAddresses, XPUB_GAP } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +69,22 @@ db.exec(`
     ts     INTEGER,
     UNIQUE (feed, k)
   );
+  -- RT-10: bounded recent {height: hash} window for reorg detection.
+  CREATE TABLE IF NOT EXISTS scan_blocks (
+    height INTEGER PRIMARY KEY,
+    hash   TEXT NOT NULL
+  );
+  -- RT-10: address-hit notifications with the block height they came from, so a reorg can
+  -- roll back and re-evaluate them. Identity is height-INDEPENDENT (sub_id,txid,direction).
+  CREATE TABLE IF NOT EXISTS addr_notified (
+    sub_id    INTEGER NOT NULL,
+    txid      TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    height    INTEGER NOT NULL,
+    ts        INTEGER,
+    PRIMARY KEY (sub_id, txid, direction)
+  );
+  CREATE INDEX IF NOT EXISTS addr_notified_height_idx ON addr_notified(height);
 `);
 const q = {
   upsertUser: db.prepare('INSERT INTO users(chat_id,created_at) VALUES(?,?) ON CONFLICT(chat_id) DO NOTHING'),
@@ -83,7 +101,20 @@ const q = {
   markSeen: db.prepare('INSERT INTO seen(sub_id,k,ts) VALUES(?,?,?) ON CONFLICT(sub_id,k) DO NOTHING'),
   wasSeen: db.prepare('SELECT 1 FROM seen WHERE sub_id=? AND k=?'),
   recordEvent: db.prepare('INSERT INTO events(feed,k,btc,payload,ts) VALUES(?,?,?,?,?) ON CONFLICT(feed,k) DO NOTHING'),
+  // RT-10 reorg tracking
+  blkGet: db.prepare('SELECT hash FROM scan_blocks WHERE height=?'),
+  blkSet: db.prepare('INSERT INTO scan_blocks(height,hash) VALUES(?,?) ON CONFLICT(height) DO UPDATE SET hash=excluded.hash'),
+  blkDel: db.prepare('DELETE FROM scan_blocks WHERE height=?'),
+  blkHeights: db.prepare('SELECT height FROM scan_blocks ORDER BY height ASC'),
+  anHas: db.prepare('SELECT 1 FROM addr_notified WHERE sub_id=? AND txid=? AND direction=?'),
+  anAdd: db.prepare('INSERT INTO addr_notified(sub_id,txid,direction,height,ts) VALUES(?,?,?,?,?) ON CONFLICT(sub_id,txid,direction) DO UPDATE SET height=excluded.height'),
+  anDel: db.prepare('DELETE FROM addr_notified WHERE sub_id=? AND txid=? AND direction=?'),
+  anByHeights: db.prepare('SELECT sub_id,txid,direction,height FROM addr_notified WHERE height=?'),
 };
+// RT-10: alert only once a block is buried at least this deep (reorg cushion). A 1-block
+// reorg resolves before the user is ever notified. Configurable via notify-node.json.
+const NOTIFY_CFG = (() => { try { return SEC('notify-node.json'); } catch { return {}; } })();
+const MIN_NOTIFY_CONFIRMATIONS = Number(NOTIFY_CFG.minNotifyConfirmations) > 0 ? Number(NOTIFY_CFG.minNotifyConfirmations) : 2;
 
 // --------------------------------------------------------------- public feeds
 // chainwatch's detectors produce these; users opt in per feed. `filter` feeds
@@ -449,44 +480,61 @@ async function onMessage(msg) {
 
 // --------------------------------------------------------------- watchers
 
-// Scan each NEW block from OUR node against the set of watched addresses.
-// Nothing leaves the box — the watched addresses are never sent to any
-// third-party explorer. Forward-only (from when watching began), which is
-// exactly what a notification service needs.
-let lastScanned = null;
+// Scan each NEW block from OUR node against the set of watched addresses. Nothing leaves the
+// box — watched addresses are never sent to any third-party explorer. RT-10: reorg-aware —
+// a bounded recent-hash window detects reorgs, rolls back to the fork, rescans the canonical
+// branch, and only notifies once a block is >= MIN_NOTIFY_CONFIRMATIONS deep. Notification
+// identity is (sub,txid,direction), so a tx reappearing on a new branch never double-notifies;
+// a previously-notified tx that is reorged OUT is surfaced as an explicit event.
+const trackerStore = {
+  get: (h) => { const r = q.blkGet.get(h); return r ? r.hash : undefined; },
+  set: (h, hash) => { q.blkSet.run(h, hash); },
+  delete: (h) => { q.blkDel.run(h); },
+  heights: () => q.blkHeights.all().map((r) => r.height),
+};
+const notifiedStore = {
+  has: (subId, txid, dir) => !!q.anHas.get(subId, txid, dir),
+  add: (subId, txid, dir, height) => { q.anAdd.run(subId, txid, dir, height, nows()); },
+  remove: (subId, txid, dir) => { q.anDel.run(subId, txid, dir); },
+  byHeights: (heights) => heights.flatMap((h) => q.anByHeights.all(h).map((r) => ({ subId: r.sub_id, txid: r.txid, dir: r.direction, height: r.height }))),
+};
+const tracker = new ChainTracker(trackerStore, { minConf: MIN_NOTIFY_CONFIRMATIONS });
+
 async function watchAddresses() {
   const subs = q.activeByType.all('addr');
   if (!subs.length) return;
-  const idx = new Map();                       // address -> [subs]
+  const idx = new Map();                        // address -> [sub]
   for (const s of subs) {
     const p = JSON.parse(s.params);
-    if (p.network !== NODE_NETWORK) continue;   // our node is mainnet; testnet needs another source
+    if (p.network !== NODE_NETWORK) continue;    // our node is mainnet; testnet needs another source
     const addrs = p.mode === 'xpub' ? xpubAddresses(p.xpub, p.network) : [p.address];
     for (const a of addrs) { if (!idx.has(a)) idx.set(a, []); idx.get(a).push(s); }
   }
   if (!idx.size) return;
   let tip;
   try { tip = await tipHeight(); } catch { return; }
-  if (lastScanned == null) { lastScanned = tip; return; }   // begin at the current tip
   const watched = new Set(idx.keys());
-  for (let h = lastScanned + 1; h <= tip; h++) {
-    let hits;
-    try { hits = await scanBlock(h, watched); } catch (e) { log('scanBlock', h, e.message); return; }
-    for (const hit of hits) {
-      for (const s of idx.get(hit.address) || []) {
-        const key = `${hit.txid}:${hit.direction}`;
-        if (q.wasSeen.get(s.id, key)) continue;
-        q.markSeen.run(s.id, key, nows());
-        const p = JSON.parse(s.params);
-        const url = net(p.network).explorer + hit.txid;
-        const dir = hit.direction === 'in' ? 'Incoming' : 'Outgoing';
-        dispatch(s.chat_id, `👁 <b>${dir}</b> on ${p.mode === 'xpub' ? 'your xpub' : hit.address}\n`
-          + `Confirmed in block ${h.toLocaleString()} — <a href="${url}">${hit.txid.slice(0, 16)}…</a>\n`
-          + `Seen by our own node — this address was never sent to a third-party explorer.`);
-      }
-    }
-    lastScanned = h;
-  }
+
+  const emit = (sub, hit, height) => {
+    const p = JSON.parse(sub.params);
+    const url = net(p.network).explorer + hit.txid;
+    const dir = hit.direction === 'in' ? 'Incoming' : 'Outgoing';
+    dispatch(sub.chat_id, `👁 <b>${dir}</b> on ${p.mode === 'xpub' ? 'your xpub' : hit.address}\n`
+      + `Confirmed in block ${height.toLocaleString()} (≥${MIN_NOTIFY_CONFIRMATIONS} conf) — <a href="${url}">${hit.txid.slice(0, 16)}…</a>\n`
+      + `Seen by our own node — this address was never sent to a third-party explorer.`);
+  };
+  const emitReorgOut = (o) => {
+    const sub = subs.find((s) => s.id === o.subId);
+    if (!sub) return;
+    const p = JSON.parse(sub.params);
+    const url = net(p.network).explorer + o.txid;
+    dispatch(sub.chat_id, `♻️ <b>Chain reorg</b> — an earlier alert for <a href="${url}">${o.txid.slice(0, 16)}…</a> `
+      + `was rolled back off the canonical chain and has NOT reappeared. Treat that confirmation as reversed.`);
+  };
+
+  try {
+    await scanAddressesOnce({ tip, getBlockHash, scanBlock, tracker, notified: notifiedStore, watched, idxFor: (a) => idx.get(a) || [], emit, emitReorgOut });
+  } catch (e) { log('watchAddresses', e.message); }
 }
 
 let lastPrice = null;
