@@ -22,11 +22,14 @@ const noHook = () => {};
 export async function reconcileState(chain, network, localTxid, reserved) {
   const tx = await chain.lookup(network, localTxid);        // may throw
   if (tx && tx.found) return tx.confirmed ? { r: 'confirmed', height: tx.height, blockHash: tx.blockHash } : { r: 'seen' };
-  // not found: is any reserved input spent by a DIFFERENT tx? -> conflict
+  // not found by txid: examine the reserved inputs. Spent by a DIFFERENT tx -> conflict;
+  // spent by OUR txid -> our tx exists (seen) even if the txid index lags.
+  let spentByUs = false;
   for (const op of (reserved || [])) {
     const os = await chain.outspend(network, op.txid, op.vout);   // may throw
-    if (os && os.spent && os.txid && os.txid !== localTxid) return { r: 'conflicted', by: os.txid };
+    if (os && os.spent && os.txid) { if (os.txid !== localTxid) return { r: 'conflicted', by: os.txid }; else spentByUs = true; }
   }
+  if (spentByUs) return { r: 'seen' };
   return { r: 'absent' };
 }
 
@@ -54,15 +57,6 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
   if (c.raw_tx && txidOf(c.raw_tx) !== c.local_txid) { ledger.markFailedSafe(claimId, 'stored-txid-mismatch', 'raw_tx txid != stored local_txid'); return ledger.get(claimId); }
 
   const reserved = JSON.parse(c.reserved_outpoints || '[]');
-  const settleAfterBroadcast = async () => {
-    // §17: don't trust the send return -> reconcile to reach SEEN/CONFIRMED.
-    let post; try { post = await reconcileState(chain, c.network, c.local_txid, reserved); }
-    catch { return ledger.markUncertain(claimId, 'post-broadcast reconcile source unavailable'); }
-    if (post.r === 'confirmed') return ledger.markConfirmed(claimId, { height: post.height, blockHash: post.blockHash });
-    if (post.r === 'seen') return ledger.markSeen(claimId);
-    if (post.r === 'conflicted') return ledger.markConflicted(claimId, 'input spent by ' + post.by);
-    return ledger.markUncertain(claimId, 'broadcast sent but tx not yet observed');
-  };
   const doBroadcast = async () => {
     if ((ledger.get(claimId).broadcast_attempt_count || 0) >= maxBroadcasts) return ledger.markUncertain(claimId, 'max broadcast attempts reached; tx absent from chain');
     ledger.markBroadcasting(claimId);
@@ -71,15 +65,17 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
     try { returned = await chain.broadcast(c.network, c.raw_tx); }
     catch (e) {
       if (e instanceof CrashInjected) throw e;
-      // 'already known / in mempool' == our tx is out there -> reconcile to SEEN.
-      if (/already|in.?mempool|txn-already/i.test(String(e.message))) return settleAfterBroadcast();
+      // 'already known / in mempool' == our exact tx is out there -> SEEN.
+      if (/already|in.?mempool|txn-already/i.test(String(e.message))) return ledger.markSeen(claimId);
       // any other broadcast error is AMBIGUOUS (node may have accepted) -> UNCERTAIN.
       return ledger.markUncertain(claimId, 'broadcast ambiguous: ' + String(e.message).slice(0, 120));
     }
     crashAfter('after-broadcast-before-verify');
     // I5: a returned txid must equal the local txid, else it is a safety failure.
     if (returned && String(returned).trim() && String(returned).trim() !== c.local_txid) return ledger.markFailedSafe(claimId, 'broadcast-txid-mismatch', 'network returned a different txid');
-    return settleAfterBroadcast();
+    // The mempool accepted our EXACT txid -> observed (SEEN). CONFIRMED still requires
+    // an on-chain confirmation via reconciliation (§17: broadcast is not final truth).
+    return ledger.markSeen(claimId);
   };
   const reconcileThenMaybeBroadcast = async () => {
     let rec; try { rec = await reconcileState(chain, c.network, c.local_txid, reserved); }

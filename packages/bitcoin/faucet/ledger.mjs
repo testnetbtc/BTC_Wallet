@@ -125,6 +125,8 @@ export class ClaimLedger {
   }
   getByClientKey(key) { return key ? (this.db.prepare('SELECT * FROM claims WHERE client_idempotency_key=?').get(key) || null) : null; }
   get(claimId) { return this.db.prepare('SELECT * FROM claims WHERE claim_id=?').get(claimId) || null; }
+  // durable global daily count (across all networks) for the soft daily cap
+  dayCount(claimDay) { return this.db.prepare('SELECT COUNT(*) c FROM claims WHERE claim_day=?').get(claimDay).c; }
 
   // Atomically: create the AUTHORISED claim AND durably reserve its outpoints.
   // Returns { created:true, claim } on a brand-new claim, or { created:false, claim,
