@@ -1,6 +1,6 @@
 // Tests for the read-only dashboard: pure telemetry helpers, redaction (no secret
 // can surface), read-only HTTP behaviour, and inert rendering of hostile content.
-import { warningLevel, redact, breakerView, heartbeatStatus, dashboardStatus } from '../faucet/telemetry.mjs';
+import { warningLevel, redact, breakerView, heartbeatStatus, dashboardStatus, scrubValue } from '../faucet/telemetry.mjs';
 import { server, PAGE } from '../faucet/dashboard.mjs';
 
 let bad = 0;
@@ -33,6 +33,50 @@ ok('warn: zero limit → normal (no divide-by-zero)', warningLevel(5, 0) === 'no
   ok('redact: mnemonic in array removed', clean.list[0].mnemonic === '[redacted]');
   ok('redact: NONE of the secret VALUES survive anywhere', !/hunter2|Basic xyz|SECRET|twelve words|abc/.test(flat.replace(/\[redacted\]/g, '')));
   ok('redact: benign fields preserved', clean.address === 'tb1qpublic' && clean.balanceSat === 123 && clean.node.peers === 9);
+}
+
+// ── RT-9: value-shape scrubbing (defence in depth) — secrets under BENIGN keys are
+//    masked, but real Bitcoin/diagnostic values are NEVER touched ──
+{
+  const txid = 'deadbeef'.repeat(8);                                   // 64-hex txid
+  const blockhash = '00000000000000000000' + 'a1b2c3d4'.repeat(5) + 'abcd';  // 64-hex block hash
+  const addr = 'tb1qtzn8he625xdtdc63nu08jcwmk29080nvyga9dn';           // bech32 address
+  const pubkey = '02' + 'ab'.repeat(32);                               // 66-hex compressed pubkey
+  const xpub = 'xpub' + 'A'.repeat(107);                               // extended PUBLIC key (not secret)
+  const sha = 'f'.repeat(64);                                          // ordinary diagnostic hash
+
+  // must be PRESERVED (bias to under-scrubbing)
+  ok('RT-9: txid preserved (64-hex is not secret)', scrubValue(txid) === txid);
+  ok('RT-9: block hash preserved', scrubValue(blockhash) === blockhash);
+  ok('RT-9: bech32 address preserved', scrubValue(addr) === addr);
+  ok('RT-9: compressed public key preserved', scrubValue(pubkey) === pubkey);
+  ok('RT-9: extended PUBLIC key (xpub) preserved', scrubValue(xpub) === xpub);
+  ok('RT-9: ordinary hash preserved', scrubValue(sha) === sha);
+
+  // must be MASKED (unmistakable secret shapes)
+  const botTok = '987654321:AAHdummyTokenValue1234567890abcdef';
+  const xprv = 'xprv' + '9'.repeat(110);
+  const tprv = 'tprv' + 'q'.repeat(110);
+  const nsec = 'nsec1' + 'q'.repeat(58);
+  const pem = '-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIabc123deadbeef\n-----END EC PRIVATE KEY-----';
+  ok('RT-9: Telegram bot token masked', scrubValue(botTok) === '[redacted]');
+  ok('RT-9: xprv extended private key masked', scrubValue(xprv) === '[redacted]');
+  ok('RT-9: tprv extended private key masked', scrubValue(tprv) === '[redacted]');
+  ok('RT-9: nsec secret key masked', scrubValue(nsec) === '[redacted]');
+  ok('RT-9: PEM private-key block masked', scrubValue(pem) === '[redacted]');
+  ok('RT-9: Bearer credential masked', scrubValue('Bearer abcdef1234567890XYZ').includes('[redacted]'));
+  ok('RT-9: Basic credential masked', scrubValue('Basic dXNlcjpodW50ZXIyMDAw').includes('[redacted]'));
+
+  // embedded secret in free text: token masked, surrounding txid still visible
+  const mixed = scrubValue(`payout failed, bot ${botTok} for tx ${txid}`);
+  ok('RT-9: embedded secret masked but txid in same string preserved', !mixed.includes(botTok) && mixed.includes(txid));
+
+  // integration through redact(): a secret under a benign key name is scrubbed by value,
+  // while allowlisted key-name redaction still applies.
+  const clean = redact({ note: `see ${botTok}`, address: addr, rpcPassword: 'hunter2', txid });
+  ok('RT-9: redact() scrubs secret VALUE under benign key', !JSON.stringify(clean.note).includes('987654321:AAH'));
+  ok('RT-9: redact() keeps address + txid visible', clean.address === addr && clean.txid === txid);
+  ok('RT-9: redact() still redacts by key name (primary)', clean.rpcPassword === '[redacted]');
 }
 
 // ── breaker view maps all six metrics to value/limit/level ──

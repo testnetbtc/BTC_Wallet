@@ -19,6 +19,29 @@ export function warningLevel(value, limit, tripped = false) {
 // upstream source ever gains a secret field, it still can't surface. Over-redacting
 // a harmless key is acceptable; leaking a secret is not.
 const SECRET_KEY = /pass|secret|token|mnemonic|seed|privkey|priv_|xprv|apikey|api_key|cookie|authorization|rpcuser|rpcpassword|credential/i;
+
+// RT-9 — SECONDARY, defence-in-depth value scrubbing. The key-name allowlist above is the
+// PRIMARY protection; this only catches a secret that reached a benignly-named field (e.g. a
+// token embedded in a future error string). It matches ONLY unmistakable secret SHAPES and
+// masks just the matched substring, so surrounding legitimate text stays visible. It is
+// deliberately CONSERVATIVE and biased toward under-scrubbing: a bare hex string is NEVER
+// treated as secret (txids and block hashes are 64-hex), and addresses / public keys /
+// ordinary hashes are left intact. Only clearly-marked private material is masked.
+const SECRET_VALUE = [
+  /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*-----|$)/g, // PEM private key blocks
+  /\b(?:xprv|yprv|zprv|tprv|uprv|vprv)[1-9A-HJ-NP-Za-km-z]{100,}/g,               // BIP32 extended PRIVATE keys
+  /\bnsec1[02-9ac-hj-np-z]{58,}/g,                                                // Nostr secret key (bech32)
+  /\b\d{6,12}:[A-Za-z0-9_-]{30,}\b/g,                                             // Telegram-style bot token id:secret
+  /\b(?:Bearer|Basic)\s+[A-Za-z0-9+/._=-]{16,}/gi,                                // HTTP auth credential blobs
+];
+// Exported for tests: does this string CONTAIN unmistakable secret material?
+export function scrubValue(str) {
+  if (typeof str !== 'string') return str;
+  let out = str;
+  for (const re of SECRET_VALUE) out = out.replace(re, '[redacted]');
+  return out;
+}
+
 export function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
   if (value && typeof value === 'object') {
@@ -26,6 +49,7 @@ export function redact(value) {
     for (const [k, v] of Object.entries(value)) out[k] = SECRET_KEY.test(k) ? '[redacted]' : redact(v);
     return out;
   }
+  if (typeof value === 'string') return scrubValue(value);   // RT-9 defence-in-depth
   return value;
 }
 
