@@ -7,7 +7,7 @@
 // (b) firing thousands via Promise.all with an await BEFORE each authorize (the
 // realistic request shape: async parse, then the sync decision). In both cases the
 // number of authorised payouts must be EXACTLY the limit — never limit+1.
-import { VelocityBreaker } from '../faucet/breaker.mjs';
+import { VelocityBreaker, validateLimits } from '../faucet/breaker.mjs';
 
 let bad = 0;
 const ok = (label, cond) => { console.log(label.padEnd(62), cond ? '✓' : '✗ FAIL'); if (!cond) bad = true; };
@@ -108,6 +108,36 @@ const T = 1_000_000;
   ok('9c. a broadcast fail() counts toward failure-rate (2 → still under 2? trips on >2)', b2.rejects.length === 2 && !b2.tripped);
   b2.recordReject('bad-address', T);
   ok('9d. one more failure trips the failure-rate cap', b2.tripped);
+}
+
+// ── RT-1 regression: a malformed limit must FAIL CLOSED, not disable the metric ──
+{
+  const MALFORMED = [
+    ['string', { maxClaimsPerMin: 'abc' }],
+    ['NaN', { maxClaimsPerMin: NaN }],
+    ['Infinity', { maxClaimsPerMin: Infinity }],
+    ['object', { maxClaimsPerMin: {} }],
+    ['array', { maxClaimsPerMin: [30] }],
+    ['null', { maxSatsPerMin: null }],
+    ['negative', { maxUtxosPerMin: -1 }],
+    ['zero', { maxFeePerMin: 0 }],
+    ['float', { maxDistinctAddrPerMin: 30.5 }],
+    ['boolean', { maxFailuresPerMin: true }],
+  ];
+  let allClosed = true, everAuthorised = false;
+  for (const [label, limits] of MALFORMED) {
+    const b = new VelocityBreaker({ persist: false, alert: () => {}, limits });
+    if (!b.tripped) { allClosed = false; ok('RT-1: malformed [' + label + '] starts TRIPPED', false); }
+    // even one authorise must be denied while config-invalid
+    if (b.authorize({ address: 'a', sats: 1, utxos: 1, fee: 1 }, 1e6).ok) everAuthorised = true;
+    // reset must NOT resume with the config still invalid
+    b.reset('try to clear', 'test', 1e6);
+    if (!b.tripped) allClosed = false;
+  }
+  ok('RT-1: every malformed-limit breaker starts + stays TRIPPED (fail-closed)', allClosed);
+  ok('RT-1: a config-invalid breaker never authorises a payout', everAuthorised === false);
+  ok('RT-1: a VALID config produces no offenders', validateLimits({ maxClaimsPerMin: 30, maxSatsPerMin: 3000000, maxDistinctAddrPerMin: 30, maxUtxosPerMin: 60, maxFeePerMin: 200000, maxFailuresPerMin: 60, windowMs: 60000 }).length === 0);
+  ok('RT-1: reset refuses (returns false) while config invalid', new VelocityBreaker({ persist: false, alert: () => {}, limits: { maxClaimsPerMin: 'x' } }).reset() === false);
 }
 
 console.log(bad ? '\nBREAKER TEST FAILED' : '\nBREAKER TEST PASS — velocity breaker is atomic, fail-closed, and reset-gated');

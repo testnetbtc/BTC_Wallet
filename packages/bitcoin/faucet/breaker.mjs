@@ -41,6 +41,18 @@ export const DEFAULT_LIMITS = {
   maxFailuresPerMin: 60,         // rejected/failed claims — probe/attack signal
 };
 
+// RT-1: every limit must be a finite positive INTEGER. A value that coerces to
+// NaN/Infinity (string, object, NaN, Infinity, …) would make `metric > limit`
+// always false and silently DISABLE that metric — a fail-open safety hole. This
+// returns the list of offending "key=value" entries (empty = all valid).
+export function validateLimits(limits) {
+  const bad = [];
+  for (const [k, v] of Object.entries(limits || {})) {
+    if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) bad.push(`${k}=${JSON.stringify(v)}`);
+  }
+  return bad;
+}
+
 export class VelocityBreaker {
   constructor(opts = {}) {
     this.limits = { ...DEFAULT_LIMITS, ...(opts.limits || {}) };
@@ -53,6 +65,17 @@ export class VelocityBreaker {
     this.tripped = false;
     this.trip = null;                             // { reason, metric, value, threshold, at, snapshot }
     if (this.persist) this._load();               // a trip persists across restarts (no auto-resume)
+    // RT-1: fail CLOSED on a malformed configuration — start TRIPPED rather than
+    // silently run with a disabled metric. Cleared only by fixing the config.
+    this._badConfig = validateLimits(this.limits);
+    if (this._badConfig.length) this._tripConfig();
+  }
+
+  _tripConfig() {
+    this.tripped = true;
+    this.trip = { reason: 'invalid breaker configuration — failing closed', metric: 'config',
+      value: this._badConfig.join(', '), threshold: 'each limit must be a finite positive integer', at: Date.now() };
+    console.error(`\n🛑 BREAKER CONFIG INVALID (${this._badConfig.join(', ')}) — starting TRIPPED (fail-closed). Fix .secrets/breaker.json.\n`);
   }
 
   _prune(now) {
@@ -132,6 +155,8 @@ export class VelocityBreaker {
   // Explicit admin action ONLY — never called automatically. Clears the latch and
   // the window so the faucet starts from a clean slate.
   reset(reason = '', who = 'admin', now = Date.now()) {
+    // RT-1: never resume while the configuration is still invalid.
+    if (this._badConfig && this._badConfig.length) { this._tripConfig(); return false; }
     const cleared = this.trip;
     this.tripped = false; this.trip = null;
     this.payouts = []; this.rejects = []; this.pendingByToken.clear();
