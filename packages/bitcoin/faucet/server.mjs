@@ -42,23 +42,30 @@ const MAX_BODY = 4000;
 const FEE_HEADROOM = 2000;                 // sat; covers a 2-in/2-out p2wpkh tx at feeRate 2 with margin
 const SMALL_COIN_MAX = DRIP * 20;          // treat coins < 0.02 tBTC as "bank" coins; never auto-grab the giant pot coin
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// UTXO reservation: outpoints an in-flight claim has already picked. Selection +
+// reservation happen in one synchronous block (single-process Node), so two
+// concurrent claims can never build conflicting txs on the same coin.
+const reserved = new Set();
+const opKey = (u) => `${u.txid}:${u.vout}`;
+const reserve = (coins) => { coins.forEach((u) => reserved.add(opKey(u))); return coins; };
+const release = (coins) => { (coins || []).forEach((u) => reserved.delete(opKey(u))); };
 async function pickFaucetCoins(network) {
   const addr = walletAddress(MNEMONIC, network, 'p2wpkh');
-  const confirmed = (await getUTXOs(addr, network)).filter((u) => u.confirmed);
-  if (!confirmed.length) return null;      // nothing confirmed -> caller falls back to allowUnconfirmed
+  const confirmed = (await getUTXOs(addr, network)).filter((u) => u.confirmed && !reserved.has(opKey(u)));
+  if (!confirmed.length) return null;      // nothing confirmed/free -> caller falls back to allowUnconfirmed
   const need = DRIP + FEE_HEADROOM;
   const bank = confirmed.filter((u) => u.value <= SMALL_COIN_MAX);
   // 1) prefer ONE drip-sized bank coin (keeps every drip a clean 1-in/2-out tx and,
   //    picked at random, spreads concurrent claims across the bank).
   const singles = shuffle(bank.filter((u) => u.value >= need));
-  if (singles.length) return [singles[0]];
+  if (singles.length) return reserve([singles[0]]);
   // 2) otherwise accumulate random small coins until they cover the drip + fee.
   const acc = []; let sum = 0;
-  for (const u of shuffle(bank)) { acc.push(u); sum += u.value; if (sum >= need) return acc; }
+  for (const u of shuffle(bank)) { acc.push(u); sum += u.value; if (sum >= need) return reserve(acc); }
   // 3) last resort: smallest single CONFIRMED coin that covers it (may be a large
   //    pot coin, but still confirmed — never an unconfirmed spend).
   const big = confirmed.filter((u) => u.value >= need).sort((a, b) => a.value - b.value)[0];
-  return big ? [big] : null;               // 4) nothing confirmed covers it -> caller falls back
+  return big ? reserve([big]) : null;      // 4) nothing confirmed covers it -> caller falls back
 }
 
 // rate limits (sliding window)
@@ -75,7 +82,10 @@ setInterval(() => { const now = Date.now();
   for (const b of ['ip', 'addr']) for (const [k, a] of hits[b]) { const keep = a.filter((t) => now - t < RL[b].win); keep.length ? hits[b].set(k, keep) : hits[b].delete(k); }
 }, 300_000).unref();
 
-const clientIp = (req) => (req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown');
+// Only trust `cf-connecting-ip` (set by OUR Cloudflare tunnel, which strips any
+// client-supplied copy) or the real socket peer — never a client-settable
+// X-Forwarded-For, which would let an attacker forge their source to dodge limits.
+const clientIp = (req) => (req.headers['cf-connecting-ip'] || req.socket.remoteAddress || 'unknown');
 const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff' }); res.end(JSON.stringify(obj)); };
 
 async function turnstileOk(token, ip) {
@@ -111,22 +121,24 @@ const server = http.createServer((req, res) => {
       let o; try { o = JSON.parse(body); } catch { return json(res, 400, { error: 'bad request' }); }
       const network = String(o.network || '');
       const address = String(o.address || '').trim();
-      if (!NETWORKS.has(network)) return json(res, 400, { error: 'network must be testnet3 or testnet4' });
-      try { btc.Address(net(network).btc).decode(address); } catch { return json(res, 400, { error: 'invalid testnet address' }); }
+      if (!NETWORKS.has(network)) return json(res, 400, { error: `network must be one of: ${[...NETWORKS].join(', ')}` });
+      try { btc.Address(net(network).btc).decode(address); } catch { return json(res, 400, { error: `invalid ${network} address` }); }
       const internal = INTERNAL_TOKEN && req.headers['x-faucet-internal'] === INTERNAL_TOKEN;
       if (!internal && !(await turnstileOk(o.token, clientIp(req)))) return json(res, 403, { error: 'human check failed' });
       const now = Date.now();
       if (limited('global', '', now)) return json(res, 429, { error: 'faucet daily cap reached — try tomorrow' });
       if (!internal && limited('ip', clientIp(req), now)) return json(res, 429, { error: 'rate limit — one claim per IP per hour (max 3)' });
       if (limited('addr', address, now)) return json(res, 429, { error: 'this address already got coins today' });
+      let coins = null;
       try {
         const opts = { source: MNEMONIC, network, scriptType: 'p2wpkh', recipients: [{ address, amount: DRIP }], feeRate: DRIP_FEERATE[network] || 2, broadcast: true };
-        const coins = await pickFaucetCoins(network).catch(() => null);
+        coins = await pickFaucetCoins(network).catch(() => null);
         // Confirmed bank coins if we have them; only chain off unconfirmed as a last resort.
         if (coins && coins.length) opts.utxos = coins; else opts.allowUnconfirmed = true;
         const r = await prepareAndSend(opts);
         json(res, 200, { txid: r.broadcastTxid, amount: DRIP, explorer: r.explorer });
       } catch (e) { json(res, 400, { error: String(e.message).slice(0, 200) }); }
+      finally { release(coins); }   // free the reserved coins once broadcast (or its failure) is done
     });
     return;
   }
