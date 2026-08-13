@@ -3,12 +3,13 @@
 // Anti-abuse: one claim per Nostr account per 24h (here) + per-address + global
 // caps (faucet) + a tiny fixed drip + worthless testnet coins. Sybil-proofing is
 // inherently limited (npubs are free), so the global cap is the real backstop.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as btc from '@scure/btc-signer';
 import { net } from '../src/networks.js';
 import { RelayPool, DEFAULT_RELAYS, finalize, pubkeyOf, npub, verify } from './lib.mjs';
+import { DedupStore } from './dedup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const secret = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
@@ -21,10 +22,12 @@ const PER_ACCOUNT_MS = 24 * 3600 * 1000;
 const now = () => Math.floor(Date.now() / 1000);
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-// persisted state: last claim time per pubkey + processed event ids (bounded)
-let state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : { claims: {}, seen: [] };
-const seen = new Set(state.seen);
-const saveState = () => { state.seen = [...seen].slice(-4000); try { writeFileSync(STATE_FILE, JSON.stringify(state)); } catch (e) { log('state save failed', e.message); } };
+// RT-6: durable, crash-safe dedup (event ids + per-account claim times). A corrupt/
+// unreadable state file leaves the store UNHEALTHY and the bot refuses to dispense
+// (fail closed) rather than replaying old events. The faucet ledger remains the
+// authoritative exactly-once payout layer.
+const store = new DedupStore(STATE_FILE);
+if (!store.healthy) log(`⚠ DEDUP STATE UNREADABLE (${STATE_FILE}: ${store.loadError}) — bot will REFUSE to dispense until the file is repaired/removed and the bot restarted (fail closed).`);
 
 function parseRequest(text) {
   const t = (text || '').toLowerCase();
@@ -54,29 +57,32 @@ const reply = (pool, to, text) => {
 };
 
 async function handle(pool, ev) {
-  if (!ev || ev.pubkey === PUB || seen.has(ev.id)) return;      // skip self + dupes
+  if (!ev || ev.pubkey === PUB) return;                          // skip self
+  if (!store.healthy) return;                                    // RT-6: fail closed on corrupt dedup
+  if (store.has(ev.id)) return;                                  // skip already-processed
   if (!(ev.tags || []).some((t) => t[0] === 'p' && t[1] === PUB)) return; // must actually mention us
-  if (!verify(ev)) return;
-  seen.add(ev.id);
+  if (!verify(ev)) return;                                       // signature must be valid
+  // RT-6: durably record this event as consumed BEFORE any reply/payout. If it cannot be
+  // persisted, skip entirely (a redelivery may retry) rather than risk a replayed payout.
+  if (!store.markSeenDurable(ev.id)) { log('dedup persist failed pre-action — skipping', ev.id.slice(0, 8)); return; }
   const { network, address } = parseRequest(ev.content);
-  if (/signet/i.test(ev.content) && !address) { reply(pool, ev, 'This faucet dispenses Testnet3 and Testnet4 only. Try: "testnet4 tb1q…". More at https://olesia.io/faucet'); saveState(); return; }
-  if (!address) { reply(pool, ev, 'Hi! Send me a testnet address and I\'ll fund it, e.g. "testnet4 tb1q…". New to this? https://olesia.io/learn'); saveState(); return; }
-  const last = state.claims[ev.pubkey] || 0;
+  if (/signet/i.test(ev.content) && !address) { reply(pool, ev, 'This faucet dispenses Testnet3 and Testnet4 only. Try: "testnet4 tb1q…". More at https://olesia.io/faucet'); return; }
+  if (!address) { reply(pool, ev, 'Hi! Send me a testnet address and I\'ll fund it, e.g. "testnet4 tb1q…". New to this? https://olesia.io/learn'); return; }
+  const last = store.getClaim(ev.pubkey);
   if (Date.now() - last < PER_ACCOUNT_MS) {
     const hrs = Math.ceil((PER_ACCOUNT_MS - (Date.now() - last)) / 3600000);
     reply(pool, ev, `You already claimed recently — one per account every 24h so everyone can learn. Try again in ~${hrs}h. 🙏`);
-    saveState(); return;
+    return;
   }
   log(`claim ${network} ${address} for ${npub(ev.pubkey).slice(0, 16)}…`);
   const { ok, body } = await claim(network, address);
   if (ok) {
-    state.claims[ev.pubkey] = Date.now();
+    store.setClaim(ev.pubkey, Date.now());
     const url = net(network).explorer + body.txid;
     reply(pool, ev, `✓ Sent ${(body.amount / 1e8).toFixed(3)} tBTC on ${network} to ${address}\n${url}\nOpen it in the wallet: https://app.olesia.io · Learn: https://olesia.io/learn`);
   } else {
     reply(pool, ev, `Couldn't send: ${body.error || 'try again later'}. Faucet status: https://olesia.io/faucet`);
   }
-  saveState();
 }
 
 function publishProfile(pool) {
@@ -99,9 +105,9 @@ log(`olesia nostr faucet bot up as ${npub(PUB)}`);
 setTimeout(() => publishProfile(pool), 2500);
 // only react to fresh mentions (avoid replaying history); refresh subscription window periodically
 pool.subscribe('mentions', { kinds: [1], '#p': [PUB], since: now() - 120 });
-setInterval(saveState, 60000).unref();
+setInterval(() => { if (store.healthy) store.persist(); }, 60000).unref();
 // liveness heartbeat for the health monitor (file mtime = last-alive)
 const HEARTBEAT = join(HERE, '..', '.secrets', 'nostr-heartbeat.json');
 const beat = () => { try { writeFileSync(HEARTBEAT, JSON.stringify({ t: Date.now(), npub: npub(PUB), relays: DEFAULT_RELAYS.length })); } catch {} };
 beat(); setInterval(beat, 60000).unref();
-process.on('SIGTERM', () => { saveState(); pool.close(); process.exit(0); });
+process.on('SIGTERM', () => { if (store.healthy) store.persist(); pool.close(); process.exit(0); });
