@@ -8,6 +8,9 @@
 // realistic request shape: async parse, then the sync decision). In both cases the
 // number of authorised payouts must be EXACTLY the limit — never limit+1.
 import { VelocityBreaker, validateLimits } from '../faucet/breaker.mjs';
+import { writeFileSync, readFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 let bad = 0;
 const ok = (label, cond) => { console.log(label.padEnd(62), cond ? '✓' : '✗ FAIL'); if (!cond) bad = true; };
@@ -138,6 +141,36 @@ const T = 1_000_000;
   ok('RT-1: a config-invalid breaker never authorises a payout', everAuthorised === false);
   ok('RT-1: a VALID config produces no offenders', validateLimits({ maxClaimsPerMin: 30, maxSatsPerMin: 3000000, maxDistinctAddrPerMin: 30, maxUtxosPerMin: 60, maxFeePerMin: 200000, maxFailuresPerMin: 60, windowMs: 60000 }).length === 0);
   ok('RT-1: reset refuses (returns false) while config invalid', new VelocityBreaker({ persist: false, alert: () => {}, limits: { maxClaimsPerMin: 'x' } }).reset() === false);
+}
+
+// ── RT-4 regression: latch persistence is atomic + corrupt latch fails CLOSED ──
+{
+  const dir = mkdtempSync(join(tmpdir(), 'breaker-rt4-'));
+  const stateFile = join(dir, 'state.json'), tripLog = join(dir, 'trips.log');
+  const mk = () => new VelocityBreaker({ alert: () => {}, stateFile, tripLog, limits: { maxClaimsPerMin: 2 } });
+
+  // no file -> clean start (untripped)
+  ok('RT-4: missing latch -> untripped clean start', mk().tripped === false);
+
+  // trip it -> the on-disk latch is valid JSON, tripped:true, and no .tmp is left
+  const b = mk();
+  for (let i = 0; i < 5; i++) b.authorize({ address: 'a' + i, sats: 1, utxos: 1, fee: 1 }, 1e6);
+  ok('RT-4: tripped in-memory', b.tripped);
+  const onDisk = JSON.parse(readFileSync(stateFile, 'utf8'));
+  ok('RT-4: latch written atomically as valid JSON (tripped:true)', onDisk.tripped === true);
+  ok('RT-4: no leftover .tmp after atomic rename', existsSync(stateFile + '.tmp') === false);
+
+  // a fresh breaker loads the persisted trip (survives restart)
+  ok('RT-4: persisted trip survives a restart', mk().tripped === true);
+
+  // CORRUPT the latch (partial write / corruption) -> a fresh breaker must fail CLOSED
+  writeFileSync(stateFile, '{"tripped": tru');   // truncated / invalid JSON
+  const corrupt = mk();
+  ok('RT-4: corrupt/unreadable latch -> starts TRIPPED (fail-closed)', corrupt.tripped === true && corrupt.trip.metric === 'latch');
+
+  // a clean untripped latch loads as untripped
+  writeFileSync(stateFile, JSON.stringify({ tripped: false, trip: null }));
+  ok('RT-4: valid untripped latch loads untripped', mk().tripped === false);
 }
 
 console.log(bad ? '\nBREAKER TEST FAILED' : '\nBREAKER TEST PASS — velocity breaker is atomic, fail-closed, and reset-gated');

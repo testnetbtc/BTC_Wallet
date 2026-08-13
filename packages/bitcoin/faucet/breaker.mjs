@@ -19,7 +19,7 @@
 // Metrics watched over the window: claims, sats dispensed, distinct destination
 // addresses, UTXOs consumed, fee spent, and the failed/rejected-claim rate.
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -57,6 +57,8 @@ export class VelocityBreaker {
   constructor(opts = {}) {
     this.limits = { ...DEFAULT_LIMITS, ...(opts.limits || {}) };
     this.persist = opts.persist !== false;       // tests pass persist:false
+    this.stateFile = opts.stateFile || STATE_FILE;   // injectable for tests
+    this.tripLog = opts.tripLog || TRIP_LOG;
     this.alert = opts.alert || defaultAlert;
     this.payouts = [];                            // { token, at, address, sats, utxos, fee, state }
     this.rejects = [];                            // { at, kind }
@@ -160,7 +162,7 @@ export class VelocityBreaker {
     const cleared = this.trip;
     this.tripped = false; this.trip = null;
     this.payouts = []; this.rejects = []; this.pendingByToken.clear();
-    if (this.persist) { this._save(); try { appendFileSync(TRIP_LOG, JSON.stringify({ event: 'reset', at: now, who, reason, cleared }) + '\n'); } catch {} }
+    if (this.persist) { this._save(); try { appendFileSync(this.tripLog, JSON.stringify({ event: 'reset', at: now, who, reason, cleared }) + '\n'); } catch {} }
     return true;
   }
 
@@ -174,15 +176,30 @@ export class VelocityBreaker {
   }
 
   _load() {
-    try {
-      if (!existsSync(STATE_FILE)) return;
-      const s = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
-      this.tripped = !!s.tripped;
-      this.trip = s.tripped ? s.trip : null;
-    } catch { /* unreadable state -> keep current (in-memory) view */ }
+    // No file yet -> a clean first start (untripped is correct). A file that EXISTS
+    // but cannot be read/parsed (partial write from a crash, corruption) -> FAIL
+    // CLOSED: assume tripped until an admin clears it (RT-4).
+    if (!existsSync(this.stateFile)) return;
+    let s;
+    try { s = JSON.parse(readFileSync(this.stateFile, 'utf8')); }
+    catch {
+      this.tripped = true;
+      this.trip = { reason: 'unreadable breaker latch — failing closed', metric: 'latch', value: 'corrupt/partial', threshold: 'valid JSON state', at: Date.now() };
+      console.error('\n🛑 BREAKER LATCH UNREADABLE — starting TRIPPED (fail-closed). Investigate + reset.\n');
+      return;
+    }
+    this.tripped = !!s.tripped;
+    this.trip = s.tripped ? s.trip : null;
   }
-  _save() { try { writeFileSync(STATE_FILE, JSON.stringify({ tripped: this.tripped, trip: this.trip }, null, 2)); } catch {} }
-  _logTrip() { try { appendFileSync(TRIP_LOG, JSON.stringify({ event: 'trip', ...this.trip, recentPayouts: this.payouts.slice(-50), recentRejects: this.rejects.slice(-50) }) + '\n'); } catch {} }
+  // Atomic write: a concurrent reader (or a crash) never sees a half-written latch.
+  _save() {
+    try {
+      const tmp = this.stateFile + '.tmp';
+      writeFileSync(tmp, JSON.stringify({ tripped: this.tripped, trip: this.trip }, null, 2));
+      renameSync(tmp, this.stateFile);
+    } catch { /* best-effort */ }
+  }
+  _logTrip() { try { appendFileSync(this.tripLog, JSON.stringify({ event: 'trip', ...this.trip, recentPayouts: this.payouts.slice(-50), recentRejects: this.rejects.slice(-50) }) + '\n'); } catch {} }
 }
 
 // Best-effort alert. If .secrets/telegram.json carries an `adminChatId`, DM it;
