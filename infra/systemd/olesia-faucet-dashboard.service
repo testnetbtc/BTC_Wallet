@@ -1,0 +1,23 @@
+[Unit]
+Description=Olesia faucet dashboard (READ-ONLY ops/security view, 127.0.0.1:8793)
+After=network-online.target olesia-faucet.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/faucet/dashboard.mjs
+Restart=on-failure
+RestartSec=10
+# Read-only view: it only reads local telemetry/heartbeats + read-only node RPC.
+# It writes nothing, so no ReadWritePaths are granted at all.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+MemoryMax=192M
+CPUQuota=40%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

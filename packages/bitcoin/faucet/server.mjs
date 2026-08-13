@@ -4,7 +4,7 @@
 // per-IP + per-address rate limits, a fixed small drip, a global daily cap, and
 // (when configured) a Cloudflare Turnstile human check.
 import http from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as btc from '@scure/btc-signer';
@@ -57,6 +57,28 @@ const reserved = new Set();
 const opKey = (u) => `${u.txid}:${u.vout}`;
 const reserve = (coins) => { coins.forEach((u) => reserved.add(opKey(u))); return coins; };
 const release = (coins) => { (coins || []).forEach((u) => reserved.delete(opKey(u))); };
+
+// ── read-only telemetry snapshot for the (separate) dashboard process ──
+// The faucet just WRITES a local file; the dashboard only reads it. Contains no
+// secrets — public faucet addresses, aggregate metrics, and recent activity.
+const STARTED_AT = Date.now();
+let lastPayoutAt = null;
+const recentPayouts = [];   // ring: { at, network, address, sats, state }
+const recentRejects = [];   // ring: { at, kind }
+const ring = (arr, item, cap = 25) => { arr.push(item); if (arr.length > cap) arr.shift(); };
+const TELEMETRY_FILE = join(HERE, '..', '.secrets', 'faucet-telemetry.json');
+const FAUCET_ADDRS = Object.fromEntries([...NETWORKS].map((n) => [n, walletAddress(MNEMONIC, n, 'p2wpkh')]));
+function writeTelemetry() {
+  try {
+    writeFileSync(TELEMETRY_FILE, JSON.stringify({
+      t: Date.now(), startedAt: STARTED_AT, lastPayoutAt, drip: DRIP,
+      networks: [...NETWORKS], faucetAddresses: FAUCET_ADDRS,
+      reservedUtxos: reserved.size, breaker: breaker.status(),
+      recentPayouts, recentRejects,
+    }));
+  } catch { /* best-effort */ }
+}
+setInterval(writeTelemetry, 3000).unref();
 async function pickFaucetCoins(network) {
   const addr = walletAddress(MNEMONIC, network, 'p2wpkh');
   const confirmed = (await getUTXOs(addr, network)).filter((u) => u.confirmed && !reserved.has(opKey(u)));
@@ -128,7 +150,7 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       // A rejected claim is recorded to the breaker's failure-rate metric (probe/attack
       // signal). The breaker's OWN 503 is deliberately NOT recorded (no feedback loop).
-      const rej = (code, err, kind) => { breaker.recordReject(kind); return json(res, code, { error: err }); };
+      const rej = (code, err, kind) => { breaker.recordReject(kind); ring(recentRejects, { at: Date.now(), kind }); writeTelemetry(); return json(res, code, { error: err }); };
       let o; try { o = JSON.parse(body); } catch { return rej(400, 'bad request', 'bad-json'); }
       const network = String(o.network || '');
       const address = String(o.address || '').trim();
@@ -154,9 +176,10 @@ const server = http.createServer((req, res) => {
         if (coins && coins.length) opts.utxos = coins; else opts.allowUnconfirmed = true;
         const r = await prepareAndSend(opts);
         breaker.settle(auth.token, { sats: DRIP, utxos: (coins && coins.length) || 1, fee: r.fee });
+        lastPayoutAt = Date.now(); ring(recentPayouts, { at: lastPayoutAt, network, address, sats: DRIP, state: 'ok' });
         json(res, 200, { txid: r.broadcastTxid, amount: DRIP, explorer: r.explorer });
-      } catch (e) { breaker.fail(auth.token, String(e.message).slice(0, 80)); json(res, 400, { error: String(e.message).slice(0, 200) }); }
-      finally { release(coins); }   // free the reserved coins once broadcast (or its failure) is done
+      } catch (e) { breaker.fail(auth.token, String(e.message).slice(0, 80)); ring(recentRejects, { at: Date.now(), kind: 'broadcast-failed' }); json(res, 400, { error: String(e.message).slice(0, 200) }); }
+      finally { release(coins); writeTelemetry(); }   // free reserved coins + refresh telemetry
     });
     return;
   }
