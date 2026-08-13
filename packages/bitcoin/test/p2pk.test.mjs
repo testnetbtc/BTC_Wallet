@@ -16,6 +16,12 @@ const src = deriveScript(MN, NET, 'p2wpkh', 0);
 const tgt = deriveScript(MN, NET, 'p2pk', 0);
 const pubHex = Buffer.from(tgt.pubkey).toString('hex');
 
+// P2PK key ROTATION: each fund index derives a distinct pubkey/script, so no two
+// P2PK coins reuse a key (P2PK publishes the raw key, so reuse is worst here).
+const tgt1 = deriveScript(MN, NET, 'p2pk', 1);
+ok('P2PK key rotates: index 0 and 1 give different pubkeys', Buffer.from(tgt.pubkey).toString('hex') !== Buffer.from(tgt1.pubkey).toString('hex'));
+ok('P2PK key rotates: index 0 and 1 give different scripts', tgt.scriptHex !== tgt1.scriptHex);
+
 // --- FUND: P2WPKH input -> P2PK output + change ---
 const fund = buildFundP2PK({
   utxos: [{ txid: 'ab'.repeat(32), vout: 0, value: 100_000 }],

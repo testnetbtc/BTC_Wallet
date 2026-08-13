@@ -11,6 +11,7 @@
   // ---------- state ----------
   let source = '', mode = '', network = 'testnet4', scriptType = 'p2wpkh', passphrase = '';
   let gen = 0;                 // stale-response guard
+  let acctRecvIdx = null;      // receive index currently shown on the account page (reuse guard)
   let hideBal = false, sweepMode = false, forgetArmed = false;
   const balances = {};         // scriptType -> {confirmed, pending}
   const TYPES = window.OW.scriptTypes();
@@ -595,15 +596,22 @@
     $('#acc_about').textContent = t.about; $('#acc_about').style.display = 'none'; $('#acc_moretog').textContent = 'about ▾';
     $('#lab').style.display = type === 'p2pk' && mode === 'full' ? 'block' : 'none';
     $('#acc_label').style.display = type === 'p2pk' ? 'none' : 'block';
+    acctRecvIdx = null;   // reset the reuse guard for the newly opened account
     try {
       const info = window.OW.info(source, network, type, 0, passphrase);
-      $('#acc_addr').textContent = info.address || info.scriptHex;
-      document.querySelector('.qrbox').classList.toggle('noaddr', !info.address);
-      if (info.address) $('#acc_qr').src = await window.OW.qr(info.address);
-      $('#acc_label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
-      $('#acc_recvhint').innerHTML = type === 'p2pk'
-        ? 'P2PK has no address — this is its raw locking script. Fund it from the Lab below.'
-        : 'Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a>';
+      const hasAddr = !!info.address;
+      document.querySelector('.qrbox').classList.toggle('noaddr', !hasAddr);
+      $('#acc_label').value = hasAddr ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
+      if (hasAddr) {
+        // Never show index 0 up front — it may already be used. refreshAccount
+        // fills in the next UNUSED address once discovery finishes (no reuse window).
+        $('#acc_addr').textContent = 'finding a fresh address…';
+        $('#acc_qr').removeAttribute('src');
+        $('#acc_recvhint').innerHTML = 'Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a>';
+      } else {
+        $('#acc_addr').textContent = info.scriptHex;
+        $('#acc_recvhint').innerHTML = 'P2PK has no address — each fund uses a fresh key (rotated). This is the current locking script; fund it from the Lab below.';
+      }
     } catch (e) { toast('✗ ' + e.message, 'bad'); return; }
     showPane('account');
     refreshAccount();
@@ -614,6 +622,11 @@
     try { const a = window.OW.info(source, network, scriptType, 0, passphrase).address; if (a) localStorage.setItem('olesia:label:' + a, $('#acc_label').value); } catch {}
   });
   $('#acc_refresh').addEventListener('click', refreshAccount);
+  // Returning to the tab re-checks the open account, so a payment that landed
+  // while you were away auto-advances to a fresh receive address.
+  window.addEventListener('focus', () => {
+    if (source && scriptType !== 'p2pk' && $('#pane-account').classList.contains('on')) refreshAccount();
+  });
   async function refreshAccount() {
     const g = ++gen;
     if (scriptType === 'p2pk') {
@@ -629,16 +642,20 @@
       $('#acc_bal').textContent = `${coins(disc.balance.confirmed)} ${unit()} confirmed` + (disc.balance.pending ? ` · ${coins(disc.balance.pending)} pending` : '')
         + (disc.used.length > 1 ? ` · across ${disc.used.length} addresses` : '');
       $('#acc_utxos').textContent = disc.utxos.length ? disc.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
-      // rotate the receive address to the next unused one (avoids address reuse)
-      if (mode !== 'watch') {
-        const nextAddr = window.OW.address(source, network, scriptType, disc.nextReceive, passphrase);
-        if (nextAddr && $('#acc_addr').textContent !== nextAddr) {
-          $('#acc_addr').textContent = nextAddr;
-          document.querySelector('.qrbox').classList.remove('noaddr');
-          $('#acc_qr').src = await window.OW.qr(nextAddr);
-          $('#acc_recvhint').innerHTML = `Fresh unused address (receive #${disc.nextReceive}). Older addresses still work and their funds are always found from your seed.`;
-        }
+      // rotate the receive address to the next UNUSED one (avoids address reuse) —
+      // for full wallets AND watch-only xpubs (SegWit), since an xpub derives too.
+      const nextAddr = window.OW.address(source, network, scriptType, disc.nextReceive, passphrase);
+      if (nextAddr && $('#acc_addr').textContent !== nextAddr) {
+        // if we were already showing a fresh address and the index advanced, a
+        // payment landed on it — tell the user we moved on for their privacy.
+        if (acctRecvIdx != null && disc.nextReceive > acctRecvIdx)
+          toast('Payment received — showing a fresh address to avoid reuse.', 'ok');
+        $('#acc_addr').textContent = nextAddr;
+        document.querySelector('.qrbox').classList.remove('noaddr');
+        $('#acc_qr').src = await window.OW.qr(nextAddr);
+        $('#acc_recvhint').innerHTML = `Fresh unused address (receive #${disc.nextReceive}). Older addresses still work and their funds are always found from your seed.`;
       }
+      acctRecvIdx = disc.nextReceive;
       renderTotal(); renderAccountRows();
     } catch (e) { if (g === gen) toast('✗ ' + e.message, 'bad'); }
     try {
@@ -665,6 +682,10 @@
   const p2pkKey = () => { try { return `olesia:p2pk:${network}:${window.OW.info(source, network, 'p2pk', 0, passphrase).scriptHex}`; } catch { return `olesia:p2pk:${network}:x`; } };
   const p2pkLoad = () => { try { return JSON.parse(localStorage.getItem(p2pkKey()) || '[]'); } catch { return []; } };
   const p2pkStore = (l) => { try { localStorage.setItem(p2pkKey(), JSON.stringify(l)); } catch {} };
+  // Monotonic P2PK key index so each fund uses a fresh pubkey (never reused, even
+  // after a coin is spent and dropped from the list).
+  const p2pkNextIdx = () => { const v = parseInt(localStorage.getItem(p2pkKey() + ':next') || '0', 10); return Number.isFinite(v) && v >= 0 ? v : 0; };
+  const p2pkBumpIdx = (used) => { try { localStorage.setItem(p2pkKey() + ':next', String(Math.max(p2pkNextIdx(), (used | 0) + 1))); } catch {} };
   async function refreshLab() {
     try {
       const st = await window.OW.status(source, network, 'p2wpkh', 0, passphrase);
@@ -684,11 +705,11 @@
       const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-top:1px solid var(--line-soft)';
       const state = o.error ? '⚠ ' + o.error : o.spent ? 'spent' : (o.confirmed ? '✓ confirmed' : '⧗ pending');
       const head = document.createElement('div'); head.className = 'mono'; head.style.color = o.spent ? 'var(--faint)' : 'var(--text)';
-      head.textContent = `${(o.value / 1e8).toFixed(8)} · ${state} · ${o.txid.slice(0, 12)}…:${o.vout}`;
+      head.textContent = `${(o.value / 1e8).toFixed(8)} · ${state} · key #${o.index ?? 0} · ${o.txid.slice(0, 12)}…:${o.vout}`;
       row.appendChild(head);
       if (!o.spent && !o.error) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Spend this →'; b.style.marginTop = '6px';
-        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout }, b));
+        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout, index: o.index ?? 0 }, b));
         row.appendChild(b);
       }
       el.appendChild(row);
@@ -726,18 +747,20 @@
     $('#p2pk_fundbtn').disabled = true;
     try {
       toast('Building…');
-      const dry = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: false, passphrase });
+      const idx = p2pkNextIdx();   // fresh, rotated key for this fund (same for preview + broadcast)
+      const dry = await window.OW.fundP2PK({ source, network, amount: amt, index: idx, broadcast: false, passphrase });
       const px = await usdPrice();
       const okGo = await confirmSheet('Move coins into P2PK?', [
-        ['To', 'your own P2PK (bare public key — no address)'],
+        ['To', `your own P2PK — a fresh key (#${idx}, no address)`],
         ['Amount', `${amt.toLocaleString()} sat`, `${coins(amt)} ${unit()}${px ? ' · ' + fmtUsd(amt, px) : ''}`],
         ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
         ['From', 'Native SegWit · ' + network],
       ]);
       if (!okGo) { $('#p2pk_fundbtn').disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Funding P2PK…');
-      const r = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: true, passphrase });
-      const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount }); p2pkStore(list);
+      const r = await window.OW.fundP2PK({ source, network, amount: amt, index: idx, broadcast: true, passphrase });
+      const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount, index: r.index }); p2pkStore(list);
+      p2pkBumpIdx(r.index);   // never reuse this key index again
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
       res.textContent = `✓ moved ${r.amount} sat into P2PK (fee ${r.fee})  `;
       const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
@@ -755,7 +778,7 @@
       const o = await window.OW.p2pkImport({ source, network, txid: txid.trim(), vout, passphrase });
       const list = p2pkLoad();
       if (list.some((x) => x.txid === o.txid && x.vout === o.vout)) toast('already tracked');
-      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount }); p2pkStore(list); toast('✓ P2PK coin recovered', 'ok'); }
+      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount, index: o.index ?? 0 }); p2pkStore(list); p2pkBumpIdx(o.index ?? 0); toast(`✓ P2PK coin recovered (key #${o.index ?? 0})`, 'ok'); }
       $('#p2pk_import').value = ''; refreshP2PKList();
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });

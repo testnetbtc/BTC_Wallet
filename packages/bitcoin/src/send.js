@@ -92,14 +92,16 @@ export async function prepareSweep(opts) {
 // ---- P2PK lab: fund a P2PK output from the seed's SegWit balance, track it, spend it ----
 // P2PK has no address (nothing to paste), and public explorers don't index it, so the
 // wallet moves coins in from its own P2WPKH balance and tracks the outpoint itself.
-export async function fundP2PK({ source, network, amount, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true, passphrase = '' }) {
+export async function fundP2PK({ source, network, amount, index = 0, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true, passphrase = '' }) {
   const src = deriveScript(source, network, 'p2wpkh', 0, passphrase);
-  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
+  // Rotate the P2PK key per fund (index) so each museum coin uses a FRESH pubkey
+  // instead of reusing one — P2PK publishes the raw key, so reuse is worst here.
+  const tgt = deriveScript(source, network, 'p2pk', index, passphrase);
   const utxos = (await getUTXOs(src.address, network)).filter((u) => allowUnconfirmed || u.confirmed);
   if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) — no coins to move into P2PK`);
   const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
   const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
-  return { txid, vout: 0, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
+  return { txid, vout: 0, index, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
            broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
@@ -109,29 +111,33 @@ export async function p2pkOutpoints({ network, outpoints }) {
     try {
       const [tx, spend] = await Promise.all([getTx(op.txid, network), getOutspend(op.txid, op.vout, network)]);
       const vout = tx.vout[op.vout];
-      return { txid: op.txid, vout: op.vout, value: vout?.value ?? op.amount, type: vout?.scriptpubkey_type,
+      return { txid: op.txid, vout: op.vout, index: op.index ?? 0, value: vout?.value ?? op.amount, type: vout?.scriptpubkey_type,
                confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
-    } catch (e) { return { txid: op.txid, vout: op.vout, value: op.amount, error: e.message }; }
+    } catch (e) { return { txid: op.txid, vout: op.vout, index: op.index ?? 0, value: op.amount, error: e.message }; }
   }));
 }
 
 // Recover a P2PK coin by its funding txid: verify the output really is THIS
 // wallet's P2PK script (explorers can't look it up by address), then return it
 // so the UI can re-track it after browser data was cleared.
-export async function importP2PK({ source, network, txid, vout = 0, passphrase = '' }) {
-  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
+export async function importP2PK({ source, network, txid, vout = 0, passphrase = '', scanGap = 50 }) {
   const tx = await getTx(txid, network);
   const out = tx.vout?.[vout];
   if (!out) throw new Error(`no output #${vout} in that transaction`);
-  if ((out.scriptpubkey || '').toLowerCase() !== tgt.scriptHex.toLowerCase())
-    throw new Error(`output #${vout} isn't this wallet's P2PK — wrong txid, vout, or seed`);
+  // P2PK keys rotate, so scan derivation indices to find which one this coin locks to.
+  const spk = (out.scriptpubkey || '').toLowerCase();
+  let index = -1;
+  for (let i = 0; i < scanGap; i++) {
+    if (deriveScript(source, network, 'p2pk', i, passphrase).scriptHex.toLowerCase() === spk) { index = i; break; }
+  }
+  if (index < 0) throw new Error(`output #${vout} isn't this wallet's P2PK — wrong txid, vout, or seed`);
   const spend = await getOutspend(txid, vout, network);
-  return { txid, vout, amount: out.value, confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
+  return { txid, vout, index, amount: out.value, confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
 }
 
 // Sweep one tracked P2PK output to any address (hand-rolled legacy spend).
 export async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false, passphrase = '', message = null }) {
-  const tgt = deriveScript(source, network, 'p2pk', 0, passphrase);
+  const tgt = deriveScript(source, network, 'p2pk', outpoint.index ?? 0, passphrase);   // the coin's own rotated key
   const tx = await getTx(outpoint.txid, network);
   const vout = tx.vout[outpoint.vout];
   if (!vout) throw new Error('P2PK output not found on chain');
