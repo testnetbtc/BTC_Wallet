@@ -56,10 +56,14 @@ export function breakerView(status) {
 //   STALE    — telemetry older than staleMs (faucet stopped writing / is down)
 //   TRIPPED  — breaker latched
 //   RUNNING  — fresh, readable, not tripped
-export function dashboardStatus({ readable, ageMs, tripped }, staleMs) {
+export function dashboardStatus({ readable, ageMs, tripped, ledgerHealthy }, staleMs) {
   if (!readable) return 'UNKNOWN';
   if (ageMs == null || ageMs > staleMs) return 'STALE';
-  return tripped ? 'TRIPPED' : 'RUNNING';
+  if (tripped) return 'TRIPPED';
+  // RT-2 §24/§25: a claim ledger that is down means payouts are stopped — it must
+  // NEVER read as healthy RUNNING.
+  if (ledgerHealthy === false) return 'DEGRADED';
+  return 'RUNNING';
 }
 
 // Heartbeat freshness. `beat` is { t: ms } (or a file mtime in ms). Stale if older

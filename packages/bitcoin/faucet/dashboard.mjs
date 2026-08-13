@@ -89,12 +89,15 @@ async function apiPayload() {
   const [node, balances] = await Promise.all([nodeHealth(), bankData(tel.faucetAddresses || {}, tel.networks || [], now)]);
   const bv = breakerView(tel.breaker);
   const telemetryAgeMs = readable ? Math.max(0, now - tel.t) : null;
-  const status = dashboardStatus({ readable, ageMs: telemetryAgeMs, tripped: bv.tripped }, TELEMETRY_STALE_MS);
+  const ledgerHealthy = tel.ledger ? tel.ledger.healthy : null;
+  const status = dashboardStatus({ readable, ageMs: telemetryAgeMs, tripped: bv.tripped, ledgerHealthy }, TELEMETRY_STALE_MS);
   return redact({
     now,
-    status,                       // RUNNING | TRIPPED | UNKNOWN | STALE
+    status,                       // RUNNING | TRIPPED | DEGRADED | UNKNOWN | STALE
     telemetryReadable: readable,
     breaker: bv,
+    ledger: tel.ledger || null,   // { healthy, error, counts, oldestNonTerminalAgeMs }
+    recoveryHealthy: tel.recoveryHealthy ?? null,
     reservedUtxos: tel.reservedUtxos ?? null,
     lastPayoutAt: tel.lastPayoutAt ?? null,
     startedAt: tel.startedAt ?? null,
@@ -153,6 +156,7 @@ h1{font-size:18px;margin:0;letter-spacing:-.01em}
 .pill.RUNNING{background:#10331d;color:var(--good);border:1px solid #1c5c34}
 .pill.TRIPPED{background:#3a1416;color:var(--bad);border:1px solid #7a2327}
 .pill.STALE{background:#2a1e08;color:var(--warn);border:1px solid #6b4e12}
+.pill.DEGRADED{background:#2a1e08;color:var(--near);border:1px solid #6b4e12}
 .pill.UNKNOWN{background:#1b222c;color:var(--mut);border:1px solid var(--line)}
 .upd{color:var(--faint);font-size:12px;margin-left:auto}
 h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:22px 0 8px;font-weight:700}
@@ -177,6 +181,7 @@ footer{color:var(--faint);font-size:12px;margin-top:26px;border-top:1px solid va
 </style></head><body><div class="wrap">
 <header><h1>Olesia Faucet · Ops Dashboard</h1><span id="state" class="pill RUNNING">—</span><span id="upd" class="upd">connecting…</span></header>
 <div id="triprow"></div>
+<h2>Claim ledger (RT-2)</h2><div class="card" id="ledger"></div>
 <h2>Breaker metrics — rolling 60s vs limit</h2><div id="metrics" class="grid g2"></div>
 <h2>Faucet liquidity</h2><div id="liq" class="grid g3"></div>
 <h2>Bitcoin node (mainnet, own)</h2><div class="card" id="node"></div>
@@ -211,6 +216,17 @@ async function tick(){
   if(d.status==='TRIPPED'&&d.breaker.trip){const t=d.breaker.trip;tr.append(el('div',{class:'card',style:'border-color:#7a2327'},el('b',{text:'TRIPPED — breaker: '}),el('span',{text:t.metric+' = '+num(t.value)+(t.threshold!=null?' (> '+num(t.threshold)+')':'')})));}
   else if(d.status==='UNKNOWN'){tr.append(el('div',{class:'card',style:'border-color:var(--line)'},el('b',{text:'UNKNOWN — '}),el('span',{text:'faucet telemetry is missing or unreadable; breaker state cannot be confirmed.'})));}
   else if(d.status==='STALE'){tr.append(el('div',{class:'card',style:'border-color:#6b4e12'},el('b',{text:'STALE — '}),el('span',{text:'telemetry is '+age(d.telemetryAgeMs)+' old; the faucet may be down. State shown is last-known, not live.'})));}
+  else if(d.status==='DEGRADED'){tr.append(el('div',{class:'card',style:'border-color:#6b4e12'},el('b',{text:'DEGRADED — '}),el('span',{text:'claim ledger unavailable ('+((d.ledger&&d.ledger.error)||'unknown')+'); payouts are PAUSED (fail-closed).'})));}
+  // claim ledger panel (RT-2)
+  (function(){const L=d.ledger||{};const c=L.counts||{};const n=$('#ledger');n.textContent='';
+    const kv=(l,v,cls)=>el('div',{class:'kv'},el('span',{class:'lbl',text:l}),el('b',{class:cls||'',text:v}));
+    n.append(el('div',null,el('span',{class:'dot '+(L.healthy?'ok':'stale')}),el('b',{text:'ledger '+(L.healthy?'healthy':'UNAVAILABLE')+(d.recoveryHealthy?' · recovery worker up':' · recovery worker DOWN')})));
+    const g=el('div',{class:'grid g3',style:'margin-top:8px'});
+    ['AUTHORISED','SIGNED','BROADCASTING','SEEN','CONFIRMED','UNCERTAIN','CONFLICTED','FAILED_SAFE'].forEach(s=>g.append(kv(s,num(c[s]||0),(s==='UNCERTAIN'&&c[s])?'':((s==='CONFLICTED'||s==='FAILED_SAFE')&&c[s]?'':''))));
+    n.append(g);
+    if((c.UNCERTAIN||0)>0)n.append(el('div',{class:'kv'},el('span',{class:'tag bad',text:c.UNCERTAIN+' UNCERTAIN — reconciling'}),el('span',{class:'lbl',text:'oldest non-terminal '+age(L.oldestNonTerminalAgeMs)})));
+    if((c.CONFLICTED||0)>0||(c.FAILED_SAFE||0)>0)n.append(el('div',{style:'margin-top:6px'},el('span',{class:'tag bad',text:(c.CONFLICTED||0)+' CONFLICTED · '+(c.FAILED_SAFE||0)+' FAILED_SAFE — manual review'})));
+  })();
   fill($('#metrics'),(()=>{const g=document.createDocumentFragment();d.breaker.metrics.forEach(m=>g.append(metricCard(m)));return g;})());
   // liquidity
   const liq=document.createDocumentFragment();

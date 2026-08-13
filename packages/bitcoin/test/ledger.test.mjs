@@ -55,5 +55,18 @@ ok('claims survive reopen (durable)', led.get('c1').state === S.CONFIRMED && led
 ok('entitlement still enforced after reopen', led.createAuthorised({ claimId: 'x', network: 'testnet4', address: 'tb1qaaa', canon: 'aa', claimDay: DAY, amountSat: 100000, reserveOutpoints: [] }).created === false);
 led.close();
 
+// day boundary (§28): claim_day is UTC YYYY-MM-DD; 23:59:59Z and 00:00:00Z are different days
+{
+  const l2 = new ClaimLedger(join(dir, 'day.db'));
+  const d1 = claimDayUTC(Date.UTC(2026, 7, 13, 23, 59, 59));
+  const d2 = claimDayUTC(Date.UTC(2026, 7, 14, 0, 0, 0));
+  ok('day boundary: 23:59:59Z and 00:00:00Z are DIFFERENT UTC days', d1 === '2026-08-13' && d2 === '2026-08-14' && d1 !== d2);
+  const a = l2.createAuthorised({ claimId: 'd1', network: 'testnet4', address: 'tb1qz', canon: 'zz', claimDay: d1, amountSat: 100000, reserveOutpoints: [] });
+  const b = l2.createAuthorised({ claimId: 'd2', network: 'testnet4', address: 'tb1qz', canon: 'zz', claimDay: d2, amountSat: 100000, reserveOutpoints: [] });
+  const c = l2.createAuthorised({ claimId: 'd1b', network: 'testnet4', address: 'tb1qz', canon: 'zz', claimDay: d1, amountSat: 100000, reserveOutpoints: [] });
+  ok('same address, adjacent UTC days -> two entitlements; same day -> one', a.created && b.created && !c.created);
+  l2.close();
+}
+
 console.log(bad ? '\nLEDGER TEST FAILED' : '\nLEDGER TEST PASS — durable, idempotent, reservation-safe, transition-controlled');
 process.exit(bad ? 1 : 0);

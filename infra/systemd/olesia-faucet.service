@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=faucet
-ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/packages/bitcoin/faucet/server.mjs
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node --experimental-sqlite /home/faucet/BTC_Wallet/packages/bitcoin/faucet/server.mjs
 # `systemctl reload` sends SIGHUP -> the process re-reads the breaker latch, so an
 # admin `node faucet/breaker.mjs reset` is applied without a full restart.
 ExecReload=/bin/kill -HUP $MAINPID

@@ -59,6 +59,10 @@ ok('warn: zero limit → normal (no divide-by-zero)', warningLevel(5, 0) === 'no
   ok('RT-3: fresh + tripped -> TRIPPED', dashboardStatus({ readable: true, ageMs: 1000, tripped: true }, S) === 'TRIPPED');
   ok('RT-3: fresh + not tripped -> RUNNING', dashboardStatus({ readable: true, ageMs: 1000, tripped: false }, S) === 'RUNNING');
   ok('RT-3: a down faucet (stale) never reads RUNNING', dashboardStatus({ readable: true, ageMs: 3600000, tripped: false }, S) !== 'RUNNING');
+  // RT-2: an unhealthy claim ledger must never read RUNNING
+  ok('RT-2: ledger unhealthy -> DEGRADED (not RUNNING)', dashboardStatus({ readable: true, ageMs: 1000, tripped: false, ledgerHealthy: false }, S) === 'DEGRADED');
+  ok('RT-2: ledger healthy + fresh + untripped -> RUNNING', dashboardStatus({ readable: true, ageMs: 1000, tripped: false, ledgerHealthy: true }, S) === 'RUNNING');
+  ok('RT-2: tripped outranks ledger state', dashboardStatus({ readable: true, ageMs: 1000, tripped: true, ledgerHealthy: false }, S) === 'TRIPPED');
 }
 
 // ── heartbeat staleness ──
@@ -105,6 +109,7 @@ await new Promise((resolve) => {
       networks: ['testnet4'], balances: { testnet4: { balanceSat: 1, confirmedUtxos: 1, bankCoins: 1, unconfirmedUtxos: 0 } },
       recentPayouts: [{ at: Date.now(), network: 'testnet4', address: evil, sats: 100000, state: 'ok' }],
       recentRejects: [{ at: Date.now(), kind: evil }], trips: [], node: { ok: false, error: evil },
+      ledger: { healthy: true, error: null, counts: { AUTHORISED: 0, SIGNED: 0, BROADCASTING: 0, SEEN: 2, CONFIRMED: 5, UNCERTAIN: 1, CONFLICTED: 0, FAILED_SAFE: 0 }, oldestNonTerminalAgeMs: 5000 }, recoveryHealthy: true,
       beats: { faucet: { label: 'Faucet', present: true, ageMs: 1000, stale: false } },
     };
     const dom = new JSDOM(PAGE('testnonce'), {
