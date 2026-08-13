@@ -2,7 +2,7 @@
 // transaction bytes (decodeRawTx), and broadcastRaw must refuse to report a
 // different txid than the bytes it sent.
 import { buildSignedTx } from '../src/tx.js';
-import { decodeRawTx, broadcastRaw } from '../src/send.js';
+import { decodeRawTx, broadcastRaw, assertBroadcastTxid } from '../src/send.js';
 import { deriveKey } from '../src/wallet.js';
 
 let bad = false;
@@ -38,6 +38,20 @@ globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => built
 const res = await broadcastRaw({ hex: built.txHex, network: 'testnet4' });
 ok('broadcastRaw returns the verified txid on match', res.txid === built.txid);
 globalThis.fetch = realFetch;
+
+// ── RT-5: the faucet/send paths must reject an explorer-returned txid that does
+// not match the locally-built txid (never trust the explorer's reported txid) ──
+{
+  const built = 'aa'.repeat(32);
+  ok('RT-5: matching txid is accepted', assertBroadcastTxid(built, built) === built);
+  ok('RT-5: empty/echo-less response falls back to the built txid', assertBroadcastTxid(built, '') === built && assertBroadcastTxid(built, null) === built);
+  let threw = false;
+  try { assertBroadcastTxid(built, 'bb'.repeat(32)); } catch { threw = true; }
+  ok('RT-5: a DIFFERENT explorer txid is REJECTED (throws)', threw);
+  let threw2 = false;
+  try { assertBroadcastTxid(built, '<script>evil</script>'); } catch { threw2 = true; }
+  ok('RT-5: a garbage/hostile explorer txid is rejected', threw2);
+}
 
 console.log(bad ? '\nFREEZE TEST FAILED' : '\nFREEZE TEST PASS — display decodes the bytes; broadcast verifies the txid');
 process.exit(bad ? 1 : 0);

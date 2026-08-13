@@ -59,6 +59,16 @@ async function spendableUtxos(w, network, allowUnconfirmed) {
   return attachPrevTxs(s, network, w);
 }
 
+// RT-5: never trust an explorer's returned txid. A SegWit transaction's txid is
+// deterministic from its signed bytes, so if the network reports a different txid
+// than the one we built, abort rather than misreport what was actually broadcast.
+// (This is the same guarantee broadcastRaw already gives the wallet's freeze flow.)
+export function assertBroadcastTxid(builtTxid, returnedTxid) {
+  const got = String(returnedTxid == null ? '' : returnedTxid).trim();
+  if (got && got !== builtTxid) throw new Error(`broadcast txid mismatch — built ${builtTxid}, network reported ${got}`);
+  return got || builtTxid;
+}
+
 export async function prepareAndSend(opts) {
   const { source, mnemonic, network, scriptType = 'p2wpkh', recipients = [], message = null, index = 0, passphrase = '' } = opts;
   const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
@@ -72,7 +82,7 @@ export async function prepareAndSend(opts) {
     : await spendableUtxos(w, network, opts.allowUnconfirmed);
   const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
   const built = buildSignedTx({ utxos: spendable, key: w, recipients, message, changeAddress: w.address, feeRate, networkName: network });
-  const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
+  const broadcastTxid = opts.broadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : null;
   return { from: w.address, ...built, feeRate, broadcast: !!opts.broadcast, broadcastTxid,
            explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null };
 }
@@ -84,7 +94,7 @@ export async function prepareSweep(opts) {
   const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
   const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
   const built = buildSweepTx({ utxos: spendable, key: w, toAddress, feeRate, networkName: network, message });
-  const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
+  const broadcastTxid = opts.broadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : null;
   return { from: w.address, to: toAddress, ...built, feeRate, broadcast: !!opts.broadcast, broadcastTxid,
            explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null };
 }
@@ -100,7 +110,7 @@ export async function fundP2PK({ source, network, amount, index = 0, feeRate = 2
   const utxos = (await getUTXOs(src.address, network)).filter((u) => allowUnconfirmed || u.confirmed);
   if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) — no coins to move into P2PK`);
   const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
-  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
   return { txid, vout: 0, index, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
            broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
@@ -144,7 +154,7 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
   if ((await getOutspend(outpoint.txid, outpoint.vout, network))?.spent) throw new Error('this P2PK coin was already spent');
   const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
   const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
-  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
   return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
@@ -232,7 +242,7 @@ export async function prepareSendHD(opts) {
   const built = sweep
     ? buildSweepTxMulti({ keyedUtxos: keyed, toAddress, feeRate, networkName: network, message })
     : buildSignedTxMulti({ keyedUtxos: keyed, recipients, message, changeAddress, feeRate, networkName: network });
-  const txid = opts.broadcast ? await broadcast(built.txHex, network) : built.txid;
+  const txid = opts.broadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
   return { ...built, from: `${scriptType} account (${keyed.length} coin${keyed.length > 1 ? 's' : ''})`, feeRate, changeAddress,
            broadcast: !!opts.broadcast, broadcastTxid: opts.broadcast ? txid : null,
            explorer: opts.broadcast ? net(network).explorer + txid : null };
@@ -299,7 +309,7 @@ export async function sweepWIF({ wif, network, scriptType, toAddress, message = 
     const txids = []; let sent = 0;
     for (const u of utxos) {
       const built = buildSpendP2PK({ utxo: { txid: u.txid, vout: u.vout, value: u.value }, privKey: key.privKey, p2pkScriptBytes: key.spend.script, destScript, message, feeRate });
-      const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+      const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
       txids.push(txid); sent += built.sent;
     }
     return { txid: txids[0], txids, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
@@ -307,7 +317,7 @@ export async function sweepWIF({ wif, network, scriptType, toAddress, message = 
   const withPrev = await attachPrevTxs(utxos, network, key);
   const feeRate = await getFeeRate(network, 6);
   const built = buildSweepTx({ utxos: withPrev, key, toAddress: (toAddress || '').trim(), feeRate, networkName: network, message });
-  const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+  const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
   // txHex returned so the caller can freeze these bytes: confirm, then broadcastRaw
   return { txid, txHex: built.txHex, swept: built.swept, fee: built.fee, feeRate, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
