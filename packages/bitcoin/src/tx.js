@@ -21,6 +21,23 @@ export function assertFeeRate(feeRate) {
   return Math.ceil(f);
 }
 
+// RT-8 — conservative WALLET OUTPUT FLOOR (not a claim about universal network dust: true
+// dust depends on script/output type and relay policy). This wallet simply refuses to build a
+// recipient output below this amount, which is safely at/above every standard output type's
+// dust so the tx is always relayable. Applied identically in both recipient-paying builders.
+export const MIN_OUTPUT_SAT = 546n;
+// Validate ONE recipient amount and return it as BigInt sats. Requires a real JS number that
+// is a positive safe integer at/above the wallet floor. Coercible strings ("20000"), floats,
+// NaN, ±Infinity, zero, negatives and unsafe integers are all rejected — no silent coercion.
+export function assertRecipientAmount(amount) {
+  if (typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount <= 0)
+    throw new Error(`recipient amount must be a positive integer number of satoshis (got ${typeof amount} ${String(amount)})`);
+  const sat = BigInt(amount);
+  if (sat < MIN_OUTPUT_SAT)
+    throw new Error(`recipient amount ${amount} sats is below the wallet minimum output of ${MIN_OUTPUT_SAT} sats`);
+  return sat;
+}
+
 // Reject an address that does not belong to `networkName` with a CLEAR message,
 // before it can ever become a transaction output. A mainnet address on testnet
 // (or vice-versa) is a classic way to burn funds — the network is validated at
@@ -95,9 +112,10 @@ export function buildSignedTxMulti({ keyedUtxos, recipients = [], message = null
   if (!keyedUtxos?.length) throw new Error('no UTXOs to spend');
   const outputs = [];
   for (const r of recipients) {
-    if (!r.address || !(Number(r.amount) > 0)) throw new Error('recipient needs {address, amount>0}');
+    if (!r.address) throw new Error('recipient needs {address, amount}');
+    const amount = assertRecipientAmount(r.amount);          // RT-8: strict integer sats >= floor
     assertAddressNetwork(r.address, networkName);
-    outputs.push({ address: r.address, amount: BigInt(r.amount) });
+    outputs.push({ address: r.address, amount });
   }
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
   if (!outputs.length) throw new Error('nothing to send');
@@ -147,9 +165,10 @@ export function buildSignedTx({ utxos, key, recipients = [], message = null,
 
   const outputs = [];
   for (const r of recipients) {
-    if (!r.address || !(Number(r.amount) > 0)) throw new Error('recipient needs {address, amount>0}');
+    if (!r.address) throw new Error('recipient needs {address, amount}');
+    const amount = assertRecipientAmount(r.amount);          // RT-8: strict integer sats >= floor
     assertAddressNetwork(r.address, networkName);
-    outputs.push({ address: r.address, amount: BigInt(r.amount) });
+    outputs.push({ address: r.address, amount });
   }
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
   if (outputs.length === 0) throw new Error('nothing to send: no recipients and no message');
