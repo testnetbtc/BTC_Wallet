@@ -42,15 +42,16 @@ function makeNotified() {
 const ADDR = 'tb1qwatched';
 const IN = (txid) => ({ txid, address: ADDR, direction: 'in' });
 const idxFor = (a) => (a === ADDR ? [{ id: 1, chat_id: 99, params: JSON.stringify({ address: ADDR, network: 'testnet4' }) }] : []);
-function harness(minConf = 2, store = memoryStore(), notified = makeNotified(), chain = makeChain()) {
+function harness(minConf = 2, store = memoryStore(), notified = makeNotified(), chain = makeChain(), opts = {}) {
   const tracker = new ChainTracker(store, { minConf });
-  const fired = [], reorgOut = [];
+  const fired = [], reorgOut = [], degraded = [];
   const pass = (tr = tracker) => scanAddressesOnce({
     tip: chain.tip(), getBlockHash: chain.getBlockHash, scanBlock: chain.scanBlock,
     tracker: tr, notified, watched: new Set([ADDR]), idxFor,
     emit: (s, hit, h) => fired.push({ txid: hit.txid, h }), emitReorgOut: (o) => reorgOut.push(o),
+    emitDegraded: () => degraded.push(true), stillPresent: opts.stillPresent,
   });
-  return { chain, tracker, store, notified, fired, reorgOut, pass };
+  return { chain, tracker, store, notified, fired, reorgOut, degraded, pass };
 }
 const txids = (arr) => arr.map((f) => f.txid).join(',');
 
@@ -143,5 +144,77 @@ const txids = (arr) => arr.map((f) => f.txid).join(',');
   ok('restart: fresh tracker over persisted store handles the reorg and notifies z', H.fired.some((f) => f.txid === 'z'));
 }
 
-console.log(bad ? '\nRT-10 REORG TEST FAILED' : '\nRT-10 REORG TEST PASS — depth-gated, reorg-aware, deterministic, no stale/duplicate alerts');
+// ── INVARIANT 1: deep reorg beyond the retained window fails safe (no guess, degraded) ──
+{
+  const H = harness(2, memoryStore(), makeNotified(), makeChain());
+  H.chain.push('g0'); await H.pass();
+  H.chain.push('a1'); await H.pass();
+  H.chain.push('a2'); await H.pass();
+  H.chain.push('a3'); await H.pass();                    // recorded h0..h2, all on branch "a"
+  const beforeFired = H.fired.length;
+  // replace EVERY tracked block (from height0) with a totally different branch -> no common
+  // ancestor anywhere in the window.
+  H.chain.reorg(0, [{ hash: 'z0' }, { hash: 'z1' }, { hash: 'z2', txs: [IN('deep')] }, { hash: 'z3' }]);
+  const r = await H.pass();
+  ok('INV1: deep reorg (no ancestor in window) -> flagged deepReorg/degraded', r.deepReorg === true && r.degraded === true);
+  ok('INV1: deep reorg raises a visible degraded signal', H.degraded.length === 1);
+  ok('INV1: deep reorg does NOT guess a fork / notify / reorg-out', H.fired.length === beforeFired && H.reorgOut.length === 0 && r.scanned.length === 0);
+  ok('INV1: tracker re-baselined forward to the safe tip (known-safe checkpoint)', H.tracker.lastScanned === H.chain.tip() - 1);
+  // next pass resumes normally forward from the re-baseline (not degraded)
+  H.chain.push('z4'); const r2 = await H.pass();
+  ok('INV1: recovers to normal (not degraded) after re-baseline', r2.degraded === false && r2.deepReorg === false);
+}
+
+// ── INVARIANT 2: idempotency survives restart (durable notified store -> no re-alert) ──
+{
+  const store = memoryStore(), notified = makeNotified(), chain = makeChain();
+  const H = harness(2, store, notified, chain);
+  chain.push('g0'); await H.pass();
+  chain.push('b1', [IN('keep')]); await H.pass();
+  chain.push('b2'); await H.pass();                      // "keep" notified once
+  ok('INV2: notified once before restart', H.fired.filter((f) => f.txid === 'keep').length === 1);
+  // "restart": brand-new tracker AND re-run the SAME passes over the SAME (durable) notified
+  // store + chain. A durable notified store must prevent re-alerting.
+  const fired2 = [];
+  const rerun = (tr) => scanAddressesOnce({
+    tip: chain.tip(), getBlockHash: chain.getBlockHash, scanBlock: chain.scanBlock,
+    tracker: tr, notified, watched: new Set([ADDR]), idxFor,
+    emit: (s, hit, h) => fired2.push(hit.txid), emitReorgOut: () => {},
+  });
+  await rerun(new ChainTracker(memoryStore(), { minConf: 2 }));   // fresh tracker, scans from scratch
+  ok('INV2: after restart, already-notified tx is NOT re-sent', !fired2.includes('keep'));
+}
+
+// ── INVARIANT 3a: a tx seen only at 0/1 conf (never notified) yields NO reorg-out ──
+{
+  const H = harness(2);
+  H.chain.push('g0'); await H.pass();
+  H.chain.push('b1', [IN('subthresh')]); await H.pass(); // subthresh at tip (0 conf) -> never notified
+  ok('INV3a: sub-threshold tx not notified', H.fired.length === 0);
+  H.chain.reorg(1, [{ hash: 'r1' }, { hash: 'r2' }]);    // reorg it away before it ever buried
+  await H.pass();
+  ok('INV3a: reorged-out sub-threshold tx produces NO confusing reorg-out', H.reorgOut.length === 0 && H.fired.length === 0);
+}
+
+// ── INVARIANT 3b: immediate reappearance (still in mempool) -> NO false reorg-out ──
+{
+  const mempool = new Set(['mtx']);
+  const H = harness(2, memoryStore(), makeNotified(), makeChain(), { stillPresent: async (txid) => mempool.has(txid) });
+  H.chain.push('g0'); await H.pass();
+  H.chain.push('b1', [IN('mtx')]); await H.pass();
+  H.chain.push('b2'); await H.pass();                    // mtx notified at depth 2
+  ok('INV3b: notified once', H.fired.filter((f) => f.txid === 'mtx').length === 1);
+  // reorg the block away, but the tx is back in the mempool (stillPresent=true)
+  H.chain.reorg(1, [{ hash: 'q1' }, { hash: 'q2' }, { hash: 'q3' }]);
+  await H.pass();
+  ok('INV3b: tx still in mempool -> deferred, NO false reorg-out', H.reorgOut.length === 0);
+  // it then re-mines and buries on the canonical branch -> no duplicate alert either
+  mempool.delete('mtx');
+  H.chain.reorg(2, [{ hash: 'q2b', txs: [IN('mtx')] }, { hash: 'q3b' }, { hash: 'q4b' }]);
+  await H.pass();
+  ok('INV3b: re-mined tx does not double-notify', H.fired.filter((f) => f.txid === 'mtx').length === 1);
+  ok('INV3b: and still no spurious reorg-out', H.reorgOut.length === 0);
+}
+
+console.log(bad ? '\nRT-10 REORG TEST FAILED' : '\nRT-10 REORG TEST PASS — depth-gated, reorg-aware, deep-reorg-fail-safe, restart-idempotent, no stale/duplicate alerts');
 process.exit(bad ? 1 : 0);

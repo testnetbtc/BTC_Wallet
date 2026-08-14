@@ -6,14 +6,19 @@
 // reorg, notifications derived from orphaned blocks are dropped; those that do NOT reappear on
 // the canonical branch are surfaced as an explicit "reorged out" event, never silently wrong.
 export async function scanAddressesOnce(deps) {
-  const { tip, getBlockHash, scanBlock, tracker, notified, idxFor, watched, emit, emitReorgOut } = deps;
+  const { tip, getBlockHash, scanBlock, tracker, notified, idxFor, watched, emit, emitReorgOut, emitDegraded, stillPresent } = deps;
   const plan = await tracker.plan(tip, getBlockHash);
-  const result = { reorg: plan.reorg, orphanedHeights: plan.orphanedHeights || [], scanned: [], notified: [], reorgOut: [] };
+  const result = { reorg: plan.reorg, deepReorg: !!plan.deepReorg, degraded: !!plan.deepReorg, orphanedHeights: plan.orphanedHeights || [], scanned: [], notified: [], reorgOut: [] };
+
+  // INVARIANT 1: a deep reorg beyond the retained window is fail-safe — no scanning, no
+  // notifications, no reorg-outs. Surface a visible degraded state and let the tracker's
+  // known-safe re-baseline take over on the next pass.
+  if (plan.deepReorg) { if (emitDegraded) emitDegraded(); return result; }
 
   // Reorg: note which notifications came from orphaned blocks. We do NOT remove them yet —
   // keeping them lets the idempotency check below suppress a duplicate if the SAME tx
-  // reappears on the replacement branch. Only those that do NOT reappear are removed and
-  // surfaced as explicit reorg-outs after the rescan.
+  // reappears on the replacement branch. Only those that do NOT reappear (and are not still
+  // present in mempool / an unburied block) are removed and surfaced as explicit reorg-outs.
   const orphaned = (plan.reorg && plan.orphanedHeights.length) ? notified.byHeights(plan.orphanedHeights) : [];
 
   const reSeen = new Set();
@@ -35,9 +40,15 @@ export async function scanAddressesOnce(deps) {
     }
   }
 
+  // INVARIANT 3: only reorg-out something the user was actually told about (orphaned already
+  // comes from `notified`, i.e. things emitted at >= minConf), and only once its disappearance
+  // is established after the replacement-branch rescan. Suppress the false "reorged out then
+  // normal alert" sequence: if the tx reappeared in a buried block (reSeen) OR is still present
+  // in mempool / an unburied tip block (stillPresent), defer instead of alerting.
   for (const o of orphaned) {
-    if (reSeen.has(`${o.subId}|${o.txid}|${o.dir}`)) continue;           // reappeared on the new branch -> keep, no reorg-out
-    notified.remove(o.subId, o.txid, o.dir);                            // truly orphaned -> drop + explicit notice
+    if (reSeen.has(`${o.subId}|${o.txid}|${o.dir}`)) continue;           // reappeared in a buried block -> keep
+    if (stillPresent && await stillPresent(o.txid)) continue;           // in mempool / unburied -> defer, no false reorg-out
+    notified.remove(o.subId, o.txid, o.dir);                            // truly gone -> drop + explicit notice
     result.reorgOut.push(o);
     if (emitReorgOut) emitReorgOut(o);
   }

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { net } from '../src/networks.js';
-import { tipHeight, fastestFee, scanBlock, getBlockHash, btcUsd, NODE_NETWORK, INTAKE } from './node.mjs';
+import { tipHeight, fastestFee, scanBlock, getBlockHash, txInMempool, blockContainsTx, btcUsd, NODE_NETWORK, INTAKE } from './node.mjs';
 import { ChainTracker } from './chaintracker.mjs';
 import { scanAddressesOnce } from './addrwatch.mjs';
 import { classifyInput, xpubAddresses, XPUB_GAP } from './lib.mjs';
@@ -499,6 +499,8 @@ const notifiedStore = {
   byHeights: (heights) => heights.flatMap((h) => q.anByHeights.all(h).map((r) => ({ subId: r.sub_id, txid: r.txid, dir: r.direction, height: r.height }))),
 };
 const tracker = new ChainTracker(trackerStore, { minConf: MIN_NOTIFY_CONFIRMATIONS });
+// RT-10 invariant 1: a deep-reorg fail-safe is a VISIBLE degraded state (surfaced on the heartbeat).
+let notifyDegradedSince = null;
 
 async function watchAddresses() {
   const subs = q.activeByType.all('addr');
@@ -531,9 +533,18 @@ async function watchAddresses() {
     dispatch(sub.chat_id, `♻️ <b>Chain reorg</b> — an earlier alert for <a href="${url}">${o.txid.slice(0, 16)}…</a> `
       + `was rolled back off the canonical chain and has NOT reappeared. Treat that confirmation as reversed.`);
   };
+  const emitDegraded = () => { notifyDegradedSince = notifyDegradedSince || Date.now(); log('⚠ DEEP REORG beyond the tracked window — address scanning re-baselined (fail-safe); some recent alerts may be affected.'); };
+  // INVARIANT 3: a tx is "still present" (so NOT reorged out) if it is back in the mempool or
+  // re-mined into an as-yet-unburied tip block. Checked before any explicit reorg-out.
+  const stillPresent = async (txid) => {
+    if (await txInMempool(txid)) return true;
+    for (let h = tip; h > tip - MIN_NOTIFY_CONFIRMATIONS && h >= 0; h--) { if (await blockContainsTx(h, txid)) return true; }
+    return false;
+  };
 
   try {
-    await scanAddressesOnce({ tip, getBlockHash, scanBlock, tracker, notified: notifiedStore, watched, idxFor: (a) => idx.get(a) || [], emit, emitReorgOut });
+    const r = await scanAddressesOnce({ tip, getBlockHash, scanBlock, tracker, notified: notifiedStore, watched, idxFor: (a) => idx.get(a) || [], emit, emitReorgOut, emitDegraded, stillPresent });
+    if (!r.degraded) notifyDegradedSince = null;   // cleared once a normal pass completes
   } catch (e) { log('watchAddresses', e.message); }
 }
 
@@ -609,7 +620,7 @@ async function runWatchers() {
   }
 }
 
-const beat = () => { try { writeFileSync(HEARTBEAT, JSON.stringify({ t: Date.now(), bot: BOT_USERNAME })); } catch {} };
+const beat = () => { try { writeFileSync(HEARTBEAT, JSON.stringify({ t: Date.now(), bot: BOT_USERNAME, reorgDegradedSince: notifyDegradedSince })); } catch {} };
 
 log(`olesia-notify starting as @${BOT_USERNAME}`);
 tg('setMyCommands', { commands: [

@@ -68,6 +68,17 @@ export async function scanBlock(height, watched) {
 }
 // RT-10: canonical hash of a height (reorg detection). Throws if the height is unknown.
 export const getBlockHash = (height) => rpc('getblockhash', [height]);
+// RT-10: is this txid still in our node's mempool? Used to avoid a false "reorged out" when a
+// reorged tx has simply returned to the mempool.
+export async function txInMempool(txid) {
+  try { await rpc('getmempoolentry', [txid]); return true; } catch { return false; }
+}
+// RT-10: does the block at `height` contain `txid`? Used to check the unburied tip region for a
+// tx that immediately re-mined at < minConf depth before declaring it reorged out.
+export async function blockContainsTx(height, txid) {
+  try { const hash = await rpc('getblockhash', [height]); const blk = await rpc('getblock', [hash, 1]); return (blk.tx || []).includes(txid); }
+  catch { return false; }
+}
 
 // --- price: the ONE off-chain feed. A node cannot know fiat price. ------
 // Sourced directly from an exchange ticker (Kraken), not a block explorer.

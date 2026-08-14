@@ -32,32 +32,45 @@ export class ChainTracker {
     this.lastScanned = hs.length ? hs[hs.length - 1] : null;
   }
 
-  // Highest tracked height whose stored hash still matches the node. Everything above it is
-  // orphaned. If every tracked height diverges, the fork is below the lowest tracked height.
+  // Highest tracked height whose stored hash still matches the node (the common ancestor).
+  // ancestorFound=false means the fork is BELOW our retained window — a deep reorg we cannot
+  // locate, which the caller must treat as fail-safe rather than guessing a fork point.
   async _detectReorg(getBlockHash) {
     const hs = this.store.heights();          // ascending
-    if (!hs.length) return { reorg: false, forkHeight: this.lastScanned };
+    if (!hs.length) return { reorg: false, forkHeight: this.lastScanned, ancestorFound: true };
     let reorg = false;
     for (let i = hs.length - 1; i >= 0; i--) {
       const h = hs[i];
       let nodeHash = null;
       try { nodeHash = await getBlockHash(h); } catch { nodeHash = null; }
-      if (nodeHash && nodeHash === this.store.get(h)) return { reorg, forkHeight: h };
+      if (nodeHash && nodeHash === this.store.get(h)) return { reorg, forkHeight: h, ancestorFound: true };
       reorg = true;                            // this height no longer on the canonical chain
     }
-    return { reorg, forkHeight: hs[0] - 1 };    // deep reorg: rescan from below our window
+    return { reorg: true, forkHeight: hs[0] - 1, ancestorFound: false };  // no ancestor in window
   }
 
-  // Plan the next scan. Returns { scanFrom, scanTo, reorg, orphanedHeights }. `scanTo`
-  // respects confirmation depth (only blocks buried >= minConf are eligible). On a reorg the
-  // orphaned heights are removed from the store and lastScanned rolls back to the fork.
+  // Plan the next scan. Returns { scanFrom, scanTo, reorg, orphanedHeights, deepReorg }.
+  // `scanTo` respects confirmation depth (only blocks buried >= minConf are eligible). On a
+  // shallow reorg the orphaned heights are removed and lastScanned rolls back to the fork.
+  //
+  // INVARIANT 1 (deep reorg fail-safe): if the common ancestor is NOT within the retained
+  // window we do NOT guess a fork or continue monotonically. We drop the stale window,
+  // re-baseline forward to the safe tip (a known-safe checkpoint — notify nothing historical),
+  // and raise `deepReorg`/`degraded` so the caller surfaces a visible degraded state.
   async plan(tip, getBlockHash) {
     const safeTip = tip - (this.minConf - 1);
+    this.degraded = false;
     if (this.lastScanned == null) {            // first run: adopt the safe tip, no history
       this.lastScanned = Math.max(-1, safeTip);
-      return { scanFrom: null, scanTo: null, reorg: false, orphanedHeights: [] };
+      return { scanFrom: null, scanTo: null, reorg: false, orphanedHeights: [], deepReorg: false };
     }
-    const { reorg, forkHeight } = await this._detectReorg(getBlockHash);
+    const { reorg, forkHeight, ancestorFound } = await this._detectReorg(getBlockHash);
+    if (reorg && !ancestorFound) {
+      for (const h of this.store.heights()) this.store.delete(h);   // drop the un-reconcilable window
+      this.lastScanned = Math.max(-1, safeTip);                     // known-safe re-baseline
+      this.degraded = true;
+      return { scanFrom: null, scanTo: null, reorg: true, orphanedHeights: [], deepReorg: true };
+    }
     let orphanedHeights = [];
     if (reorg) {
       orphanedHeights = this.store.heights().filter((h) => h > forkHeight);
@@ -66,8 +79,8 @@ export class ChainTracker {
     }
     const scanFrom = this.lastScanned + 1;
     const scanTo = safeTip;
-    if (scanTo < scanFrom) return { scanFrom: null, scanTo: null, reorg, orphanedHeights };
-    return { scanFrom, scanTo, reorg, orphanedHeights };
+    if (scanTo < scanFrom) return { scanFrom: null, scanTo: null, reorg, orphanedHeights, deepReorg: false };
+    return { scanFrom, scanTo, reorg, orphanedHeights, deepReorg: false };
   }
 
   // Record a block as scanned: store its hash, advance lastScanned, prune the window.
