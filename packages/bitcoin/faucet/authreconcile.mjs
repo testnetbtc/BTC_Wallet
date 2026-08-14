@@ -73,27 +73,30 @@ export function applyAuthoritative(ledger, claimId, facts, { minRetireConf = DEF
   // while the old tx's fate is unresolved. Resolution happens ONLY from authoritative current
   // state; never a replacement payout.
   if (claim.state === S.CONFIRMED) {
-    const quarantined = ledger.hasQuarantine(claimId);
-    if (!quarantined) {
+    // NODE-2B: a retired CONFIRMED claim ALREADY holds a durable 'retired-confirmed' guard on
+    // its outpoints (created atomically at retirement), so X was never selectable in the gap.
+    const gReason = ledger.guardReason(claimId);
+    if (gReason !== 'reorg-after-confirm') {
       if (isReorgAfterConfirm(facts)) {
-        const reserved = JSON.parse(claim.reserved_outpoints || '[]');    // recovered from the claim's audit state
+        if (gReason) ledger.setGuardReason(claimId, 'reorg-after-confirm');            // flip the existing guard
+        else ledger.quarantineOutpoints(claimId, JSON.parse(claim.reserved_outpoints || '[]'), 'reorg-after-confirm');  // legacy: pre-guard claim -> create
         ledger.flagReview(claimId, 'reorg-after-confirm', 'authoritative node no longer shows this tx confirmed');
-        ledger.quarantineOutpoints(claimId, reserved, 'reorg-after-confirm');   // durable re-lock (survives restart)
-        return { action: 'reorg-quarantine', quarantined: reserved.length };
+        return { action: 'reorg-quarantine' };
       }
       return { action: 'noop-terminal' };
     }
-    // Already quarantined: resolve ONLY from authoritative current chain/UTXO state, else HOLD.
+    // Already in reorg-hold: resolve ONLY from authoritative current state; the guard is RETAINED
+    // (conservative — a guard row is tiny and X is spent, so keeping it is free and reorg-safe).
     if (!facts || !facts.authoritative) return { action: 'quarantine-held-unauthoritative' };
     if (facts.confirmations != null && facts.confirmations >= minRetireConf) {
-      ledger.releaseQuarantine(claimId);                                  // TX-A reconfirmed -> input consumed by us -> safe
+      ledger.setGuardReason(claimId, 'retired-confirmed');               // TX-A reconfirmed -> back to a normal retirement guard
       ledger.flagReview(claimId, 'reorg-resolved-reconfirmed', 'authoritative reconfirmation');
       return { action: 'quarantine-resolved-reconfirmed' };
     }
     if (facts.differentConfirmedSpender) {
-      ledger.releaseQuarantine(claimId);                                  // X definitively spent by another -> gone from UTXO set
+      ledger.setGuardReason(claimId, 'reorg-resolved-conflicting-spend'); // X definitively spent by another; keep guard, no replacement
       ledger.flagReview(claimId, 'reorg-resolved-conflicting-spend', 'input spent by ' + facts.differentConfirmedSpender);
-      return { action: 'quarantine-resolved-conflict', by: facts.differentConfirmedSpender };   // NO replacement payout
+      return { action: 'quarantine-resolved-conflict', by: facts.differentConfirmedSpender };
     }
     return { action: 'quarantine-held' };                                // mempool / unspent+absent / shallow / unprovable
   }
@@ -103,12 +106,14 @@ export function applyAuthoritative(ledger, claimId, facts, { minRetireConf = DEF
   switch (r.state) {
     case S.CONFIRMED:
       ledger.markConfirmed(claimId, { height: r.height });
-      if (r.retire) ledger.retireReservations(claimId);          // audit linkage kept on the claim
-      return { action: 'confirmed', retired: !!r.retire };
+      // NODE-2B: atomic reservation -> durable guard (never an unguarded window). Audit linkage
+      // (reserved_outpoints + local_txid) stays on the claim.
+      if (r.retire) ledger.retireToGuard(claimId, JSON.parse(claim.reserved_outpoints || '[]'), 'retired-confirmed');
+      return { action: 'confirmed', retired: !!r.retire, guarded: !!r.retire };
     case S.CONFLICTED:
       ledger.markConflicted(claimId, 'authoritative: reserved input spent by ' + r.by);
-      ledger.retireReservations(claimId);                        // outpoint definitively spent
-      if (ledger.flagReview) ledger.flagReview(claimId, 'conflicted-manual-review', 'no automatic replacement');
+      ledger.retireToGuard(claimId, JSON.parse(claim.reserved_outpoints || '[]'), 'conflicted-retired');  // guard, not bare delete
+      ledger.flagReview(claimId, 'conflicted-manual-review', 'no automatic replacement');
       return { action: 'conflicted', retired: true, by: r.by };  // NEVER a replacement payout
     case S.SEEN:
       if (claim.state !== S.SEEN) ledger.markSeen(claimId);

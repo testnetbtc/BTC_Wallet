@@ -66,7 +66,7 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
   {
     const op = OP('b', 1); const { led, id } = newLedgerWithClaim(S.SEEN, [op]);
     const res = applyAuthoritative(led, id, { authoritative: true, confirmations: 2, height: 98, reservedAnySpent: true });
-    ok('apply CONFIRMED(2) -> claim CONFIRMED + reservation retired', led.get(id).state === S.CONFIRMED && res.retired === true && !held(led, op));
+    ok('apply CONFIRMED(2) -> claim CONFIRMED + reservation atomically moved to retired-confirmed guard', led.get(id).state === S.CONFIRMED && res.retired === true && held(led, op) && led.guardReason(id) === 'retired-confirmed');
     ok('apply CONFIRMED keeps audit linkage (reserved_outpoints + local_txid)', JSON.parse(led.get(id).reserved_outpoints).length === 1 && !!led.get(id).local_txid);
     led.close();
   }
@@ -89,7 +89,7 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
     const op = OP('e', 0); const { led, id } = newLedgerWithClaim(S.SEEN, [op]);
     const before = led.counts();
     const res = applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false, reservedAnySpent: true, differentConfirmedSpender: 'ee'.repeat(32) });
-    ok('apply CONFLICTED -> claim CONFLICTED + lock retired + review flag', led.get(id).state === S.CONFLICTED && res.retired === true && !held(led, op) && led.get(id).error_code === 'conflicted-manual-review');
+    ok('apply CONFLICTED -> claim CONFLICTED + lock moved to guard + review flag', led.get(id).state === S.CONFLICTED && res.retired === true && held(led, op) && led.guardReason(id) === 'conflicted-retired' && led.get(id).error_code === 'conflicted-manual-review');
     ok('apply CONFLICTED created NO new claim (no replacement payout)', Object.values(led.counts()).reduce((a, b) => a + b, 0) === Object.values(before).reduce((a, b) => a + b, 0));
     led.close();
   }
@@ -123,10 +123,10 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
   led.markSigned(id, { rawTx: 'aa', localTxid: 'ff'.repeat(32), feeSat: 200, reservedOutpoints: [op] }); led.markBroadcasting(id); led.markSeen(id);
   const facts = { authoritative: true, confirmations: 3, height: 97, reservedAnySpent: true };
   applyAuthoritative(led, id, facts); applyAuthoritative(led, id, facts);   // twice
-  ok('idempotent: two authoritative CONFIRMED applies -> single CONFIRMED, retired once', led.get(id).state === S.CONFIRMED && !held(led, op));
+  ok('idempotent: two authoritative CONFIRMED applies -> single CONFIRMED, guarded once', led.get(id).state === S.CONFIRMED && held(led, op) && led.quarantinedOutpoints().filter((q) => q.claim_id === id).length === 1);
   led.close();
   led = new ClaimLedger(file);
-  ok('restart: CONFIRMED + retirement survive reopen', led.get(id).state === S.CONFIRMED && !held(led, op) && JSON.parse(led.get(id).reserved_outpoints).length === 1);
+  ok('restart: CONFIRMED + guard survive reopen', led.get(id).state === S.CONFIRMED && held(led, op) && led.guardReason(id) === 'retired-confirmed' && JSON.parse(led.get(id).reserved_outpoints).length === 1);
   led.close();
 }
 
@@ -135,7 +135,7 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
   // even if an external explorer would say "seen", an authoritative CONFIRMED(deep) is CONFIRMED
   const op = OP('k', 0); const { led, id } = newLedgerWithClaim(S.SEEN, [op]);
   applyAuthoritative(led, id, { authoritative: true, confirmations: 6, height: 90, reservedAnySpent: true });
-  ok('own-node authoritative CONFIRMED wins -> CONFIRMED + retired', led.get(id).state === S.CONFIRMED && !held(led, op));
+  ok('own-node authoritative CONFIRMED wins -> CONFIRMED + guarded', led.get(id).state === S.CONFIRMED && held(led, op) && led.guardReason(id) === 'retired-confirmed');
   led.close();
 }
 

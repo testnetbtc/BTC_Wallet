@@ -36,7 +36,7 @@ const REORG = { authoritative: true, confirmations: 0, inMempool: false, reserve
   let led = new ClaimLedger(file);
   const X = OP('a', 0);
   const A = confirmedRetired(led, X);                                   // 1-5
-  ok('01-05: Claim A CONFIRMED and X retired (selectable pre-reorg)', led.get(A).state === S.CONFIRMED && canSelect(led, X));
+  ok('01-05: Claim A CONFIRMED, X moved to durable retired-confirmed guard (NOT selectable — no unguarded window)', led.get(A).state === S.CONFIRMED && !canSelect(led, X) && led.guardReason(A) === 'retired-confirmed');
   const claimsBefore = totalClaims(led);
   const res = applyAuthoritative(led, A, REORG);                       // 6-9 authoritative reorg detected
   ok('09: reorg-after-confirm detected -> quarantine action', res.action === 'reorg-quarantine');
@@ -67,7 +67,7 @@ const REORG = { authoritative: true, confirmations: 0, inMempool: false, reserve
   const led = new ClaimLedger(join(dir, 'recon.db')); const X = OP('c', 0); const A = confirmedRetired(led, X);
   applyAuthoritative(led, A, REORG);
   const r = applyAuthoritative(led, A, { authoritative: true, confirmations: 3, height: 90 });
-  ok('reorg then reconfirm -> quarantine RESOLVED + released', r.action === 'quarantine-resolved-reconfirmed' && led.hasQuarantine(A) === false && canSelect(led, X) === true);
+  ok('reorg then reconfirm -> resolved back to retired-confirmed guard (retained, still excluded)', r.action === 'quarantine-resolved-reconfirmed' && led.guardReason(A) === 'retired-confirmed' && !canSelect(led, X));
   ok('reconfirm keeps Claim A CONFIRMED, no replacement', led.get(A).state === S.CONFIRMED);
   led.close();
 }
@@ -77,7 +77,7 @@ const REORG = { authoritative: true, confirmations: 0, inMempool: false, reserve
   applyAuthoritative(led, A, REORG);
   const before = totalClaims(led);
   const r = applyAuthoritative(led, A, { authoritative: true, confirmations: 0, inMempool: false, reservedAnySpent: true, differentConfirmedSpender: 'ee'.repeat(32) });
-  ok('reorg then X spent by different tx -> quarantine retired, review kept', r.action === 'quarantine-resolved-conflict' && led.hasQuarantine(A) === false && led.get(A).error_code === 'reorg-resolved-conflicting-spend');
+  ok('reorg then X spent by different tx -> guard resolved-conflicting-spend (retained), review kept', r.action === 'quarantine-resolved-conflict' && led.guardReason(A) === 'reorg-resolved-conflicting-spend' && led.get(A).error_code === 'reorg-resolved-conflicting-spend');
   ok('conflicting-spend resolution built NO replacement payout', totalClaims(led) === before && led.get(A).state === S.CONFIRMED);
   led.close();
 }

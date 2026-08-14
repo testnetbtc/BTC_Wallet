@@ -278,6 +278,28 @@ export class ClaimLedger {
   releaseQuarantine(claimId) { this.db.prepare('DELETE FROM quarantine WHERE claim_id=?').run(claimId); }
   hasQuarantine(claimId) { return !!this.db.prepare('SELECT 1 FROM quarantine WHERE claim_id=? LIMIT 1').get(claimId); }
   quarantinedOutpoints() { return this.db.prepare('SELECT network, txid, vout, claim_id, reason FROM quarantine').all(); }
+  guardReason(claimId) { const r = this.db.prepare('SELECT reason FROM quarantine WHERE claim_id=? LIMIT 1').get(claimId); return r ? r.reason : null; }
+  setGuardReason(claimId, reason) { this.db.prepare('UPDATE quarantine SET reason=? WHERE claim_id=?').run(String(reason).slice(0, 40), claimId); }
+
+  // NODE-2B: ATOMICALLY move an outpoint from ACTIVE RESERVATION to a durable retirement GUARD.
+  // There is never a committed database state where the outpoint is neither reserved nor guarded:
+  // the guard rows are inserted AND the reservation rows deleted in ONE transaction. On ANY
+  // failure it rolls back, leaving the original reservation intact. Guards live in the same
+  // quarantine table (excluded from coin selection identically); `reason` distinguishes them
+  // (retired-confirmed / conflicted-retired / reorg-after-confirm / reorg-resolved-*).
+  retireToGuard(claimId, outpoints, reason = 'retired-confirmed') {
+    const c = this.get(claimId); const network = c ? c.network : null; const t = this.now();
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      for (const op of (outpoints || [])) {
+        this.db.prepare('INSERT INTO quarantine(network,txid,vout,claim_id,reason,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(network,txid,vout) DO UPDATE SET claim_id=excluded.claim_id, reason=excluded.reason')
+          .run(network, op.txid, op.vout, claimId, String(reason).slice(0, 40), t);
+      }
+      this.db.prepare('DELETE FROM reservations WHERE claim_id=?').run(claimId);
+      this.db.exec('COMMIT');
+      return true;
+    } catch (e) { try { this.db.exec('ROLLBACK'); } catch {} return false; }
+  }
   // Retire a claim's reservations. SAFE ONLY when an AUTHORITATIVE source has proven the
   // reserved outpoint is consumed — CONFIRMED (our exact tx) or CONFLICTED (a different
   // tx). Never call this from external-explorer data or on UNCERTAIN/FAILED_SAFE. The
