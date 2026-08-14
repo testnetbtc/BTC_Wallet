@@ -22,6 +22,7 @@ import { VelocityBreaker } from './breaker.mjs';
 import { ClaimLedger, S, claimDayUTC, TERMINAL } from './ledger.mjs';
 import { processClaim, realChain, realSigner } from './claimflow.mjs';
 import { recoverAll, startRecoveryWorker } from './recovery.mjs';
+import { cookieRpc, makeNodeBroadcaster } from './nodebroadcast.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const secret = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
@@ -51,7 +52,34 @@ const feeRateFor = (n) => DRIP_FEERATE[n] || 2;
 // ── claim ledger (RT-2) — opened at startup; payouts fail closed if unhealthy ──
 let ledger = null, ledgerHealthy = false, worker = null;
 const signer = realSigner(MNEMONIC, feeRateFor);
-const chain = realChain();
+
+// ── NODE-1: own-node broadcast (fail-closed, NO external fallback) ──
+// Only networks listed here broadcast through our OWN Bitcoin Core node; every other network
+// keeps using esplora until its node is wired. This is BROADCAST ONLY — reconciliation
+// (lookup/outspend) stays on esplora as ADVISORY until NODE-2, so `chain.authoritative` is
+// false and reservation retirement stays disabled. There is deliberately no try/catch around
+// the own-node broadcast: if our node is unavailable/wrong-chain/IBD/ambiguous it THROWS and
+// the claim stays UNCERTAIN — it NEVER silently falls back to mempool.space or any explorer.
+const OWN_NODE_BROADCAST = existsSync(join(HERE, '..', '.secrets', 'own-nodes.json'))
+  ? secret('own-nodes.json')
+  : { testnet4: { url: 'http://127.0.0.1:48332/', cookiePath: '/var/lib/bitcoind-testnet4/testnet4/.cookie', chain: 'testnet4' } };
+const nodeBroadcasters = {};
+for (const [nw, cfg] of Object.entries(OWN_NODE_BROADCAST)) {
+  nodeBroadcasters[nw] = makeNodeBroadcaster({ rpc: cookieRpc({ url: cfg.url, cookiePath: cfg.cookiePath }), expectedChain: cfg.chain });
+}
+let ownNodeBroadcasts = 0, esploraBroadcasts = 0;
+const esploraChain = realChain();
+const chain = {
+  authoritative: false,                                       // NODE-1 is broadcast-only; recon stays advisory
+  lookup: (network, txid) => esploraChain.lookup(network, txid),
+  outspend: (network, txid, vout) => esploraChain.outspend(network, txid, vout),
+  async broadcast(network, rawTx, expectedTxid) {
+    const nb = nodeBroadcasters[network];
+    if (nb) { const txid = await nb.broadcast(network, rawTx, expectedTxid); ownNodeBroadcasts++; console.log(`broadcast via OWN ${network} node -> ${txid}`); return txid; }
+    esploraBroadcasts++;
+    return esploraChain.broadcast(network, rawTx);             // networks without an own node yet
+  },
+};
 const depsFor = () => ({ ledger, signer, chain, txidOf: (raw) => decodeRawTx({ hex: raw, network: 'testnet4' }).txid });
 
 // coin selection avoids DURABLY-reserved outpoints (the ledger is the authority);

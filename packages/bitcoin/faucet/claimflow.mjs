@@ -70,7 +70,10 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
     ledger.markBroadcasting(claimId);
     crashAfter('after-broadcasting-persist-before-send');
     let returned;
-    try { returned = await chain.broadcast(c.network, c.raw_tx); }
+    // Pass the authoritative local_txid so an own-node broadcaster can verify testmempoolaccept
+    // and the returned txid against it. The EXACT persisted raw_tx is what is broadcast — the
+    // broadcaster is transport-only and never reconstructs the transaction.
+    try { returned = await chain.broadcast(c.network, c.raw_tx, c.local_txid); }
     catch (e) {
       if (e instanceof CrashInjected) throw e;
       // 'already known / in mempool' == our exact tx is out there -> SEEN.
