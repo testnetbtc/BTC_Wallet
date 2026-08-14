@@ -36,7 +36,7 @@ const ALLOWED = {
 };
 export function transitionAllowed(from, to) { return !!(ALLOWED[from] && ALLOWED[from].has(to)); }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 // States for which a durably-reserved outpoint MUST NOT be returned to ordinary coin
 // selection (RT-2C reservation retention). This deliberately includes UNCERTAIN and
 // FAILED_SAFE: an ambiguous/failed claim may in fact have broadcast successfully, so its
@@ -93,6 +93,20 @@ CREATE TABLE IF NOT EXISTS reservations (
   PRIMARY KEY (network, txid, vout)
 ) STRICT;
 CREATE INDEX IF NOT EXISTS ix_res_claim ON reservations(claim_id);
+-- NODE-2A: durable QUARANTINE for outpoints re-locked after a reorg un-confirmed an already
+-- retired CONFIRMED claim. A quarantined outpoint is unavailable to coin selection (exactly
+-- like a live reservation) but is tracked separately so it survives restart and can be resolved
+-- by authoritative reconciliation. Never released on a timeout / restart / external explorer.
+CREATE TABLE IF NOT EXISTS quarantine (
+  network TEXT NOT NULL,
+  txid TEXT NOT NULL,
+  vout INTEGER NOT NULL,
+  claim_id TEXT NOT NULL,
+  reason TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (network, txid, vout)
+) STRICT;
+CREATE INDEX IF NOT EXISTS ix_quar_claim ON quarantine(claim_id);
 `;
 
 export const claimDayUTC = (ms) => new Date(ms).toISOString().slice(0, 10);   // YYYY-MM-DD UTC
@@ -121,6 +135,11 @@ export class ClaimLedger {
       this.db.exec('DROP INDEX IF EXISTS uq_clientkey');
       this.db.prepare('UPDATE meta SET v=? WHERE k=?').run('2', 'schema_version');
       v = 2;
+    }
+    if (v === 2) {
+      // v2 -> v3 (NODE-2A): the quarantine table is created by SCHEMA (IF NOT EXISTS); just bump.
+      this.db.prepare('UPDATE meta SET v=? WHERE k=?').run('3', 'schema_version');
+      v = 3;
     }
     if (v !== SCHEMA_VERSION) throw new Error(`unexpected schema version ${v} (want ${SCHEMA_VERSION})`);
   }
@@ -241,7 +260,24 @@ export class ClaimLedger {
   // state can silently return a reserved input to ordinary coin selection. That failure
   // sequence (TX-A broadcast, response lost, reservation released, coin reused, TX-B
   // built, TX-A later confirms) is therefore impossible.
-  activeReservations() { return this.db.prepare('SELECT network, txid, vout, claim_id FROM reservations').all(); }
+  // Outpoints UNAVAILABLE to coin selection: every live reservation PLUS every NODE-2A
+  // quarantined outpoint. Both are held; the caller (pickFaucetCoins) excludes all of them.
+  activeReservations() {
+    const res = this.db.prepare('SELECT network, txid, vout, claim_id FROM reservations').all();
+    const quar = this.db.prepare('SELECT network, txid, vout, claim_id FROM quarantine').all();
+    return res.concat(quar);
+  }
+  // NODE-2A quarantine (durable re-lock of reorged-out CONFIRMED outpoints). Idempotent.
+  quarantineOutpoints(claimId, outpoints, reason) {
+    const c = this.get(claimId); const network = c ? c.network : null; const t = this.now();
+    for (const op of (outpoints || [])) {
+      this.db.prepare('INSERT INTO quarantine(network,txid,vout,claim_id,reason,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(network,txid,vout) DO NOTHING')
+        .run(network, op.txid, op.vout, claimId, String(reason || '').slice(0, 80), t);
+    }
+  }
+  releaseQuarantine(claimId) { this.db.prepare('DELETE FROM quarantine WHERE claim_id=?').run(claimId); }
+  hasQuarantine(claimId) { return !!this.db.prepare('SELECT 1 FROM quarantine WHERE claim_id=? LIMIT 1').get(claimId); }
+  quarantinedOutpoints() { return this.db.prepare('SELECT network, txid, vout, claim_id, reason FROM quarantine').all(); }
   // Retire a claim's reservations. SAFE ONLY when an AUTHORITATIVE source has proven the
   // reserved outpoint is consumed — CONFIRMED (our exact tx) or CONFLICTED (a different
   // tx). Never call this from external-explorer data or on UNCERTAIN/FAILED_SAFE. The

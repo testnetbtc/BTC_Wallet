@@ -107,8 +107,8 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
   const op = OP('g', 0); const { led, id } = newLedgerWithClaim(S.CONFIRMED, [op]);
   ok('reorg detector fires when authoritative + not-confirmed + not-mempool', isReorgAfterConfirm({ authoritative: true, confirmations: 0, inMempool: false }) === true);
   const res = applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false });
-  ok('apply on reorged CONFIRMED -> review flag, state STILL CONFIRMED', res.action === 'reorg-review-flag' && led.get(id).state === S.CONFIRMED && led.get(id).error_code === 'reorg-after-confirm');
-  // idempotent + no replacement
+  ok('apply on reorged CONFIRMED -> quarantine + flag, state STILL CONFIRMED', res.action === 'reorg-quarantine' && led.get(id).state === S.CONFIRMED && led.get(id).error_code === 'reorg-after-confirm' && led.hasQuarantine(id));
+  // idempotent + no replacement (still unresolved -> held)
   const before = Object.values(led.counts()).reduce((a, b) => a + b, 0);
   applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false });
   ok('reorg-after-confirm never creates a replacement / extra claim', Object.values(led.counts()).reduce((a, b) => a + b, 0) === before);

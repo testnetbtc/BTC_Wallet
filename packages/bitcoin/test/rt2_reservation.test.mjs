@@ -11,7 +11,7 @@
 //   * the full lost-broadcast-response scenario: TX-A held, coin unusable, recover TX-A,
 //     no TX-B ever built.
 // Plus RT-2B: client idempotency keys are scoped per network, not globally.
-import { ClaimLedger, S, claimDayUTC } from '../faucet/ledger.mjs';
+import { ClaimLedger, S, claimDayUTC, SCHEMA_VERSION } from '../faucet/ledger.mjs';
 import { processClaim, CrashInjected } from '../faucet/claimflow.mjs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -170,7 +170,7 @@ const heldHas = (led, network, op) => held(led, network).has(`${op.txid}:${op.vo
   led = new ClaimLedger(file);                       // reopen -> _migrate runs v1->v2
   const v = Number(led.db.prepare('SELECT v FROM meta WHERE k=?').get('schema_version').v);
   const idx = led.db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((r) => r.name);
-  ok('migration: schema_version advanced to 2', v === 2);
+  ok('migration: schema_version advanced to current (RT-2B v2 step applied en route)', v === SCHEMA_VERSION && v >= 2);
   ok('migration: old GLOBAL uq_clientkey index dropped', !idx.includes('uq_clientkey'));
   ok('migration: network-scoped uq_clientkey_net present', idx.includes('uq_clientkey_net'));
   led.close();

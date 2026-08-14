@@ -68,13 +68,34 @@ export function applyAuthoritative(ledger, claimId, facts, { minRetireConf = DEF
   const claim = ledger.get(claimId);
   if (!claim) return { action: 'missing' };
 
-  // Already-terminal CONFIRMED: never mutate. Only flag a reorg for manual review.
+  // Already-terminal CONFIRMED: never mutate the state. NODE-2A — a reorg that un-confirms it
+  // must durably RE-LOCK (quarantine) the original outpoints so coin selection cannot reuse them
+  // while the old tx's fate is unresolved. Resolution happens ONLY from authoritative current
+  // state; never a replacement payout.
   if (claim.state === S.CONFIRMED) {
-    if (isReorgAfterConfirm(facts) && ledger.flagReview) {
-      ledger.flagReview(claimId, 'reorg-after-confirm', 'authoritative node no longer shows this tx confirmed');
-      return { action: 'reorg-review-flag' };
+    const quarantined = ledger.hasQuarantine(claimId);
+    if (!quarantined) {
+      if (isReorgAfterConfirm(facts)) {
+        const reserved = JSON.parse(claim.reserved_outpoints || '[]');    // recovered from the claim's audit state
+        ledger.flagReview(claimId, 'reorg-after-confirm', 'authoritative node no longer shows this tx confirmed');
+        ledger.quarantineOutpoints(claimId, reserved, 'reorg-after-confirm');   // durable re-lock (survives restart)
+        return { action: 'reorg-quarantine', quarantined: reserved.length };
+      }
+      return { action: 'noop-terminal' };
     }
-    return { action: 'noop-terminal' };
+    // Already quarantined: resolve ONLY from authoritative current chain/UTXO state, else HOLD.
+    if (!facts || !facts.authoritative) return { action: 'quarantine-held-unauthoritative' };
+    if (facts.confirmations != null && facts.confirmations >= minRetireConf) {
+      ledger.releaseQuarantine(claimId);                                  // TX-A reconfirmed -> input consumed by us -> safe
+      ledger.flagReview(claimId, 'reorg-resolved-reconfirmed', 'authoritative reconfirmation');
+      return { action: 'quarantine-resolved-reconfirmed' };
+    }
+    if (facts.differentConfirmedSpender) {
+      ledger.releaseQuarantine(claimId);                                  // X definitively spent by another -> gone from UTXO set
+      ledger.flagReview(claimId, 'reorg-resolved-conflicting-spend', 'input spent by ' + facts.differentConfirmedSpender);
+      return { action: 'quarantine-resolved-conflict', by: facts.differentConfirmedSpender };   // NO replacement payout
+    }
+    return { action: 'quarantine-held' };                                // mempool / unspent+absent / shallow / unprovable
   }
   if (claim.state === S.CONFLICTED || claim.state === S.FAILED_SAFE) return { action: 'noop-terminal' };
 
