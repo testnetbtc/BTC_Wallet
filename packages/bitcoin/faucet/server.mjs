@@ -23,6 +23,8 @@ import { ClaimLedger, S, claimDayUTC, TERMINAL } from './ledger.mjs';
 import { processClaim, realChain, realSigner } from './claimflow.mjs';
 import { recoverAll, startRecoveryWorker } from './recovery.mjs';
 import { cookieRpc, makeNodeBroadcaster } from './nodebroadcast.mjs';
+import { advanceClaim } from './advance.mjs';
+import { ownNodeReconciler, cookieRpcFromPath } from './authreconcile.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const secret = (f) => JSON.parse(readFileSync(join(HERE, '..', '.secrets', f), 'utf8'));
@@ -80,7 +82,21 @@ const chain = {
     return esploraChain.broadcast(network, rawTx);             // networks without an own node yet
   },
 };
-const depsFor = () => ({ ledger, signer, chain, txidOf: (raw) => decodeRawTx({ hex: raw, network: 'testnet4' }).txid });
+// ── NODE-2 PHASE B: own-node AUTHORITATIVE reconciliation (enables reservation retirement) ──
+// Only networks listed here reconcile against our OWN Bitcoin Core node (authoritative for
+// CONFIRMED / CONFLICTED / retirement). External explorers stay ADVISORY for the rest.
+// Authority is re-established per attempt inside ownNodeReconciler.ready(); a failed check
+// holds the claim (never a release). To ROLL BACK, set this to {} (advanceClaim then uses
+// esplora via processClaim and retirement stops) — durable reservations/guards are preserved.
+const MIN_RETIRE_CONF = 2;
+const OWN_NODE_RECONCILE = existsSync(join(HERE, '..', '.secrets', 'own-nodes.json'))
+  ? (secret('own-nodes.json').reconcile || {})
+  : { testnet4: { url: 'http://127.0.0.1:48332/', cookiePath: '/var/lib/bitcoind-testnet4/testnet4/.cookie', chain: 'testnet4' } };
+const authReconcilers = {};
+for (const [nw, cfg] of Object.entries(OWN_NODE_RECONCILE)) {
+  authReconcilers[nw] = ownNodeReconciler({ rpc: cookieRpcFromPath(cfg.url, cfg.cookiePath), expectedChain: cfg.chain });
+}
+const depsFor = () => ({ ledger, signer, chain, authReconcilers, minRetireConf: MIN_RETIRE_CONF, txidOf: (raw) => decodeRawTx({ hex: raw, network: 'testnet4' }).txid });
 
 // coin selection avoids DURABLY-reserved outpoints (the ledger is the authority);
 // reservation itself happens atomically inside ledger.createAuthorised().
@@ -208,7 +224,7 @@ const server = http.createServer((req, res) => {
         // 2) authoritative address/day entitlement — a duplicate RETURNS the existing
         //    claim (never a second payout, never a blind 429) (RT-2 §6).
         const existing = ledger.getByEntitlement(network, canon, day);
-        if (existing) { if (!TERMINAL.has(existing.state)) { try { await processClaim(depsFor(), existing.claim_id); } catch {} } return claimResponse(res, ledger.get(existing.claim_id)); }
+        if (existing) { if (!TERMINAL.has(existing.state)) { try { await advanceClaim(depsFor(), existing.claim_id); } catch {} } return claimResponse(res, ledger.get(existing.claim_id)); }
         // 3) brand-new claim: global daily cap (durable) is a genuine rate limit -> 429
         if (ledger.dayCount ? ledger.dayCount(day) >= GLOBAL_DAILY_CAP : false) return rej(429, 'faucet daily cap reached — try tomorrow', 'cap-global');
 
@@ -224,7 +240,7 @@ const server = http.createServer((req, res) => {
           return json(res, 503, { error: 'could not reserve funding — try again shortly' });
         }
         let claim = created.claim;
-        try { claim = await processClaim(depsFor(), claim.claim_id); } catch (e) { /* durable; recovery will finish */ }
+        try { claim = await advanceClaim(depsFor(), claim.claim_id); } catch (e) { /* durable; recovery will finish */ }
         breaker.settle(auth.token, { sats: DRIP, utxos: JSON.parse(claim.reserved_outpoints || '[]').length || 1, fee: claim.fee_sat || feeRateFor(network) * 250 });
         if (claim.local_txid && (claim.state === S.SEEN || claim.state === S.CONFIRMED)) { lastPayoutAt = Date.now(); ring(recentPayouts, { at: lastPayoutAt, network, address, sats: DRIP, state: claim.state }); }
         writeTelemetry();

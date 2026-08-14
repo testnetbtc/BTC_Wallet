@@ -243,6 +243,9 @@ export class ClaimLedger {
   flagReview(claimId, code, detail) { this._patch(claimId, { error_code: String(code).slice(0, 40), error_detail_safe: String(detail || '').slice(0, 160), updated_at: this.now() }); }
 
   nonTerminal() { return this.db.prepare(`SELECT * FROM claims WHERE state IN (${NON_TERMINAL.map(() => '?').join(',')})`).all(...NON_TERMINAL); }
+  // NODE-2: recently-CONFIRMED claims (bounded), for periodic authoritative reorg-after-confirm
+  // re-checks without scanning all historical confirmations every tick.
+  recentConfirmed(sinceMs) { const cutoff = this.now() - sinceMs; return this.db.prepare('SELECT * FROM claims WHERE state=? AND confirmed_at IS NOT NULL AND confirmed_at >= ?').all(S.CONFIRMED, cutoff); }
   counts() {
     const rows = this.db.prepare('SELECT state, COUNT(*) c FROM claims GROUP BY state').all();
     const out = {}; for (const s of Object.values(S)) out[s] = 0; for (const r of rows) out[r.state] = r.c; return out;

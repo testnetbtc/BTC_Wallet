@@ -35,10 +35,15 @@ export function classifyAuthoritative(facts, { minRetireConf = DEFAULT_MIN_RETIR
 }
 
 // Reorg-after-confirm: for a claim ALREADY CONFIRMED (and possibly retired), authoritative
-// evidence that it is no longer confirmed. We DO NOT mutate the terminal state — this only
-// signals a manual review flag.
+// POSITIVE evidence of a reorg. It requires the reserved input to be UNSPENT again — the input
+// that TX-A consumed has come back — not merely the inability to re-prove confirmation. For an
+// OLD confirmed claim whose outputs were spent onward and whose history is pruned, the node
+// cannot re-prove confirmation, but the reserved input is (still) spent, so this is correctly
+// NOT treated as a reorg (absence of proof != proof of reorg). We never mutate the terminal
+// state — this only drives the guard/review flag.
 export function isReorgAfterConfirm(facts) {
-  return !!(facts && facts.authoritative && (facts.confirmations == null || facts.confirmations < 1) && !facts.inMempool);
+  return !!(facts && facts.authoritative && (facts.confirmations == null || facts.confirmations < 1)
+    && !facts.inMempool && facts.reservedAnyUnspent === true);
 }
 
 // ── fact gathering (impure; node primitives injected so it is testable) ──

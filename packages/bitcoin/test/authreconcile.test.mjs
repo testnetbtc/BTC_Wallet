@@ -105,13 +105,25 @@ const held = (led, op) => new Set(led.activeReservations().map((r) => `${r.txid}
 // ── CONFIRMED is TERMINAL; reorg -> review FLAG, NEVER a state change ──
 {
   const op = OP('g', 0); const { led, id } = newLedgerWithClaim(S.CONFIRMED, [op]);
-  ok('reorg detector fires when authoritative + not-confirmed + not-mempool', isReorgAfterConfirm({ authoritative: true, confirmations: 0, inMempool: false }) === true);
-  const res = applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false });
+  const reorgFacts = { authoritative: true, confirmations: 0, inMempool: false, reservedAnyUnspent: true };
+  ok('reorg detector needs POSITIVE evidence (input unspent again)', isReorgAfterConfirm(reorgFacts) === true);
+  ok('reorg detector does NOT fire when the input is still spent (old confirmed claim, pruned)',
+     isReorgAfterConfirm({ authoritative: true, confirmations: 0, inMempool: false, reservedAnyUnspent: false, reservedAnySpent: true }) === false);
+  const res = applyAuthoritative(led, id, reorgFacts);
   ok('apply on reorged CONFIRMED -> quarantine + flag, state STILL CONFIRMED', res.action === 'reorg-quarantine' && led.get(id).state === S.CONFIRMED && led.get(id).error_code === 'reorg-after-confirm' && led.hasQuarantine(id));
   // idempotent + no replacement (still unresolved -> held)
   const before = Object.values(led.counts()).reduce((a, b) => a + b, 0);
-  applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false });
+  applyAuthoritative(led, id, reorgFacts);
   ok('reorg-after-confirm never creates a replacement / extra claim', Object.values(led.counts()).reduce((a, b) => a + b, 0) === before);
+  led.close();
+}
+
+// ── an OLD confirmed claim the pruned node cannot re-prove is NOT spuriously quarantined ──
+{
+  const op = OP('old', 0); const { led, id } = newLedgerWithClaim(S.CONFIRMED, [op]);
+  // confirmations unprovable (0), not in mempool, reserved input still SPENT (consumed by TX-A long ago)
+  const res = applyAuthoritative(led, id, { authoritative: true, confirmations: 0, inMempool: false, reservedAnyUnspent: false, reservedAnySpent: true });
+  ok('old confirmed + unprovable + input still spent -> noop, NOT quarantined', res.action === 'noop-terminal' && !led.hasQuarantine(id) && led.get(id).state === S.CONFIRMED);
   led.close();
 }
 
