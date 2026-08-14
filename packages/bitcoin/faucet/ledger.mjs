@@ -219,6 +219,9 @@ export class ClaimLedger {
     return this.get(claimId);
   }
   bumpReconcile(claimId) { const c = this.get(claimId); this._patch(claimId, { reconcile_attempts: (c.reconcile_attempts || 0) + 1, last_reconcile_at: this.now() }); }
+  // NODE-2: record a manual-review flag WITHOUT changing the claim's state (e.g. a reorg that
+  // un-confirms an already-terminal CONFIRMED claim). Never mutates state or reservations.
+  flagReview(claimId, code, detail) { this._patch(claimId, { error_code: String(code).slice(0, 40), error_detail_safe: String(detail || '').slice(0, 160), updated_at: this.now() }); }
 
   nonTerminal() { return this.db.prepare(`SELECT * FROM claims WHERE state IN (${NON_TERMINAL.map(() => '?').join(',')})`).all(...NON_TERMINAL); }
   counts() {
