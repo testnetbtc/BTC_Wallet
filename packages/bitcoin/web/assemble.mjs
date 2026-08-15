@@ -28,7 +28,8 @@ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,
   -webkit-font-smoothing:antialiased}
 #shell{max-width:560px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 18px 10px}
-.logo{font-weight:800;font-size:20px;letter-spacing:-.01em}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em;color:var(--text);text-decoration:none;cursor:pointer}
+.logo:hover{opacity:.85}
 .ldot{color:var(--accent)}
 .hbtns{display:flex;gap:8px;align-items:center}
 .netchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text)}
@@ -269,7 +270,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <div id="shell">
 <header>
-  <span class="logo">Olesia<span class="ldot">.</span></span>
+  <a class="logo" href="https://olesia.io" title="Olesia — back to the main site">Olesia<span class="ldot">.</span></a>
   <span class="hbtns">
     <button id="lockbtn" title="Lock wallet">🔒</button>
     <span class="netchip" id="netchip"><span class="sw"></span><span id="netname">testnet4</span></span>
