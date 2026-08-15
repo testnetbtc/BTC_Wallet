@@ -1,0 +1,123 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="">
+<title>Olesia · Offline Signer</title>
+<style>
+:root{--bg:#0b0f14;--surface:#121a23;--panel:#0e151d;--line:#22303c;--text:#e8eef4;--muted:#8aa0b4;--faint:#5b7286;
+  --accent:#f0a020;--accent-ink:#1a1205;--mint:#7ee2a8;--bad:#ff9ca0;--info:#5aa9e6;--mono:ui-monospace,Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;color:var(--text);
+  background:radial-gradient(900px 500px at 15% -10%,#101a13 0%,transparent 55%),var(--bg);-webkit-font-smoothing:antialiased}
+#wrap{max-width:640px;margin:0 auto;padding:18px 16px 80px}
+header{display:flex;align-items:center;gap:10px;padding:6px 0 2px}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em}.ldot{color:var(--accent)}
+.badge{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:#0f2016;border:1px solid #1e5233;color:var(--mint);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700}
+.badge .d{width:8px;height:8px;border-radius:50%;background:var(--mint)}
+h1{font-size:22px;letter-spacing:-.01em;margin:10px 0 2px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px}
+.step{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:0 0 10px}
+label{display:block;font-weight:600;margin:8px 0 6px;font-size:13.5px}
+input,select,textarea{width:100%;padding:11px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--text);font-family:inherit;font-size:15px;margin-bottom:6px}
+textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;word-break:break-all}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:11px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer;min-height:42px}
+button.sec{background:var(--surface);border:1px solid var(--line);color:var(--text);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}.hint{color:var(--muted);font-size:12.5px;margin:6px 0}
+.mono{font-family:var(--mono);word-break:break-all;font-size:12.5px}
+.verdict{border-radius:11px;padding:11px 13px;font-size:13.5px;font-weight:600;margin:2px 0 10px}
+.verdict.ok{background:#0f2016;border:1px solid #1e5233;color:var(--mint)}
+.verdict.bad{background:#2a1012;border:1px solid #5c2126;color:var(--bad)}
+.io{border-top:1px solid var(--line);padding:9px 0;font-size:13px}.io:first-child{border-top:0}
+.io .amt{float:right;font-variant-numeric:tabular-nums;font-weight:700}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;padding:1px 6px;margin-left:6px}
+.tag.mine{background:#0f2231;border:1px solid #1d4763;color:var(--info)}.tag.ext{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a}
+.tag.change{background:#0f2016;border:1px solid #1e5233;color:var(--mint)}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:11px;padding:10px 12px;font-size:12.5px;margin:8px 0}
+.fee{color:var(--muted);font-size:12.5px;margin-top:8px}
+</style></head><body><div id="wrap">
+<header><span class="logo">Olesia<span class="ldot">.</span></span><span class="badge"><span class="d"></span>Offline · air-gapped</span></header>
+<h1>Offline signer</h1>
+<p class="sub">This page never connects to the internet. Load your seed, review a transaction exactly as it will be signed, then sign it — the key never leaves this device.</p>
+
+<div class="card"><div class="step">1 · Wallet</div>
+  <label for="net">Network</label>
+  <select id="net"><option value="testnet4">Testnet 4</option><option value="testnet3">Testnet 3</option><option value="signet">Signet</option><option value="mainnet">Mainnet</option></select>
+  <label for="seed">Recovery phrase (12 or 24 words)</label>
+  <textarea id="seed" placeholder="word1 word2 …" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+  <label for="pass">BIP-39 passphrase (optional)</label>
+  <input id="pass" type="password" autocomplete="off" placeholder="(leave blank if you don't use one)">
+  <div class="row"><button class="sec" id="gen24">Generate 24-word</button><button class="sec" id="gen12">Generate 12-word</button></div>
+  <p class="hint" id="xpubline"></p>
+</div>
+
+<div class="card"><div class="step">2 · Transaction to sign</div>
+  <label for="psbt">Unsigned PSBT (base64)</label>
+  <textarea id="psbt" placeholder="cHNidP8B…" autocomplete="off" spellcheck="false"></textarea>
+  <div class="row"><button class="sec" id="pickfile">Load .psbt file…</button><button id="review">Review</button></div>
+  <input id="file" type="file" accept=".psbt,.txt,text/plain" style="display:none">
+</div>
+
+<div class="card" id="reviewcard" style="display:none"><div class="step">3 · Review — what you are signing</div>
+  <div id="verdict"></div>
+  <div id="io"></div>
+  <div class="fee" id="feeline"></div>
+  <div id="warnings"></div>
+  <button id="sign" style="width:100%;margin-top:12px" disabled>Sign transaction</button>
+</div>
+
+<div class="card" id="signedcard" style="display:none"><div class="step">4 · Signed — take this back to the online wallet</div>
+  <label for="signed">Signed PSBT (base64)</label>
+  <textarea id="signed" readonly></textarea>
+  <div class="row"><button class="sec" id="copy">Copy</button><button class="sec" id="download">Download .psbt</button></div>
+  <p class="hint">Import this on the online wallet (watch-only) to broadcast. The transaction id is <span class="mono" id="txid"></span>.</p>
+</div>
+
+<script>/*__SIGNER_BUNDLE__*/</script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var fmt=function(sat){return (sat==null?'?':(sat/1e8).toFixed(8))+' BTC'};
+  var lastReview=null;
+  function shortAddr(a){return a?(a.length>22?a.slice(0,12)+'…'+a.slice(-8):a):'(unknown script)'}
+  $('gen24').onclick=function(){$('seed').value=window.SIGN.generate(24);refreshXpub()};
+  $('gen12').onclick=function(){$('seed').value=window.SIGN.generate(12);refreshXpub()};
+  $('seed').addEventListener('input',refreshXpub);$('net').addEventListener('change',refreshXpub);$('pass').addEventListener('input',refreshXpub);
+  function refreshXpub(){
+    var m=$('seed').value.trim();$('xpubline').textContent='';
+    if(!m)return; if(!window.SIGN.validate(m)){$('xpubline').textContent='⚠ phrase is not a valid BIP-39 mnemonic';return}
+    try{$('xpubline').innerHTML='Account xpub (for watch-only): <span class="mono">'+window.SIGN.xpub(m,$('net').value,$('pass').value)+'</span>'}catch(e){$('xpubline').textContent=''}
+  }
+  $('pickfile').onclick=function(){$('file').click()};
+  $('file').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){$('psbt').value=String(r.result||'').trim()};r.readAsText(f)};
+  $('review').onclick=function(){
+    var m=$('seed').value.trim();
+    if(!window.SIGN.validate(m)){alert('Enter a valid 12/24-word recovery phrase first.');return}
+    var r;try{r=window.SIGN.review({mnemonic:m,passphrase:$('pass').value,network:$('net').value,psbt:$('psbt').value})}catch(e){alert('Could not read that PSBT: '+e.message);return}
+    lastReview=r;renderReview(r);$('reviewcard').style.display='';$('signedcard').style.display='none';
+    $('reviewcard').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  function renderReview(r){
+    var s=r.summary;
+    $('verdict').className='verdict '+(r.safeToSign?'ok':'bad');
+    $('verdict').textContent=r.safeToSign?'✓ Verified — every input is yours and the fee checks out. Safe to sign.':'✗ Do NOT sign: '+r.reasons.join('; ');
+    var html='';
+    s.outputs.forEach(function(o){
+      var who=o.opReturn!=null?('OP_RETURN “'+o.opReturn+'”'):(o.change?'Change (back to you)':shortAddr(o.address));
+      var tag=o.opReturn!=null?'':(o.change?'<span class="tag change">change</span>':'<span class="tag ext">sending</span>');
+      html+='<div class="io"><span class="amt">'+fmt(o.amount)+'</span>'+who+tag+'</div>';
+    });
+    $('io').innerHTML=html;
+    $('feeline').textContent='Inputs '+fmt(s.inTotal)+' · sending '+fmt(s.externalTotal)+' · change '+fmt(s.changeTotal)+' · fee '+(s.fee==null?'?':s.fee+' sat'+(s.feeRate?' ('+s.feeRate+' sat/vB)':''));
+    $('warnings').innerHTML = s.allInputsMine ? '' : '<div class="warn">Some inputs are not from this wallet — a single-sig signer will refuse to co-sign them.</div>';
+    $('sign').disabled=!r.safeToSign;
+  }
+  $('sign').onclick=function(){
+    if(!lastReview||!lastReview.safeToSign)return;
+    var out;try{out=window.SIGN.sign({mnemonic:$('seed').value.trim(),passphrase:$('pass').value,network:$('net').value,psbt:$('psbt').value})}catch(e){alert('Signing refused: '+e.message);return}
+    $('signed').value=out.signedPsbtB64;$('txid').textContent=out.txid;$('signedcard').style.display='';
+    $('signedcard').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  $('copy').onclick=function(){var t=$('signed');t.select();try{document.execCommand('copy')}catch(e){}};
+  $('download').onclick=function(){var b=new Blob([$('signed').value],{type:'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='signed.psbt';a.click()};
+})();
+</script>
+</div></body></html>
