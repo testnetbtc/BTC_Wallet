@@ -114,21 +114,23 @@ if (dfd) ok('[Core] dust-change fund has exactly ONE output', dfd.vout.length ==
   ok('exact boundary: change of 293 is absorbed (dust)', drop.change === 0);
 }
 
-// large transaction: 10 inputs
+// accumulate path: an amount that genuinely needs every coin uses all 10 inputs
 {
   const utxos = Array.from({ length: 10 }, (_, i) => ({ txid: (i + 100).toString(16).padStart(2, '0').repeat(32), vout: 0, value: 20000 }));
-  const big = buildFundP2PK({ utxos, privKey: priv, pubkey: pub, targetScript: target, changeScript: wpkh.script, amount: 150000, feeRate: 2 });
+  const big = buildFundP2PK({ utxos, privKey: priv, pubkey: pub, targetScript: target, changeScript: wpkh.script, amount: 195000, feeRate: 2 });
+  ok('accumulate: an amount needing every coin uses all 10 inputs', big.inputsUsed === 10);
   const bd = decode(big.txHex);
   ok('[Core] 10-input fund decodes correctly', bd ? bd.vin.length === 10 && bd.vout[0].scriptPubKey.type === 'pubkey' : true);
 }
 
-// multiple inputs (2 and 3)
+// coin selection uses only the MINIMUM coins needed, NEVER sweeps: 60000 from 50000-coins
+// always selects exactly 2, whether the wallet holds 2 or 3 of them.
 for (const k of [2, 3]) {
   const utxos = Array.from({ length: k }, (_, i) => ({ txid: (30 + i).toString(16).padStart(2, '0').repeat(32), vout: 0, value: 50000 }));
   const mf = buildFundP2PK({ utxos, privKey: priv, pubkey: pub, targetScript: target, changeScript: wpkh.script, amount: 60000, feeRate: 2 });
+  ok(`selection: with ${k} coins available, uses exactly 2 (min) — no sweep`, mf.inputsUsed === 2);
   const md = decode(mf.txHex);
-  ok(`[Core] ${k}-input fund decodes with ${k} inputs`, md ? md.vin.length === k : true);
-  if (md) ok(`[Core] every one of the ${k} inputs has a witness`, md.vin.every((v) => v.txinwitness && v.txinwitness.length === 2));
+  if (md) ok(`[Core] ${k}-coin case builds a valid 2-input tx, each input witnessed`, md.vin.length === 2 && md.vin.every((v) => v.txinwitness && v.txinwitness.length === 2));
 }
 
 // insufficient funds rejected

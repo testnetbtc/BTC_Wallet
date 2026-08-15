@@ -30,15 +30,39 @@ export const p2pkScript = (pub) => concatBytes(Uint8Array.of(pub.length), pub, U
 // utxos: [{txid, vout, value}]  (all P2WPKH, owned by pubkey/privKey)
 // targetScript: raw P2PK scriptPubKey bytes to fund
 // changeScript: source P2WPKH scriptPubKey bytes (change returns here)
+// Coin selection for a P2PK fund. Do NOT sweep the whole address: prefer the SMALLEST single
+// coin that alone covers `amount` + a 1-input fee (keeps larger coins intact, minimal tx);
+// otherwise accumulate smallest-first until covered, with the fee GROWING as inputs are added.
+// Returns the chosen subset, or null if even every coin together can't cover amount + fee.
+// `feeFor(n)` = the fee (BigInt) for a fund tx with n inputs.
+export function selectFundCoins(utxos, amount, feeFor) {
+  amount = BigInt(amount);
+  const need1 = amount + feeFor(1);
+  let single = null;
+  for (const u of utxos) {
+    const v = BigInt(u.value);
+    if (v >= need1 && (single === null || v < BigInt(single.value))) single = u;
+  }
+  if (single) return [single];
+  const asc = [...utxos].sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
+  const acc = []; let sum = 0n;
+  for (const u of asc) {
+    acc.push(u); sum += BigInt(u.value);
+    if (sum >= amount + feeFor(acc.length)) return acc;
+  }
+  return null;
+}
+
 export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScript, amount, feeRate = 2 }) {
   feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to fund from');
   amount = BigInt(amount);
-  const inTotal = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
-  const estVsize = 11 + 68 * utxos.length + 44 + 31; // 1 P2PK out + 1 change out
-  const fee = BigInt(Math.ceil(feeRate * estVsize));
+  const feeFor = (n) => BigInt(Math.ceil(feeRate * (11 + 68 * n + 44 + 31))); // n inputs, P2PK out + change out
+  const chosen = selectFundCoins(utxos, amount, feeFor);
+  if (!chosen) throw new Error(`insufficient funds: no combination of coins covers ${amount} + fee`);
+  const inTotal = chosen.reduce((a, u) => a + BigInt(u.value), 0n);
+  const fee = feeFor(chosen.length);
   let change = inTotal - amount - fee;
-  if (change < 0n) throw new Error(`insufficient funds: have ${inTotal}, need ${amount + fee} (amount + fee)`);
 
   const outs = [{ script: targetScript, amount }];
   if (change >= 294n) outs.push({ script: changeScript, amount: change }); // else dust -> absorbed by fee
@@ -47,11 +71,11 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
   // BIP-143 preimage components
   const scriptCode = concatBytes(hexToBytes('1976a914'), hash160(pubkey), hexToBytes('88ac')); // self-length-prefixed
   const nSeq = hexToBytes('fdffffff');   // BIP-125 RBF opt-in (0xfffffffd, little-endian)
-  const hashPrevouts = dsha(concatBytes(...utxos.map((u) => concatBytes(revTxid(u.txid), u32(u.vout)))));
-  const hashSequence = dsha(concatBytes(...utxos.map(() => nSeq)));
+  const hashPrevouts = dsha(concatBytes(...chosen.map((u) => concatBytes(revTxid(u.txid), u32(u.vout)))));
+  const hashSequence = dsha(concatBytes(...chosen.map(() => nSeq)));
   const hashOutputs = dsha(concatBytes(...outs.map((o) => concatBytes(u64(o.amount), withLen(o.script)))));
 
-  const witnesses = utxos.map((u) => {
+  const witnesses = chosen.map((u) => {
     const preimage = concatBytes(
       u32(2), hashPrevouts, hashSequence,
       revTxid(u.txid), u32(u.vout), scriptCode, u64(u.value), nSeq,
@@ -61,11 +85,11 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
     return [concatBytes(sig, Uint8Array.of(0x01)), pubkey];
   });
 
-  const inputsSer = concatBytes(...utxos.map((u) => concatBytes(revTxid(u.txid), u32(u.vout), varint(0), nSeq)));
+  const inputsSer = concatBytes(...chosen.map((u) => concatBytes(revTxid(u.txid), u32(u.vout), varint(0), nSeq)));
   const outputsSer = concatBytes(...outs.map((o) => concatBytes(u64(o.amount), withLen(o.script))));
-  const nonWitness = concatBytes(u32(2), varint(utxos.length), inputsSer, varint(outs.length), outputsSer, u32(0));
+  const nonWitness = concatBytes(u32(2), varint(chosen.length), inputsSer, varint(outs.length), outputsSer, u32(0));
   const witnessSer = concatBytes(...witnesses.map((w) => concatBytes(varint(w.length), ...w.map(withLen))));
-  const full = concatBytes(u32(2), Uint8Array.of(0, 1), varint(utxos.length), inputsSer, varint(outs.length), outputsSer, witnessSer, u32(0));
+  const full = concatBytes(u32(2), Uint8Array.of(0, 1), varint(chosen.length), inputsSer, varint(outs.length), outputsSer, witnessSer, u32(0));
 
   const weight = nonWitness.length * 3 + full.length;
   return {
@@ -73,7 +97,7 @@ export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScri
     txid: bytesToHex(dsha(nonWitness).slice().reverse()),
     fee: Number(inTotal - outs.reduce((a, o) => a + o.amount, 0n)),
     vsize: Math.ceil(weight / 4),
-    funded: Number(amount), change: Number(change),
+    funded: Number(amount), change: Number(change), inputsUsed: chosen.length,
   };
 }
 
