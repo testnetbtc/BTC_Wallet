@@ -187,13 +187,18 @@ export class VelocityBreaker {
     if (!existsSync(this.stateFile)) return;
     let s;
     try { s = JSON.parse(readFileSync(this.stateFile, 'utf8')); }
-    catch {
+    catch { s = undefined; }
+    // L6 — accept ONLY a well-shaped latch object { tripped: boolean, ... }. Anything else —
+    // unreadable/partial JSON, a bare null (JSON.parse('null')), an array, or a wrong-shape
+    // object — FAILS CLOSED (assume tripped). Previously `!!s.tripped` read []/{} as untripped
+    // (fail-open) and threw on null (crashing startup); both are unsafe.
+    if (!s || typeof s !== 'object' || Array.isArray(s) || typeof s.tripped !== 'boolean') {
       this.tripped = true;
-      this.trip = { reason: 'unreadable breaker latch — failing closed', metric: 'latch', value: 'corrupt/partial', threshold: 'valid JSON state', at: Date.now() };
-      console.error('\n🛑 BREAKER LATCH UNREADABLE — starting TRIPPED (fail-closed). Investigate + reset.\n');
+      this.trip = { reason: 'unreadable or malformed breaker latch — failing closed', metric: 'latch', value: 'corrupt/partial/wrong-shape', threshold: 'valid {tripped:boolean} state', at: Date.now() };
+      console.error('\n🛑 BREAKER LATCH UNREADABLE/MALFORMED — starting TRIPPED (fail-closed). Investigate + reset.\n');
       return;
     }
-    this.tripped = !!s.tripped;
+    this.tripped = s.tripped;
     this.trip = s.tripped ? s.trip : null;
   }
   // Atomic write: a concurrent reader (or a crash) never sees a half-written latch.

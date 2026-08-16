@@ -29,7 +29,7 @@ const fakeSigner = (world, opts = {}) => async ({ address, amountSat, reservedOu
 const fakeTxidOf = (raw) => (typeof raw === 'string' && raw.startsWith('raw:') ? raw.slice(4) : 'tx_BADBYTES');
 const makeWorld = (over = {}) => ({ signCalls: 0, broadcasts: [], mempool: new Set(), confirmed: new Set(), spent: new Map(), broadcastMode: 'ok', autoConfirm: false, lookupThrows: false, ...over });
 const fakeChain = (world) => ({
-  authoritative: false,
+  authoritative: true,   // L5 — authoritative own-node stand-in so CONFIRMED/CONFLICTED can be reached; retirement is still a SEPARATE explicit call (asserted below)
   async lookup(network, txid) {
     if (world.lookupThrows) throw new Error('node unavailable / timed out');
     if (world.confirmed.has(txid)) return { found: true, confirmed: true, height: 100, blockHash: 'bh' };

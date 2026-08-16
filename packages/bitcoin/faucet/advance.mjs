@@ -14,6 +14,7 @@ import { processClaim } from './claimflow.mjs';
 import { S } from './ledger.mjs';
 import { gatherFacts, applyAuthoritative } from './authreconcile.mjs';
 import { decodeRawTx } from '../src/send.js';
+import { withClaimLock } from './claimlock.mjs';
 
 const AUTH_STATES = new Set([S.SEEN, S.UNCERTAIN, S.CONFIRMED]);
 
@@ -22,7 +23,13 @@ export function outVoutsOf(rawTx, network) {
   catch { return []; }
 }
 
-export async function advanceClaim(deps, claimId) {
+// M4 — serialize all advancement of a single claim (server hot path + recovery worker share
+// this one lock), so concurrent passes can never both sign and race the persisted raw_tx.
+export function advanceClaim(deps, claimId) {
+  return withClaimLock(claimId, () => advanceClaimInner(deps, claimId));
+}
+
+async function advanceClaimInner(deps, claimId) {
   const { ledger, authReconcilers = {}, minRetireConf = 2 } = deps;
   const c = ledger.get(claimId);
   if (!c) return null;

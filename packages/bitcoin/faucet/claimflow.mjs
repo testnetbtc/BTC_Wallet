@@ -44,6 +44,7 @@ export async function reconcileState(chain, network, localTxid, reserved) {
 // Advance a single claim as far as it can safely go in one call. Returns the claim row.
 export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
   const { ledger, signer, chain, txidOf, crashAfter = noHook } = deps;
+  const authoritative = !!(chain && chain.authoritative);   // L5 — only an own-node source may drive terminal states
   let c = ledger.get(claimId);
   if (!c || TERMINAL.has(c.state)) return c;
 
@@ -56,6 +57,13 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
     crashAfter('after-sign-before-persist');
     // I4/I5: the signer's txid must equal the txid recomputed from the raw bytes.
     if (txidOf(signed.rawTx) !== signed.localTxid) { ledger.markFailedSafe(claimId, 'sign-txid-mismatch', 'signer txid != bytes txid'); return ledger.get(claimId); }
+    // M3 — defense in depth: the signer must only spend coins this claim durably reserved. If
+    // the built tx pulls in ANY unreserved input, fail safe rather than pay.
+    const reservedSet = new Set(reserved.map((o) => `${o.txid}:${o.vout}`));
+    if (reserved.length && (signed.inputs || []).some((i) => !reservedSet.has(`${i.txid}:${i.vout}`))) {
+      ledger.markFailedSafe(claimId, 'unreserved-input', 'signed tx spends an input outside the reservation');
+      return ledger.get(claimId);
+    }
     ledger.markSigned(claimId, { rawTx: signed.rawTx, localTxid: signed.localTxid, feeSat: signed.feeSat, reservedOutpoints: signed.inputs || reserved });
     crashAfter('after-signed-persist');
     c = ledger.get(claimId);
@@ -91,9 +99,12 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
   const reconcileThenMaybeBroadcast = async () => {
     let rec; try { rec = await reconcileState(chain, c.network, c.local_txid, reserved); }
     catch (e) { return ledger.markUncertain(claimId, 'reconcile source unavailable: ' + String(e.message).slice(0, 100)); }
-    if (rec.r === 'confirmed') return ledger.markConfirmed(claimId, { height: rec.height, blockHash: rec.blockHash });
+    // RT-2A / L5 — only an AUTHORITATIVE source (our own node) may drive a TERMINAL state. An
+    // advisory external explorer can only OBSERVE (SEEN) or HOLD (UNCERTAIN): a glitchy explorer
+    // must never terminally CONFIRM/CONFLICT a claim (which would also strand its reservation).
+    if (rec.r === 'confirmed') return authoritative ? ledger.markConfirmed(claimId, { height: rec.height, blockHash: rec.blockHash }) : ledger.markSeen(claimId);
     if (rec.r === 'seen') return ledger.markSeen(claimId);
-    if (rec.r === 'conflicted') return ledger.markConflicted(claimId, 'input spent by ' + rec.by);
+    if (rec.r === 'conflicted') return authoritative ? ledger.markConflicted(claimId, 'input spent by ' + rec.by) : ledger.markUncertain(claimId, 'advisory: input appears spent by ' + rec.by + ' — awaiting authoritative check');
     return doBroadcast();   // absent -> safe to (re)broadcast the EXACT stored raw_tx
   };
 
@@ -108,8 +119,9 @@ export async function processClaim(deps, claimId, { maxBroadcasts = 3 } = {}) {
     case S.SEEN: {        // reconcile only for confirmation / conflict
       ledger.bumpReconcile(claimId);
       let rec; try { rec = await reconcileState(chain, c.network, c.local_txid, reserved); } catch { return ledger.get(claimId); }
-      if (rec.r === 'confirmed') return ledger.markConfirmed(claimId, { height: rec.height, blockHash: rec.blockHash });
-      if (rec.r === 'conflicted') return ledger.markConflicted(claimId, 'input spent by ' + rec.by);
+      // L5 — advisory sources cannot promote a SEEN claim to a terminal state; only our own node can.
+      if (rec.r === 'confirmed') return authoritative ? ledger.markConfirmed(claimId, { height: rec.height, blockHash: rec.blockHash }) : ledger.get(claimId);
+      if (rec.r === 'conflicted') return authoritative ? ledger.markConflicted(claimId, 'input spent by ' + rec.by) : ledger.get(claimId);
       if (rec.r === 'absent') return ledger.markUncertain(claimId, 'previously seen tx no longer observable');
       return ledger.get(claimId);   // still 'seen'
     }

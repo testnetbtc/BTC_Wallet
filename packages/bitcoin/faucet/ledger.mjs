@@ -35,6 +35,9 @@ const ALLOWED = {
   [S.FAILED_SAFE]: new Set(),
 };
 export function transitionAllowed(from, to) { return !!(ALLOWED[from] && ALLOWED[from].has(to)); }
+// M4 — once committed, the exact signed transaction is immutable. A same-state re-entry (e.g. a
+// second racing sign that reaches SIGNED after the winner) must NEVER replace these fields.
+const IMMUTABLE_ONCE_SET = ['raw_tx', 'local_txid'];
 
 export const SCHEMA_VERSION = 3;
 // States for which a durably-reserved outpoint MUST NOT be returned to ordinary coin
@@ -199,7 +202,17 @@ export class ClaimLedger {
   transition(claimId, to, fields = {}) {
     const c = this.get(claimId);
     if (!c) throw new Error('transition on missing claim ' + claimId);
-    if (c.state === to) { this._patch(claimId, fields); return this.get(claimId); }
+    if (c.state === to) {
+      // M4 — a same-state patch may refresh timestamps/counters, but it must never overwrite an
+      // already-committed raw_tx / local_txid with different bytes (a racing loser's signing).
+      // Reject the overwrite (fail-safe) so "the exact persisted raw_tx is the only thing ever
+      // broadcast" holds even if the in-process lock is bypassed.
+      for (const k of IMMUTABLE_ONCE_SET)
+        if (k in fields && c[k] != null && fields[k] !== c[k])
+          throw new Error(`refusing to overwrite committed ${k} on claim ${claimId} (state ${c.state})`);
+      this._patch(claimId, fields);
+      return this.get(claimId);
+    }
     if (!transitionAllowed(c.state, to)) throw new Error(`illegal transition ${c.state} -> ${to} (claim ${claimId})`);
     const t = this.now();
     const stamps = {};

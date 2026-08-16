@@ -31,6 +31,7 @@ function makeWorld(over = {}) {
   return { signCalls: 0, broadcasts: [], mempool: new Set(), confirmed: new Set(), spent: new Map(), broadcastMode: 'ok', autoConfirm: false, lookupThrows: false, ...over };
 }
 const fakeChain = (world) => ({
+  authoritative: true,   // L5 — this fake stands in for the AUTHORITATIVE own-node source, so terminal CONFIRMED/CONFLICTED transitions are allowed
   async lookup(network, txid) {
     if (world.lookupThrows) throw new Error('node unavailable');
     if (world.confirmed.has(txid)) return { found: true, confirmed: true, height: 100, blockHash: 'bh' };

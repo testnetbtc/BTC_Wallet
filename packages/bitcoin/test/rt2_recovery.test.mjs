@@ -13,6 +13,7 @@ const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h <
 const signer = (world) => async ({ address, amountSat, reservedOutpoints }) => { world.signCalls++; const txid = 'tx_' + hash(address + amountSat); return { rawTx: 'raw:' + txid, localTxid: txid, feeSat: 300, inputs: reservedOutpoints }; };
 const txidOf = (r) => (r.startsWith('raw:') ? r.slice(4) : 'x');
 const chain = (world) => ({
+  authoritative: true,   // L5 — authoritative own-node stand-in; terminal transitions allowed
   async lookup(n, txid) { if (world.confirmed.has(txid)) return { found: true, confirmed: true, height: 9, blockHash: 'b' }; if (world.mempool.has(txid)) return { found: true, confirmed: false }; return { found: false }; },
   async outspend() { return { spent: false, txid: null }; },
   async broadcast(n, raw) { const t = raw.slice(4); world.broadcasts.push(t); world.mempool.add(t); if (world.autoConfirm) world.confirmed.add(t); return t; },

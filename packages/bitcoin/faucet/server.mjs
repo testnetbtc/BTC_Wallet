@@ -121,6 +121,11 @@ async function createClaim({ network, address, canon, day, clientKey, fp }) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const coins = await pickFaucetCoins(network).catch(() => null);
     const reserveOutpoints = (coins || []).map((c) => ({ txid: c.txid, vout: c.vout, value: c.value }));
+    // M3 — NEVER create a claim with an empty reservation. An empty reserve makes the signer
+    // fall back to selecting from ALL faucet UTXOs (bypassing the durable reservation ledger),
+    // which can self-double-spend and produce spurious CONFLICTED / stuck claims. No coins
+    // available -> fail the claim; the caller returns a 503 "no funds", never an unreserved payout.
+    if (!reserveOutpoints.length) return { created: false, reason: 'no-coins', claim: null };
     const r = ledger.createAuthorised({ claimId: randomUUID(), network, address, canon, claimDay: day, amountSat: DRIP, clientKey, fingerprint: fp, reserveOutpoints });
     if (r.created) return r;
     if (r.reason === 'entitlement-exists') return r;
@@ -161,7 +166,11 @@ setInterval(() => { const now = Date.now(); for (const [k, a] of ipHits) { const
 const clientIp = (req) => (req.headers['cf-connecting-ip'] || req.socket.remoteAddress || 'unknown');
 const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff' }); res.end(JSON.stringify(obj)); };
 async function turnstileOk(token, ip) {
-  if (!TURNSTILE_SECRET) return true;
+  // L7 — FAIL CLOSED when no secret is configured. An open faucet with no bot check is not a
+  // safe default (it also compounds the cf-connecting-ip trust for localhost-reachable clients).
+  // The operator's own harness uses the internal-token path, which skips this check entirely, so
+  // failing closed here only ever blocks unauthenticated public claims on a misconfigured deploy.
+  if (!TURNSTILE_SECRET) { console.error('🛑 TURNSTILE_SECRET missing — rejecting public claims (fail closed). Configure .secrets/turnstile.json.'); return false; }
   try { const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ secret: TURNSTILE_SECRET, response: token, remoteip: ip }) }); return !!(await r.json()).success; } catch { return false; }
 }
 
@@ -237,7 +246,8 @@ const server = http.createServer((req, res) => {
         if (!created.created) {
           if (created.reason === 'entitlement-exists' && created.claim) { breaker.fail(auth.token, 'entitlement-race'); return claimResponse(res, created.claim); }
           breaker.fail(auth.token, created.reason || 'create-failed');
-          return json(res, 503, { error: 'could not reserve funding — try again shortly' });
+          const msg = created.reason === 'no-coins' ? 'faucet has no available funds right now — try again later' : 'could not reserve funding — try again shortly';
+          return json(res, 503, { error: msg });
         }
         let claim = created.claim;
         try { claim = await advanceClaim(depsFor(), claim.claim_id); } catch (e) { /* durable; recovery will finish */ }
