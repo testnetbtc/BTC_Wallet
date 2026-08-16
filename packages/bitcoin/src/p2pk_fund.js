@@ -7,7 +7,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { hexToBytes, bytesToHex, concatBytes, utf8ToBytes } from '@noble/hashes/utils';
-import { assertFeeRate } from './tx.js';
+import { assertFeeRate, assertRecipientAmount, MIN_OUTPUT_SAT } from './tx.js';
 
 const dsha = (b) => sha256(sha256(b));
 const hash160 = (b) => ripemd160(sha256(b));
@@ -56,7 +56,7 @@ export function selectFundCoins(utxos, amount, feeFor) {
 export function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScript, amount, feeRate = 2 }) {
   feeRate = assertFeeRate(feeRate);
   if (!utxos?.length) throw new Error('no UTXOs to fund from');
-  amount = BigInt(amount);
+  amount = assertRecipientAmount(amount);   // L8 — strict integer sats >= dust floor (no 0/negative/dust P2PK output)
   const feeFor = (n) => BigInt(Math.ceil(feeRate * (11 + 68 * n + 44 + 31))); // n inputs, P2PK out + change out
   const chosen = selectFundCoins(utxos, amount, feeFor);
   if (!chosen) throw new Error(`insufficient funds: no combination of coins covers ${amount} + fee`);
@@ -119,7 +119,7 @@ export function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, fee
   const estSize = 4 + 1 + (32 + 4 + 1 + 73 + 4) + 1 + (8 + 1 + destScript.length) + orSize + 4;
   const fee = BigInt(Math.ceil(feeRate * estSize));
   const sent = value - fee;
-  if (sent <= 0n) throw new Error(`P2PK balance ${value} too small to cover the fee (${fee})`);
+  if (sent < MIN_OUTPUT_SAT) throw new Error(`P2PK balance ${value} too small: net output ${sent} sats is below the ${MIN_OUTPUT_SAT}-sat dust floor after the fee (${fee})`); // L8
   const outs = [concatBytes(u64(sent), withLen(destScript))];
   if (orScript) outs.push(concatBytes(u64(0), withLen(orScript)));
   const outsSer = concatBytes(varint(outs.length), ...outs);

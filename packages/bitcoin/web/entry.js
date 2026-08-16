@@ -111,9 +111,10 @@ window.OW = {
     save: (mnemonic, pin, passphrase = '', network = 'testnet4') => {
       const requireStrong = network === 'mainnet';
       localStorage.setItem('olesia:vault', sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || '') }), pin, { requireStrong }));
-      // remember the PIN length (not the PIN) so unlock can auto-submit at the right
-      // digit — only meaningful for all-numeric PINs; harmless for passphrase unlocks
-      try { if (/^[0-9]+$/.test(String(pin))) localStorage.setItem('olesia:pinlen', String(String(pin).length)); else localStorage.removeItem('olesia:pinlen'); } catch {}
+      // L12 — do NOT persist the PIN length. Storing it hands an attacker who can already
+      // read localStorage the exact brute-force space for the vault. Unlock auto-submits at
+      // the default length and falls back to manual entry for longer PINs (see ui.js).
+      try { localStorage.removeItem('olesia:pinlen'); } catch {}
     },
     // exact-entropy passphrase for strong protection; strength check for the UI
     suggest: (words = 6) => generateVaultPassphrase(words),

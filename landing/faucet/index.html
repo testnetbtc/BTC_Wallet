@@ -131,7 +131,14 @@ $('#go').addEventListener('click', async () => {
     if (!r.ok) { out.className='bad'; out.textContent = '✗ ' + (d.error || 'claim failed'); }
     else {
       const base = network === 'testnet3' ? 'https://mempool.space/testnet/tx/' : network === 'signet' ? 'https://mempool.space/signet/tx/' : 'https://mempool.space/testnet4/tx/';
-      out.className='ok'; out.innerHTML = '✓ Sent ' + (d.amount/1e8).toFixed(3) + ' tBTC. It will appear in your wallet shortly.<br><a href="'+base+d.txid+'" target="_blank" rel="noopener" class="mono">view transaction ↗</a>';
+      // L14 — build via DOM with textContent and only accept a well-formed txid. Never
+      // interpolate an API-supplied value into innerHTML (markup-injection defense-in-depth).
+      out.className='ok'; out.textContent = '✓ Sent ' + (d.amount/1e8).toFixed(3) + ' tBTC. It will appear in your wallet shortly.';
+      if (/^[0-9a-fA-F]{64}$/.test(String(d.txid || ''))) {
+        out.appendChild(document.createElement('br'));
+        const a = document.createElement('a'); a.href = base + d.txid; a.target = '_blank'; a.rel = 'noopener'; a.className = 'mono'; a.textContent = 'view transaction ↗';
+        out.appendChild(a);
+      }
       loadInfo();
     }
   } catch { out.className='bad'; out.textContent='✗ Network error — the faucet may be offline. Try again shortly.'; }

@@ -111,7 +111,9 @@ export async function fundP2PK({ source, network, amount, index = 0, feeRate = 2
   if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) — no coins to move into P2PK`);
   const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
   const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
-  return { txid, vout: 0, index, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
+  // L9 — return the frozen bytes so the UI confirms then broadcasts THESE exact bytes via
+  // broadcastRaw, never rebuilding (a rebuild could pick different coins / fee -> different txid).
+  return { txid, txHex: built.txHex, vout: 0, index, amount: Number(amount), scriptHex: tgt.scriptHex, fee: built.fee, vsize: built.vsize,
            broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
@@ -155,7 +157,8 @@ export async function spendP2PK({ source, network, outpoint, toAddress, feeRate 
   const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
   const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
   const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
-  return { txid, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+  // L9 — frozen bytes returned so the UI broadcasts THESE exact bytes (no rebuild).
+  return { txid, txHex: built.txHex, sent: built.sent, fee: built.fee, to: (toAddress || '').trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
 }
 
 // ---- HD account: derivation at (chain,index), gap-limit discovery, recovery ----
@@ -306,13 +309,14 @@ export async function sweepWIF({ wif, network, scriptType, toAddress, message = 
     // bare-pubkey UTXOs use the hand-rolled spender — one tx per UTXO
     const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode((toAddress || '').trim()));
     const feeRate = await getFeeRate(network, 6);
-    const txids = []; let sent = 0;
+    const txids = [], txHexes = []; let sent = 0;
     for (const u of utxos) {
       const built = buildSpendP2PK({ utxo: { txid: u.txid, vout: u.vout, value: u.value }, privKey: key.privKey, p2pkScriptBytes: key.spend.script, destScript, message, feeRate });
       const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
-      txids.push(txid); sent += built.sent;
+      txids.push(txid); txHexes.push(built.txHex); sent += built.sent;
     }
-    return { txid: txids[0], txids, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
+    // L9 — frozen per-UTXO bytes returned so the confirm flow broadcasts THESE exact txs.
+    return { txid: txids[0], txids, txHexes, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
   }
   const withPrev = await attachPrevTxs(utxos, network, key);
   const feeRate = await getFeeRate(network, 6);

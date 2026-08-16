@@ -616,7 +616,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
   <p class="slbl">About</p>
   <div class="sgroup">
-    <a class="srow" href="https://olesia.io/#verify" target="_blank" rel="noopener"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check the hash yourself</span></span><span class="val">↗</span></a>
+    <a class="srow" href="https://github.com/testnetbtc/BTC_Wallet/blob/main/VERIFY.md" target="_blank" rel="noopener"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check this wallet's hash yourself</span></span><span class="val">↗</span></a>
     <a class="srow" href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></a>
     <div class="srow"><span>🏷️</span><span class="t"><b>Version</b></span><span class="val">2.1.0</span></div>
   </div>

@@ -63,6 +63,24 @@ export function opReturnScript(message) {
 // the receive and change chains.
 const RBF_SEQUENCE = 0xfffffffd;
 
+// M1 — the HONEST fee actually paid = Σ(input values) − Σ(output values) of the built
+// transaction. @scure/btc-signer's reported `sel.fee` can UNDERSTATE this: when it drops a
+// dust change output it silently folds that value into the miner fee, but still reports the fee
+// as if the change existed. Recompute from the finalized tx so the number the wallet shows and
+// signs always matches what the chain takes. Returns null if any input value is unavailable
+// (then callers fall back to sel.fee rather than fabricating a number).
+function actualFee(tx) {
+  let inSum = 0n, outSum = 0n;
+  for (let i = 0; i < tx.inputsLength; i++) {
+    const inp = tx.getInput(i);
+    if (inp.witnessUtxo) inSum += inp.witnessUtxo.amount;
+    else if (inp.nonWitnessUtxo?.outputs && inp.nonWitnessUtxo.outputs[inp.index]) inSum += inp.nonWitnessUtxo.outputs[inp.index].amount;
+    else return null;
+  }
+  for (let i = 0; i < tx.outputsLength; i++) outSum += tx.getOutput(i).amount;
+  return inSum - outSum;
+}
+
 // Build a PSBT input for a UTXO owned by `w` (from deriveKey or deriveScript).
 // SegWit types (P2WPKH/P2SH-P2WPKH/P2TR) need only witnessUtxo; legacy types
 // (P2PKH, P2PK) need the full previous transaction as nonWitnessUtxo (u.prevTxHex).
@@ -96,10 +114,11 @@ export function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, 
   tx.sign(key.privKey);
   tx.finalize();
   const total = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
+  const paidFee = actualFee(tx);
   return {
     txHex: bytesToHex(tx.extract()), txid: tx.id,
-    fee: sel.fee != null ? Number(sel.fee) : undefined,
-    vsize: tx.vsize, swept: Number(total - (sel.fee ?? 0n)), inputsUsed: inputs.length,
+    fee: paidFee != null ? Number(paidFee) : (sel.fee != null ? Number(sel.fee) : undefined),
+    vsize: tx.vsize, swept: Number(total - (paidFee ?? sel.fee ?? 0n)), inputsUsed: inputs.length,
   };
 }
 
@@ -134,7 +153,8 @@ export function buildSignedTxMulti({ keyedUtxos, recipients = [], message = null
     try { tx.sign(u.key.privKey); } catch { /* key not among the selected inputs */ }
   }
   tx.finalize();
-  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: sel.fee != null ? Number(sel.fee) : undefined, vsize: tx.vsize, inputsUsed: sel.inputs?.length };
+  const paidFee = actualFee(tx);
+  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: paidFee != null ? Number(paidFee) : (sel.fee != null ? Number(sel.fee) : undefined), vsize: tx.vsize, inputsUsed: sel.inputs?.length };
 }
 
 // Sweep an entire HD account (all keyed UTXOs) to one address, minus fee, no change.
@@ -152,7 +172,8 @@ export function buildSweepTxMulti({ keyedUtxos, toAddress, feeRate = 2, networkN
   for (const u of keyedUtxos) { const h = bytesToHex(u.key.privKey); if (seen.has(h)) continue; seen.add(h); try { tx.sign(u.key.privKey); } catch { /* not selected */ } }
   tx.finalize();
   const total = keyedUtxos.reduce((a, u) => a + BigInt(u.value), 0n);
-  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: sel.fee != null ? Number(sel.fee) : undefined, vsize: tx.vsize, swept: Number(total - (sel.fee ?? 0n)) };
+  const paidFee = actualFee(tx);
+  return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: paidFee != null ? Number(paidFee) : (sel.fee != null ? Number(sel.fee) : undefined), vsize: tx.vsize, swept: Number(total - (paidFee ?? sel.fee ?? 0n)) };
 }
 
 // { utxos:[{txid,vout,value}], key (from deriveKey), recipients:[{address,amount}],
@@ -190,10 +211,11 @@ export function buildSignedTx({ utxos, key, recipients = [], message = null,
   const tx = sel.tx;
   tx.sign(key.privKey);
   tx.finalize();
+  const paidFee = actualFee(tx);
   return {
     txHex: bytesToHex(tx.extract()),
     txid: tx.id,
-    fee: sel.fee != null ? Number(sel.fee) : undefined,
+    fee: paidFee != null ? Number(paidFee) : (sel.fee != null ? Number(sel.fee) : undefined),
     vsize: tx.vsize,
     inputsUsed: sel.inputs?.length,
     outputsCount: outputs.length + (sel.change ? 1 : 0),

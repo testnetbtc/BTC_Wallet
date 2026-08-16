@@ -66,13 +66,32 @@ export function sealSeed(mnemonic, pin, { requireStrong = false } = {}) {
   return JSON.stringify({ v: 1, kdf: 'scrypt-32768-8-1', salt: base64.encode(salt), nonce: base64.encode(nonce), ct: base64.encode(ct) });
 }
 
+// Fixed vault geometry — the sealer always writes a 16-byte salt and a 24-byte XChaCha20
+// nonce, and the plaintext is a short JSON-wrapped mnemonic. Anything outside these bounds is
+// a corrupt or hostile blob, not a wrong PIN.
+const SALT_LEN = 16, NONCE_LEN = 24, CT_MIN = 16, CT_MAX = 4096;
+
 export function openSeed(blobJson, pin) {
   let b;
   try { b = JSON.parse(blobJson); } catch { throw new Error('saved wallet data is corrupted'); }
+  if (!b || typeof b !== 'object') throw new Error('saved wallet data is corrupted');
   if (b.v !== 1) throw new Error(`unsupported vault version ${b.v}`);
-  const key = scrypt(utf8ToBytes(String(pin || '')), base64.decode(b.salt), KDF);
+  // L11 — validate the blob's STRUCTURE before spending any work on it. Without this an
+  // attacker-inflated salt (e.g. 16 MB) would be base64-decoded and fed into scrypt, turning
+  // every unlock into a multi-second DoS. The params are fixed, so we bound the ENCODED string
+  // lengths first (truly O(1), never even decoding a giant field), then the decoded lengths.
+  // Library decode/length errors are normalized to one message — never raw internals.
+  const sS = String(b.salt || ''), nS = String(b.nonce || ''), cS = String(b.ct || '');
+  if (sS.length > 64 || nS.length > 64 || cS.length > (CT_MAX * 2))
+    throw new Error('saved wallet data is corrupted');
+  let salt, nonce, ct;
+  try { salt = base64.decode(sS); nonce = base64.decode(nS); ct = base64.decode(cS); }
+  catch { throw new Error('saved wallet data is corrupted'); }
+  if (salt.length !== SALT_LEN || nonce.length !== NONCE_LEN || ct.length < CT_MIN || ct.length > CT_MAX)
+    throw new Error('saved wallet data is corrupted');
+  const key = scrypt(utf8ToBytes(String(pin || '')), salt, KDF);
   try {
-    return bytesToUtf8(xchacha20poly1305(key, base64.decode(b.nonce)).decrypt(base64.decode(b.ct)));
+    return bytesToUtf8(xchacha20poly1305(key, nonce).decrypt(ct));
   } catch {
     throw new Error('wrong PIN (or the saved data was tampered with)');
   }

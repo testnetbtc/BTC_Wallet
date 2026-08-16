@@ -24,4 +24,5 @@ hs_ed25519_public_key
 check_bridge.mjs
 infra/monitor/health.log
 packages/bitcoin/web/_headers
+packages/bitcoin/web/BUILD_HASH.txt
 packages/bitcoin/signer/dist/

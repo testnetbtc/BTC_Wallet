@@ -410,10 +410,12 @@
       ], 'Sweep');
       if (!ok) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Sweeping…');
-      // broadcast the EXACT transaction that was just confirmed — no rebuild
-      const s = dry.txHex
-        ? await window.OW.broadcastHex({ hex: dry.txHex, network })
-        : await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: true }); // p2pk path (per-UTXO txs)
+      // broadcast the EXACT transaction(s) that were just confirmed — never a rebuild
+      let s;
+      if (dry.txHex) s = await window.OW.broadcastHex({ hex: dry.txHex, network });          // single sweep tx
+      else if (dry.txHexes && dry.txHexes.length) {                                          // L9 — p2pk path: frozen per-UTXO txs
+        for (const hex of dry.txHexes) s = await window.OW.broadcastHex({ hex, network });
+      } else throw new Error('engine did not return the built transaction — refusing to broadcast');
       const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${dry.swept} sat — explorer ↗`;
       btn.replaceWith(a); toast('✓ swept', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
@@ -734,10 +736,11 @@
       const okGo = await confirmSheet('Spend this P2PK coin?', rows);
       if (!okGo) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Spending P2PK…');
-      const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, message: msg, broadcast: true, passphrase });
+      // L9 — broadcast the EXACT bytes just confirmed, no rebuild
+      const b = await window.OW.broadcastHex({ hex: dry.txHex, network });
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
-      res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
-      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      res.textContent = `✓ swept ${dry.sent} sat → ${dry.to} (fee ${dry.fee})  `;
+      const a = document.createElement('a'); a.href = b.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
       toast('✓ P2PK spent', 'ok'); setTimeout(refreshP2PKList, 1500);
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
@@ -758,12 +761,13 @@
       ]);
       if (!okGo) { $('#p2pk_fundbtn').disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Funding P2PK…');
-      const r = await window.OW.fundP2PK({ source, network, amount: amt, index: idx, broadcast: true, passphrase });
-      const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount, index: r.index }); p2pkStore(list);
-      p2pkBumpIdx(r.index);   // never reuse this key index again
+      // L9 — broadcast the EXACT bytes just confirmed, no rebuild (keeps the previewed txid/outpoint)
+      const b = await window.OW.broadcastHex({ hex: dry.txHex, network });
+      const list = p2pkLoad(); list.push({ txid: dry.txid, vout: dry.vout, amount: dry.amount, index: dry.index }); p2pkStore(list);
+      p2pkBumpIdx(dry.index);   // never reuse this key index again
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
-      res.textContent = `✓ moved ${r.amount} sat into P2PK (fee ${r.fee})  `;
-      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      res.textContent = `✓ moved ${dry.amount} sat into P2PK (fee ${dry.fee})  `;
+      const a = document.createElement('a'); a.href = b.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
       toast('✓ P2PK funded', 'ok'); $('#p2pk_amt').value = ''; setTimeout(refreshLab, 1500);
     } catch (e) { toast('✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
   });
@@ -1113,7 +1117,11 @@
   // auto-submit once the PIN reaches its known length (default 6). If length was
   // never stored (older vault) and a 6-digit auto-attempt fails, fall back to
   // manual so a longer PIN can still be typed.
-  const storedLen = (() => { try { return localStorage.getItem('olesia:pinlen'); } catch { return null; } })();
+  // L12 — PIN length is no longer persisted (it would narrow an attacker's brute-force space).
+  // Auto-submit uses the default length; a wrong auto-attempt falls back to manual entry so a
+  // longer PIN still works. Any legacy olesia:pinlen is proactively cleared.
+  try { localStorage.removeItem('olesia:pinlen'); } catch {}
+  const storedLen = null;
   let pinLen = storedLen ? +storedLen : 6, autoOn = true, lenKnown = !!storedLen;
   function renderDots() {
     const d = $('#pindots'); d.textContent = '';
