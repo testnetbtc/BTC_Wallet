@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; connect-src https://mempool.space https://blockstream.info https://api.olesia.io; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-J9uXcBfkA+l0fGqCrnLOcpM4U92+K9VAO5fzH1aJbn0=' 'sha256-uH3zkbWUfVnZQCvaK6pZ9V6wlVLDaa9GIh+KyHv3Xh8='; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; manifest-src 'self'; connect-src https://mempool.space https://blockstream.info https://api.olesia.io; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Olesia — Bitcoin Wallet</title>
 <meta name="theme-color" content="#0b0e12">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,7 +24,8 @@ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,
   -webkit-font-smoothing:antialiased}
 #shell{max-width:560px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 18px 10px}
-.logo{font-weight:800;font-size:20px;letter-spacing:-.01em}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em;color:var(--text);text-decoration:none;cursor:pointer}
+.logo:hover{opacity:.85}
 .ldot{color:var(--accent)}
 .hbtns{display:flex;gap:8px;align-items:center}
 .netchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text)}
@@ -73,7 +74,18 @@ a{color:var(--mint)}
 .eye{margin-left:auto;cursor:pointer;color:inherit;background:none;border:0;padding:2px;min-height:0;opacity:.75;font-size:15px}
 .bal{font-size:36px;font-weight:800;letter-spacing:-.02em;margin:7px 0 2px;font-variant-numeric:tabular-nums}
 .bal .u{font-size:17px;font-weight:700;margin-left:4px;opacity:.7}
-.balsub{font-size:12px;font-weight:600;opacity:.65;margin-bottom:10px}
+.balsub{font-size:12px;font-weight:600;opacity:.65;margin-bottom:6px}
+/* per-script-type selector inside the hero (each pill shows its own balance) */
+.typesel{display:flex;gap:6px;overflow-x:auto;margin:0 -4px 13px;padding:1px 4px 3px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.typesel::-webkit-scrollbar{display:none}
+.typepill{flex:0 0 auto;display:flex;flex-direction:column;gap:1px;align-items:flex-start;background:rgba(26,18,5,.09);border:1px solid rgba(26,18,5,.12);border-radius:12px;padding:6px 11px;cursor:pointer;color:#1a1205;min-height:0;font-family:inherit;transition:background .15s,border-color .15s}
+.typepill:hover{border-color:rgba(26,18,5,.28)}
+.typepill .tn{font-size:10px;font-weight:800;letter-spacing:.04em;opacity:.62;text-transform:uppercase;white-space:nowrap}
+.typepill .tv{font-size:13.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.25}
+.typepill.on{background:#1a1205;color:#f6b53f;border-color:#1a1205;box-shadow:0 4px 12px -4px rgba(26,18,5,.5)}
+.typepill.on .tn{opacity:.8}
+.balall{font-size:12px;font-weight:600;opacity:.62;margin:0 0 10px;cursor:pointer}
+.balall b{font-weight:800;opacity:1}
 .hero .practice{background:rgba(26,18,5,.14);border:0;color:#1a1205;font-weight:700}
 .hero .practice.main{background:#2a1012;color:#ffb4b8;border:0}
 /* round quick actions */
@@ -117,7 +129,7 @@ a{color:var(--mint)}
 .lesson .body b{color:var(--text)}
 .lesson.open .body{display:block}
 /* settings */
-.srow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-bottom-width:0;padding:13px 14px;cursor:pointer;font-size:14px}
+.srow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-bottom-width:0;padding:13px 14px;cursor:pointer;font-size:14px;text-decoration:none;color:inherit}
 .sgroup .srow:first-child{border-radius:13px 13px 0 0}
 .sgroup .srow:last-child{border-radius:0 0 13px 13px;border-bottom-width:1px}
 .sgroup .srow:only-child{border-radius:13px}
@@ -232,6 +244,10 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       <button type="button" class="ghost" id="ps_abc" title="use a passphrase">abc</button><button type="button" data-k="0">0</button><button type="button" class="ghost" data-k="back">⌫</button>
     </div>
     <div class="field" id="ps_textrow" style="display:none;margin-top:12px"><input id="ps_text" type="password" placeholder="passphrase (6+ chars)" autocomplete="off"></div>
+    <div id="ps_genrow" style="display:none;margin-top:8px">
+      <button type="button" class="sec" id="ps_gen" style="width:100%">🎲 Generate a strong passphrase (66 bits)</button>
+      <p class="hint" id="ps_strength" style="margin:6px 0 0;min-height:15px"></p>
+    </div>
     <div class="row" style="margin-top:14px"><button type="button" class="sec" id="ps_cancel">Cancel</button><button type="button" id="ps_ok">Continue</button></div>
   </div>
 </div>
@@ -250,7 +266,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <div id="shell">
 <header>
-  <span class="logo">Olesia<span class="ldot">.</span></span>
+  <a class="logo" href="https://olesia.io" title="Olesia — back to the main site">Olesia<span class="ldot">.</span></a>
   <span class="hbtns">
     <button id="lockbtn" title="Lock wallet">🔒</button>
     <span class="netchip" id="netchip"><span class="sw"></span><span id="netname">testnet4</span></span>
@@ -384,9 +400,11 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 <section class="pane" id="pane-home">
   <div class="hero">
     <span class="wm"></span>
-    <div class="balrow">TOTAL BALANCE <button class="eye" id="bal_eye" title="hide">👁</button></div>
+    <div class="typesel" id="type_sel"></div>
+    <div class="balrow"><span id="bal_label">BALANCE</span> <button class="eye" id="bal_eye" title="hide">👁</button></div>
     <div class="bal" id="bal_total">—<span class="u" id="bal_unit">tBTC</span></div>
     <div class="balsub" id="bal_sub"></div>
+    <div class="balall" id="bal_all"></div>
     <span class="practice" id="chip_net"></span>
   </div>
   <div class="qa">
@@ -401,16 +419,17 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ ACCOUNTS ============ -->
 <section class="pane" id="pane-accounts">
-  <h2>Accounts</h2>
-  <p class="sub">One seed → every Bitcoin address type. Tap any to receive, send, or learn what makes it different.</p>
-  <div id="acct_watchnote" class="warn" style="display:none">Watch-only (xpub): the SegWit account is visible; other types need the seed. Spending happens via the air-gap tools in Settings.</div>
+  <button class="back" data-nav="home">‹ Home</button>
+  <h2>Address types</h2>
+  <p class="sub">One seed → every Bitcoin address type (each a different <b>script type</b> under the hood). Tap any to receive, send, or learn what makes it different.</p>
+  <div id="acct_watchnote" class="warn" style="display:none">Watch-only (xpub): the SegWit address type is visible; other types need the seed. Spending happens via the air-gap tools in Settings.</div>
   <div id="acct_list"></div>
 </section>
 
 <!-- ============ ACCOUNT DETAIL ============ -->
 <section class="pane" id="pane-account">
-  <button class="back" id="back_accounts">‹ Accounts</button>
-  <h2 id="acc_title">Account</h2>
+  <button class="back" id="back_accounts">‹ Address types</button>
+  <h2 id="acc_title">Address type</h2>
   <p class="sub" style="margin-bottom:4px"><span id="acc_one"></span> · <a id="acc_moretog" style="cursor:pointer">about ▾</a></p>
   <p class="hint mono" style="margin:0 0 10px;font-size:11.5px">derivation path <span id="acc_path" style="color:var(--accent)"></span> <span class="help" data-target="tip_path">?</span></p>
   <div class="tiptext" id="tip_path" style="margin:0 0 10px">The route from your seed to this account's key: <b>m / purpose' / coin' / account' / chain / index</b>. The first number is the script-type standard (44'=legacy, 49'=nested, 84'=SegWit, 86'=Taproot); coin is 0' for mainnet, 1' for test networks. Same seed + same path = same keys, in any BIP-compliant wallet — that's why your seed restores anywhere.</div>
@@ -445,8 +464,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <div id="lab" style="display:none">
   <div class="card">
     <label style="margin-top:0">🧪 P2PK Lab <span class="help" data-target="tip_lab">?</span></label>
-    <div class="tiptext" id="tip_lab">P2PK has <b>no address</b>, so no ordinary wallet can pay it and explorers can't show its balance. The trick: fund your <b>SegWit</b> account first, then move coins into P2PK here — Olesia builds the raw <code>&lt;pubkey&gt; OP_CHECKSIG</code> output itself and remembers the exact coin it created.</div>
-    <div class="warn" id="p2pk_need" style="display:none">Fund your <b>SegWit</b> account first (it pays for the move) — there's a faucet link on its page.</div>
+    <div class="tiptext" id="tip_lab">P2PK has <b>no address</b>, so no ordinary wallet can pay it and explorers can't show its balance. The trick: fund your <b>SegWit</b> address first, then move coins into P2PK here — Olesia builds the raw <code>&lt;pubkey&gt; OP_CHECKSIG</code> output itself and remembers the exact coin it created.</div>
+    <div class="warn" id="p2pk_need" style="display:none">Fund your <b>SegWit</b> address first (it pays for the move) — there's a faucet link on its page.</div>
     <label>Move into P2PK (sats)</label>
     <div class="field"><input id="p2pk_amt" placeholder="e.g. 20000" inputmode="numeric"><button id="p2pk_fundbtn">Fund P2PK</button></div>
     <p class="hint" id="p2pk_srcbal">—</p>
@@ -471,13 +490,13 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
   <h2>Send</h2>
   <p class="sub">From <b id="send_from" style="color:var(--text)">—</b> · <span id="send_bal">—</span></p>
   <div class="card" id="send_typecard" style="padding:10px 14px">
-    <label style="margin:0 0 6px;font-size:13px;color:var(--muted)">Account — the script type you spend from <span class="help" data-target="tip_sendtype">?</span></label>
+    <label style="margin:0 0 6px;font-size:13px;color:var(--muted)">Address type — the script type you spend from <span class="help" data-target="tip_sendtype">?</span></label>
     <div class="tiptext" id="tip_sendtype">Each script type (Legacy, Nested SegWit, Native SegWit, Taproot) is its own account with its own addresses and its own balance, all from the same seed. Switch here to spend from a different one — you can only spend coins that actually sit in the account you pick.</div>
     <select id="send_type"></select>
   </div>
   <div id="send_empty" class="warn" style="display:none"></div>
   <div id="send_wo" class="warn" style="display:none">Watch-only: this wallet can't sign. Build an unsigned PSBT in <b>Settings → Air-gap tools</b>, sign it offline, broadcast it there.</div>
-  <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK account and use <b>Spend a P2PK coin out</b>.</div>
+  <div id="send_p2pk" class="warn" style="display:none">P2PK spends from its own Lab — open the P2PK type and use <b>Spend a P2PK coin out</b>.</div>
   <div class="card" style="padding:10px 14px">
     <label style="margin:0 0 8px;font-size:13px;color:var(--muted)">What do you want to do?</label>
     <div class="feeps" id="send_mode">
@@ -502,9 +521,9 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
       A tiny <b>permanent note</b> (~80 bytes) written into Bitcoin's public record. It carries no coins and can never be spent.<br><br>
       <b>Genuine uses:</b> proving a document existed at a point in time, notarising, attribution, a personal message or memorial.<br><br>
       <b>The famous one:</b> Satoshi wrote a newspaper headline — <i>"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"</i> — into the very first block. OP_RETURN is today's tidy way to leave your own mark like that.<br><br>
-      <b>Where we stand:</b> people disagree about what data belongs on Bitcoin. Olesia is neutral — it's part of the protocol, so it's here, explained, for you to use thoughtfully. <span style="color:var(--faint)">(No NFTs or inscriptions.)</span>
+      <b>Where we stand:</b> this is genuinely debated. Critics argue Bitcoin's block space is for money, and every byte of data is paid for once but stored by every node forever. Supporters note OP_RETURN was <i>designed</i> as the honest, prunable way to carry a small note — far kinder to the network than hiding data in fake addresses. Olesia teaches the tidy form and only that: one standard output, 80 bytes, no NFTs, no inscriptions. Practice freely on testnets; on mainnet, ask yourself if it truly needs to be forever.
     </div>
-    <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px" onclick="event.stopPropagation()">
+    <input id="msg" placeholder="optional message (≤80 bytes)" autocomplete="off" style="margin-top:9px">
     <div class="msgtools"><span class="msgex" data-fill="msg">✍️ Use Satoshi’s 2009 headline</span><span class="msgcount" id="msgcount">0 / 80 bytes</span></div>
   </div>
   <div class="card">
@@ -527,6 +546,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ LEARN ============ -->
 <section class="pane" id="pane-learn">
+  <button class="back" data-nav="home">‹ Home</button>
   <h2>Learn Bitcoin</h2>
   <p class="sub">Every concept in plain English — then try it for real. Progress saves on this device.</p>
   <div class="prog"><i id="learn_bar"></i></div>
@@ -537,6 +557,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
 <!-- ============ SETTINGS ============ -->
 <section class="pane" id="pane-settings">
+  <button class="back" data-nav="home">‹ Home</button>
   <h2>Settings</h2>
   <p class="slbl">Wallet</p>
   <div class="sgroup">
@@ -591,8 +612,8 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 
   <p class="slbl">About</p>
   <div class="sgroup">
-    <div class="srow" onclick="window.open('https://olesia.io/#verify','_blank','noopener')"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check the hash yourself</span></span><span class="val">↗</span></div>
-    <div class="srow" onclick="window.open('https://github.com/testnetbtc/BTC_Wallet','_blank','noopener')"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></div>
+    <a class="srow" href="https://github.com/testnetbtc/BTC_Wallet/blob/main/VERIFY.md" target="_blank" rel="noopener"><span>✅</span><span class="t"><b>Verify this build</b><span>reproducible — check this wallet's hash yourself</span></span><span class="val">↗</span></a>
+    <a class="srow" href="https://github.com/testnetbtc/BTC_Wallet" target="_blank" rel="noopener"><span>🐙</span><span class="t"><b>Source & audits</b><span>github.com/testnetbtc/BTC_Wallet</span></span><span class="val">↗</span></a>
     <div class="srow"><span>🏷️</span><span class="t"><b>Version</b></span><span class="val">2.1.0</span></div>
   </div>
   <p class="hint" style="margin-top:14px">Balances/broadcast via mempool.space (mainnet broadcast via api.olesia.io). No analytics, no server-side storage. Signing with <code>@scure/btc-signer</code>, in your browser.</p>
@@ -601,7 +622,7 @@ img.qr{display:none;margin:8px 0;border-radius:10px;max-width:200px}
 </main>
 <nav><div class="navin">
   <button data-nav="home" class="on"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg></span>Home</button>
-  <button data-nav="accounts"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg></span>Accounts</button>
+  <button data-nav="accounts"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg></span>Addresses</button>
   <button data-nav="learn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5zM19 19a2 2 0 01-2 2H6"/><path d="M8 3v14"/></svg></span>Learn</button>
   <button data-nav="settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3h0a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6h0a1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9v0a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></span>Settings</button>
 </div></nav>
@@ -12193,13 +12214,19 @@ zoo`.split("\n");
   };
 
   // src/networks.js
+  var BIP32 = {
+    main: { private: 76066276, public: 76067358 },
+    // xprv / xpub
+    test: { private: 70615956, public: 70617039 }
+    // tprv / tpub
+  };
   var NETWORKS = {
-    mainnet: { coin: 0, btc: NETWORK, esplora: "https://mempool.space/api", explorer: "https://mempool.space/tx/" },
-    testnet3: { coin: 1, btc: TEST_NETWORK, esplora: "https://mempool.space/testnet/api", explorer: "https://mempool.space/testnet/tx/" },
-    testnet4: { coin: 1, btc: TEST_NETWORK, esplora: "https://mempool.space/testnet4/api", explorer: "https://mempool.space/testnet4/tx/" },
+    mainnet: { coin: 0, btc: NETWORK, bip32: BIP32.main, esplora: "https://mempool.space/api", explorer: "https://mempool.space/tx/" },
+    testnet3: { coin: 1, btc: TEST_NETWORK, bip32: BIP32.test, esplora: "https://mempool.space/testnet/api", explorer: "https://mempool.space/testnet/tx/" },
+    testnet4: { coin: 1, btc: TEST_NETWORK, bip32: BIP32.test, esplora: "https://mempool.space/testnet4/api", explorer: "https://mempool.space/testnet4/tx/" },
     // Signet: same address params as testnet (coin type 1, tb1…), separate chain, but
     // with regular ~10-min blocks — the best network for learning and for a faucet.
-    signet: { coin: 1, btc: TEST_NETWORK, esplora: "https://mempool.space/signet/api", explorer: "https://mempool.space/signet/tx/" }
+    signet: { coin: 1, btc: TEST_NETWORK, bip32: BIP32.test, esplora: "https://mempool.space/signet/api", explorer: "https://mempool.space/signet/tx/" }
   };
   function net(name) {
     const n = NETWORKS[name];
@@ -12211,20 +12238,37 @@ zoo`.split("\n");
   function normalizeMnemonic(s) {
     return (s || "").normalize("NFKD").trim().toLowerCase().replace(/\s+/g, " ");
   }
+  var rootOf = (mnemonic, passphrase, networkName) => HDKey.fromMasterSeed(mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || ""), net(networkName).bip32);
   function accountXpub(mnemonic, passphrase, networkName) {
     const n = net(networkName);
-    const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || "");
-    return HDKey.fromMasterSeed(seed).derive(`m/84'/${n.coin}'/0'`).publicExtendedKey;
+    return rootOf(mnemonic, passphrase, networkName).derive(`m/84'/${n.coin}'/0'`).publicExtendedKey;
   }
-  function deriveKey(mnemonic, passphrase, networkName, index = 0) {
+  var XVERS = [{ private: 76066276, public: 76067358 }, { private: 70615956, public: 70617039 }];
+  function parseExtendedKey(extKey, networkName) {
+    const s = (extKey || "").trim();
+    const tries = [net(networkName).bip32, ...XVERS];
+    for (const v of tries) {
+      try {
+        return HDKey.fromExtendedKey(s, v);
+      } catch {
+      }
+    }
+    throw new Error("not a recognised extended key (xpub/tpub)");
+  }
+  function masterFingerprint(mnemonic, passphrase, networkName) {
+    const fp = rootOf(mnemonic, passphrase, networkName).fingerprint;
+    return (fp >>> 0).toString(16).padStart(8, "0");
+  }
+  function deriveKey(mnemonic, passphrase, networkName, index = 0, chain2 = 0) {
     const n = net(networkName);
-    const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || "");
-    const child = HDKey.fromMasterSeed(seed).derive(`m/84'/${n.coin}'/0'/0/${index}`);
+    const path = `m/84'/${n.coin}'/0'/${chain2}/${index}`;
+    const child = rootOf(mnemonic, passphrase, networkName).derive(path);
     if (!child.privateKey) throw new Error("no private key derived");
     const spend = p2wpkh(child.publicKey, n.btc);
     return {
       networkName,
       index,
+      chain: chain2,
       privKey: child.privateKey,
       // 32 bytes
       pubkey: child.publicKey,
@@ -12236,7 +12280,7 @@ zoo`.split("\n");
       segwit: true,
       // P2WPKH — spend needs only witnessUtxo
       type: "p2wpkh",
-      path: `m/84'/${n.coin}'/0'/0/${index}`
+      path
     };
   }
 
@@ -12281,13 +12325,13 @@ zoo`.split("\n");
   function scriptHashOf(scriptBytes) {
     return bytesToHex(sha2562(scriptBytes).slice().reverse());
   }
-  function deriveScript(mnemonic, network, type, index = 0, passphrase = "") {
+  function deriveScript(mnemonic, network, type, index = 0, passphrase = "", chain2 = 0) {
     const n = net(network);
     const t = SCRIPT_TYPES[type];
     if (!t) throw new Error("unknown script type: " + type);
     const seed = mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase || "");
-    const path = `m/${t.purpose}'/${n.coin}'/0'/0/${index}`;
-    const child = HDKey.fromMasterSeed(seed).derive(path);
+    const path = `m/${t.purpose}'/${n.coin}'/0'/${chain2}/${index}`;
+    const child = HDKey.fromMasterSeed(seed, n.bip32).derive(path);
     if (!child.privateKey) throw new Error("no private key derived");
     const pub = child.publicKey;
     let spend;
@@ -12303,6 +12347,8 @@ zoo`.split("\n");
       about: t.about,
       segwit: !!t.segwit,
       path,
+      index,
+      chain: chain2,
       privKey: child.privateKey,
       pubkey: pub,
       spend,
@@ -12342,13 +12388,17 @@ zoo`.split("\n");
     const c = info.chain_stats, m = info.mempool_stats;
     const confirmed = c.funded_txo_sum - c.spent_txo_sum;
     const pending = m.funded_txo_sum - m.spent_txo_sum;
-    return { confirmed, pending, total: confirmed + pending };
+    const used = c.tx_count + m.tx_count > 0 || c.funded_txo_count + m.funded_txo_count > 0;
+    return { confirmed, pending, total: confirmed + pending, used };
   }
+  var MAX_ESTIMATED_FEERATE = 1e3;
   async function getFeeRate(networkName, target = 6) {
     const base = net(networkName).esplora;
     try {
       const f = JSON.parse(await j(`${base}/fee-estimates`));
-      return Math.max(1, Math.ceil(f[String(target)] ?? f["6"] ?? 2));
+      const raw = Number(f[String(target)] ?? f["6"] ?? 2);
+      if (!Number.isFinite(raw)) return 2;
+      return Math.min(MAX_ESTIMATED_FEERATE, Math.max(1, Math.ceil(raw)));
     } catch {
       return 2;
     }
@@ -12394,14 +12444,55 @@ zoo`.split("\n");
 
   // src/tx.js
   var OP_RETURN_MAX = 80;
+  var MAX_FEERATE = 5e3;
+  function assertFeeRate(feeRate) {
+    const f = Number(feeRate);
+    if (!Number.isFinite(f) || f < 1)
+      throw new Error(`unsafe fee rate (${String(feeRate)}) \u2014 must be a finite number \u2265 1 sat/vB`);
+    if (f > MAX_FEERATE)
+      throw new Error(`unsafe fee rate (${f} sat/vB) \u2014 above the ${MAX_FEERATE} sat/vB hard cap`);
+    return Math.ceil(f);
+  }
+  var MIN_OUTPUT_SAT = 546n;
+  function assertRecipientAmount(amount) {
+    if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount <= 0)
+      throw new Error(`recipient amount must be a positive integer number of satoshis (got ${typeof amount} ${String(amount)})`);
+    const sat = BigInt(amount);
+    if (sat < MIN_OUTPUT_SAT)
+      throw new Error(`recipient amount ${amount} sats is below the wallet minimum output of ${MIN_OUTPUT_SAT} sats`);
+    return sat;
+  }
+  function assertAddressNetwork(address, networkName) {
+    const n = net(networkName);
+    const a = (address || "").trim();
+    if (!a) throw new Error("missing destination address");
+    try {
+      Address(n.btc).decode(a);
+    } catch {
+      throw new Error(`"${a.slice(0, 16)}\u2026" is not a valid ${networkName} address \u2014 you may be on the wrong network`);
+    }
+    return a;
+  }
   function opReturnScript(message) {
     const data = typeof message === "string" ? utf8ToBytes(message) : message;
     if (data.length > OP_RETURN_MAX)
       throw new Error(`OP_RETURN message is ${data.length} bytes (> ${OP_RETURN_MAX})`);
     return Script.encode(["RETURN", data]);
   }
+  var RBF_SEQUENCE = 4294967293;
+  function actualFee(tx) {
+    let inSum = 0n, outSum = 0n;
+    for (let i = 0; i < tx.inputsLength; i++) {
+      const inp = tx.getInput(i);
+      if (inp.witnessUtxo) inSum += inp.witnessUtxo.amount;
+      else if (inp.nonWitnessUtxo?.outputs && inp.nonWitnessUtxo.outputs[inp.index]) inSum += inp.nonWitnessUtxo.outputs[inp.index].amount;
+      else return null;
+    }
+    for (let i = 0; i < tx.outputsLength; i++) outSum += tx.getOutput(i).amount;
+    return inSum - outSum;
+  }
   function buildInput(u, w) {
-    const inp = { txid: hexToBytes(u.txid), index: u.vout, ...w.spend };
+    const inp = { txid: hexToBytes(u.txid), index: u.vout, ...w.spend, sequence: RBF_SEQUENCE };
     if (w.segwit === false) {
       if (!u.prevTxHex) throw new Error(`spending a legacy input needs its previous transaction (none for ${u.txid}:${u.vout})`);
       inp.nonWitnessUtxo = hexToBytes(u.prevTxHex);
@@ -12412,8 +12503,9 @@ zoo`.split("\n");
   }
   function buildSweepTx({ utxos, key, toAddress, feeRate = 2, networkName, message = null }) {
     const n = net(networkName);
+    feeRate = assertFeeRate(feeRate);
     if (!utxos?.length) throw new Error("no UTXOs to sweep");
-    Address(n.btc).decode(toAddress);
+    assertAddressNetwork(toAddress, networkName);
     const inputs = utxos.map((u) => buildInput(u, key));
     const outs = message != null && String(message).length ? [{ script: opReturnScript(message), amount: 0n }] : [];
     const sel = selectUTXO(inputs, outs, "all", {
@@ -12429,58 +12521,79 @@ zoo`.split("\n");
     tx.sign(key.privKey);
     tx.finalize();
     const total = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
+    const paidFee = actualFee(tx);
     return {
       txHex: bytesToHex(tx.extract()),
       txid: tx.id,
-      fee: sel.fee != null ? Number(sel.fee) : void 0,
+      fee: paidFee != null ? Number(paidFee) : sel.fee != null ? Number(sel.fee) : void 0,
       vsize: tx.vsize,
-      swept: Number(total - (sel.fee ?? 0n)),
+      swept: Number(total - (paidFee ?? sel.fee ?? 0n)),
       inputsUsed: inputs.length
     };
   }
-  function buildSignedTx({
-    utxos,
-    key,
-    recipients = [],
-    message = null,
-    changeAddress,
-    feeRate = 2,
-    networkName
-  }) {
+  function buildSignedTxMulti({ keyedUtxos, recipients = [], message = null, changeAddress, feeRate = 2, networkName }) {
     const n = net(networkName);
-    if (!utxos?.length) throw new Error("no UTXOs to spend");
+    feeRate = assertFeeRate(feeRate);
+    if (!keyedUtxos?.length) throw new Error("no UTXOs to spend");
     const outputs = [];
     for (const r of recipients) {
-      if (!r.address || !(Number(r.amount) > 0)) throw new Error("recipient needs {address, amount>0}");
-      outputs.push({ address: r.address, amount: BigInt(r.amount) });
+      if (!r.address) throw new Error("recipient needs {address, amount}");
+      const amount = assertRecipientAmount(r.amount);
+      assertAddressNetwork(r.address, networkName);
+      outputs.push({ address: r.address, amount });
     }
     if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
-    if (outputs.length === 0) throw new Error("nothing to send: no recipients and no message");
-    const inputs = utxos.map((u) => buildInput(u, key));
+    if (!outputs.length) throw new Error("nothing to send");
+    const inputs = keyedUtxos.map((u) => buildInput(u, u.key));
     const sel = selectUTXO(inputs, outputs, "default", {
-      changeAddress: changeAddress || key.address,
+      changeAddress: changeAddress || keyedUtxos[0].key.address,
       feePerByte: BigInt(feeRate),
       network: n.btc,
       bip69: true,
-      // deterministic input/output ordering (BIP-69)
       createTx: true,
       allowUnknownOutputs: true,
-      // permit the 0-value OP_RETURN output
       dust: 546n
     });
-    if (!sel || !sel.tx)
-      throw new Error("coin selection failed \u2014 insufficient funds for outputs + fee?");
+    if (!sel || !sel.tx) throw new Error("coin selection failed \u2014 insufficient funds for outputs + fee?");
     const tx = sel.tx;
-    tx.sign(key.privKey);
+    const seen = /* @__PURE__ */ new Set();
+    for (const u of keyedUtxos) {
+      const h = bytesToHex(u.key.privKey);
+      if (seen.has(h)) continue;
+      seen.add(h);
+      try {
+        tx.sign(u.key.privKey);
+      } catch {
+      }
+    }
     tx.finalize();
-    return {
-      txHex: bytesToHex(tx.extract()),
-      txid: tx.id,
-      fee: sel.fee != null ? Number(sel.fee) : void 0,
-      vsize: tx.vsize,
-      inputsUsed: sel.inputs?.length,
-      outputsCount: outputs.length + (sel.change ? 1 : 0)
-    };
+    const paidFee = actualFee(tx);
+    return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: paidFee != null ? Number(paidFee) : sel.fee != null ? Number(sel.fee) : void 0, vsize: tx.vsize, inputsUsed: sel.inputs?.length };
+  }
+  function buildSweepTxMulti({ keyedUtxos, toAddress, feeRate = 2, networkName, message = null }) {
+    const n = net(networkName);
+    feeRate = assertFeeRate(feeRate);
+    if (!keyedUtxos?.length) throw new Error("no UTXOs to sweep");
+    assertAddressNetwork(toAddress, networkName);
+    const inputs = keyedUtxos.map((u) => buildInput(u, u.key));
+    const outs = message != null && String(message).length ? [{ script: opReturnScript(message), amount: 0n }] : [];
+    const sel = selectUTXO(inputs, outs, "all", { changeAddress: toAddress, feePerByte: BigInt(feeRate), network: n.btc, createTx: true, dust: 546n, allowUnknownOutputs: true });
+    if (!sel || !sel.tx) throw new Error("sweep build failed \u2014 balance below fee?");
+    const tx = sel.tx;
+    const seen = /* @__PURE__ */ new Set();
+    for (const u of keyedUtxos) {
+      const h = bytesToHex(u.key.privKey);
+      if (seen.has(h)) continue;
+      seen.add(h);
+      try {
+        tx.sign(u.key.privKey);
+      } catch {
+      }
+    }
+    tx.finalize();
+    const total = keyedUtxos.reduce((a, u) => a + BigInt(u.value), 0n);
+    const paidFee = actualFee(tx);
+    return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: paidFee != null ? Number(paidFee) : sel.fee != null ? Number(sel.fee) : void 0, vsize: tx.vsize, swept: Number(total - (paidFee ?? sel.fee ?? 0n)) };
   }
 
   // node_modules/@noble/hashes/esm/ripemd160.js
@@ -12517,23 +12630,44 @@ zoo`.split("\n");
     return a;
   }
   var withLen = (s) => concatBytes(varint(s.length), s);
-  function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScript, amount, feeRate = 2 }) {
-    if (!utxos?.length) throw new Error("no UTXOs to fund from");
+  function selectFundCoins(utxos, amount, feeFor) {
     amount = BigInt(amount);
-    const inTotal = utxos.reduce((a, u) => a + BigInt(u.value), 0n);
-    const estVsize = 11 + 68 * utxos.length + 44 + 31;
-    const fee = BigInt(Math.ceil(feeRate * estVsize));
+    const need1 = amount + feeFor(1);
+    let single = null;
+    for (const u of utxos) {
+      const v = BigInt(u.value);
+      if (v >= need1 && (single === null || v < BigInt(single.value))) single = u;
+    }
+    if (single) return [single];
+    const asc = [...utxos].sort((a, b) => a.value < b.value ? -1 : a.value > b.value ? 1 : 0);
+    const acc = [];
+    let sum = 0n;
+    for (const u of asc) {
+      acc.push(u);
+      sum += BigInt(u.value);
+      if (sum >= amount + feeFor(acc.length)) return acc;
+    }
+    return null;
+  }
+  function buildFundP2PK({ utxos, privKey, pubkey, targetScript, changeScript, amount, feeRate = 2 }) {
+    feeRate = assertFeeRate(feeRate);
+    if (!utxos?.length) throw new Error("no UTXOs to fund from");
+    amount = assertRecipientAmount(amount);
+    const feeFor = (n) => BigInt(Math.ceil(feeRate * (11 + 68 * n + 44 + 31)));
+    const chosen = selectFundCoins(utxos, amount, feeFor);
+    if (!chosen) throw new Error(`insufficient funds: no combination of coins covers ${amount} + fee`);
+    const inTotal = chosen.reduce((a, u) => a + BigInt(u.value), 0n);
+    const fee = feeFor(chosen.length);
     let change = inTotal - amount - fee;
-    if (change < 0n) throw new Error(`insufficient funds: have ${inTotal}, need ${amount + fee} (amount + fee)`);
     const outs = [{ script: targetScript, amount }];
     if (change >= 294n) outs.push({ script: changeScript, amount: change });
     else change = 0n;
     const scriptCode = concatBytes(hexToBytes("1976a914"), hash1603(pubkey), hexToBytes("88ac"));
-    const nSeq = hexToBytes("ffffffff");
-    const hashPrevouts = dsha(concatBytes(...utxos.map((u) => concatBytes(revTxid(u.txid), u322(u.vout)))));
-    const hashSequence = dsha(concatBytes(...utxos.map(() => nSeq)));
+    const nSeq = hexToBytes("fdffffff");
+    const hashPrevouts = dsha(concatBytes(...chosen.map((u) => concatBytes(revTxid(u.txid), u322(u.vout)))));
+    const hashSequence = dsha(concatBytes(...chosen.map(() => nSeq)));
     const hashOutputs = dsha(concatBytes(...outs.map((o) => concatBytes(u64(o.amount), withLen(o.script)))));
-    const witnesses = utxos.map((u) => {
+    const witnesses = chosen.map((u) => {
       const preimage = concatBytes(
         u322(2),
         hashPrevouts,
@@ -12551,11 +12685,11 @@ zoo`.split("\n");
       const sig = secp256k1.sign(dsha(preimage), privKey, { lowS: true }).toDERRawBytes();
       return [concatBytes(sig, Uint8Array.of(1)), pubkey];
     });
-    const inputsSer = concatBytes(...utxos.map((u) => concatBytes(revTxid(u.txid), u322(u.vout), varint(0), nSeq)));
+    const inputsSer = concatBytes(...chosen.map((u) => concatBytes(revTxid(u.txid), u322(u.vout), varint(0), nSeq)));
     const outputsSer = concatBytes(...outs.map((o) => concatBytes(u64(o.amount), withLen(o.script))));
-    const nonWitness = concatBytes(u322(2), varint(utxos.length), inputsSer, varint(outs.length), outputsSer, u322(0));
+    const nonWitness = concatBytes(u322(2), varint(chosen.length), inputsSer, varint(outs.length), outputsSer, u322(0));
     const witnessSer = concatBytes(...witnesses.map((w) => concatBytes(varint(w.length), ...w.map(withLen))));
-    const full = concatBytes(u322(2), Uint8Array.of(0, 1), varint(utxos.length), inputsSer, varint(outs.length), outputsSer, witnessSer, u322(0));
+    const full = concatBytes(u322(2), Uint8Array.of(0, 1), varint(chosen.length), inputsSer, varint(outs.length), outputsSer, witnessSer, u322(0));
     const weight = nonWitness.length * 3 + full.length;
     return {
       txHex: bytesToHex(full),
@@ -12563,10 +12697,12 @@ zoo`.split("\n");
       fee: Number(inTotal - outs.reduce((a, o) => a + o.amount, 0n)),
       vsize: Math.ceil(weight / 4),
       funded: Number(amount),
-      change: Number(change)
+      change: Number(change),
+      inputsUsed: chosen.length
     };
   }
   function buildSpendP2PK({ utxo, privKey, p2pkScriptBytes, destScript, feeRate = 2, message = null }) {
+    feeRate = assertFeeRate(feeRate);
     const value = BigInt(utxo.value);
     let orScript = null;
     if (message != null && String(message).length) {
@@ -12578,11 +12714,11 @@ zoo`.split("\n");
     const estSize = 4 + 1 + (32 + 4 + 1 + 73 + 4) + 1 + (8 + 1 + destScript.length) + orSize + 4;
     const fee = BigInt(Math.ceil(feeRate * estSize));
     const sent = value - fee;
-    if (sent <= 0n) throw new Error(`P2PK balance ${value} too small to cover the fee (${fee})`);
+    if (sent < MIN_OUTPUT_SAT) throw new Error(`P2PK balance ${value} too small: net output ${sent} sats is below the ${MIN_OUTPUT_SAT}-sat dust floor after the fee (${fee})`);
     const outs = [concatBytes(u64(sent), withLen(destScript))];
     if (orScript) outs.push(concatBytes(u64(0), withLen(orScript)));
     const outsSer = concatBytes(varint(outs.length), ...outs);
-    const nSeq = hexToBytes("ffffffff");
+    const nSeq = hexToBytes("fdffffff");
     const body = (scriptSigField) => concatBytes(
       u322(2),
       varint(1),
@@ -12653,7 +12789,7 @@ zoo`.split("\n");
   // src/psbt.js
   function watchOnly(accountXpub2, network, chain2 = 0, index = 0) {
     const n = net(network);
-    const node = HDKey.fromExtendedKey(accountXpub2).deriveChild(chain2).deriveChild(index);
+    const node = parseExtendedKey(accountXpub2, network).deriveChild(chain2).deriveChild(index);
     const spend = p2wpkh(node.publicKey, n.btc);
     return { pubkey: node.publicKey, script: spend.script, address: spend.address };
   }
@@ -12667,14 +12803,21 @@ zoo`.split("\n");
     network
   }) {
     const n = net(network);
+    feeRate = assertFeeRate(feeRate);
     const outputs = [];
-    for (const r of recipients) outputs.push({ address: r.address, amount: BigInt(r.amount) });
+    for (const r of recipients) {
+      const amount = assertRecipientAmount(r.amount);
+      assertAddressNetwork(r.address, network);
+      outputs.push({ address: r.address, amount });
+    }
     if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
     if (!outputs.length) throw new Error("nothing to send");
     const inputs = utxos.map((u) => ({
       txid: hexToBytes(u.txid),
       index: u.vout,
-      witnessUtxo: { script: wo.script, amount: BigInt(u.value) }
+      witnessUtxo: { script: wo.script, amount: BigInt(u.value) },
+      sequence: 4294967293
+      // BIP-125 RBF opt-in (air-gap flow too)
     }));
     const sel = selectUTXO(inputs, outputs, "default", {
       changeAddress: changeAddress || wo.address,
@@ -12690,6 +12833,104 @@ zoo`.split("\n");
       psbt: base64.encode(sel.tx.toPSBT()),
       fee: Number(sel.fee),
       vsize: sel.weight ? Math.ceil(sel.weight / 4) : void 0
+    };
+  }
+  function describePSBT(psbtB64, { accountXpub: accountXpub2, network, gap = 20 }) {
+    const n = net(network);
+    const tx = Transaction.fromPSBT(base64.decode(psbtB64), { allowUnknownOutputs: true });
+    const coin = n.coin ?? (n.btc.bech32 === "bc" ? 0 : 1);
+    const acct = parseExtendedKey(accountXpub2, network);
+    const own = /* @__PURE__ */ new Map();
+    for (const chain2 of [0, 1]) {
+      const branch = acct.deriveChild(chain2);
+      for (let i = 0; i <= gap; i++) {
+        const node = branch.deriveChild(i);
+        const p = p2wpkh(node.publicKey, n.btc);
+        own.set(bytesToHex(p.script), { chain: chain2, index: i, address: p.address, path: `m/84'/${coin}'/0'/${chain2}/${i}` });
+      }
+    }
+    const inputs = [];
+    let inTotal = 0, unknownAmounts = false;
+    for (let i = 0; i < tx.inputsLength; i++) {
+      const inp = tx.getInput(i);
+      let script = inp.witnessUtxo?.script ?? null;
+      let amount = inp.witnessUtxo ? Number(inp.witnessUtxo.amount) : null;
+      if (!script && inp.nonWitnessUtxo?.outputs) {
+        let verified = false;
+        try {
+          const raw = RawTx.encode(inp.nonWitnessUtxo);
+          const gotTxid = bytesToHex(Uint8Array.from(sha2562(sha2562(raw))).reverse());
+          verified = !!inp.txid && gotTxid === bytesToHex(inp.txid);
+        } catch {
+          verified = false;
+        }
+        if (verified) {
+          const prevOut = inp.nonWitnessUtxo.outputs[inp.index];
+          if (prevOut) {
+            script = prevOut.script;
+            amount = Number(prevOut.amount);
+          }
+        }
+      }
+      const o = script ? own.get(bytesToHex(script)) : null;
+      if (amount == null) unknownAmounts = true;
+      else inTotal += amount;
+      inputs.push({
+        txid: inp.txid ? bytesToHex(inp.txid) : null,
+        vout: inp.index,
+        amount,
+        mine: !!o,
+        path: o?.path ?? null,
+        address: o?.address ?? null,
+        sighashType: inp.sighashType ?? null
+        // L3 — surfaced so the review can gate on it
+      });
+    }
+    const outputs = [];
+    let outTotal = 0;
+    for (let i = 0; i < tx.outputsLength; i++) {
+      const o = tx.getOutput(i);
+      const amount = Number(o.amount);
+      outTotal += amount;
+      if (o.script && o.script[0] === 106) {
+        let text = "";
+        try {
+          const dec = Script.decode(o.script);
+          const data = dec.find((x) => x instanceof Uint8Array);
+          text = data ? new TextDecoder().decode(data) : "";
+        } catch {
+        }
+        outputs.push({ vout: i, type: "op_return", address: null, amount, opReturn: text, change: false, path: null });
+        continue;
+      }
+      let address = null, type = "unknown";
+      try {
+        const d = OutScript.decode(o.script);
+        type = d.type;
+        address = Address(n.btc).encode(d);
+      } catch {
+      }
+      const mineOut = o.script ? own.get(bytesToHex(o.script)) : null;
+      outputs.push({ vout: i, type, address, amount, opReturn: null, change: !!mineOut, path: mineOut?.path ?? null });
+    }
+    const fee = unknownAmounts ? null : inTotal - outTotal;
+    const estVsize = Math.ceil(10.5 + 68 * tx.inputsLength + 31 * tx.outputsLength);
+    return {
+      network,
+      inputs,
+      outputs,
+      inTotal: unknownAmounts ? null : inTotal,
+      outTotal,
+      fee,
+      feeRate: fee != null && fee >= 0 ? Number((fee / estVsize).toFixed(1)) : null,
+      estVsize,
+      anyInputMine: inputs.some((x) => x.mine),
+      allInputsMine: inputs.length > 0 && inputs.every((x) => x.mine),
+      externalTotal: outputs.filter((x) => !x.change && x.type !== "op_return").reduce((a, x) => a + x.amount, 0),
+      changeTotal: outputs.filter((x) => x.change).reduce((a, x) => a + x.amount, 0),
+      // L4 — value irrevocably BURNED in OP_RETURN outputs (normally 0). Surfaced so a "valued
+      // OP_RETURN" can never be hidden from the totals the user reviews.
+      burnedTotal: outputs.filter((x) => x.type === "op_return").reduce((a, x) => a + x.amount, 0)
     };
   }
   function signPSBTOffline(psbtB64, mnemonic, passphrase, network, index = 0) {
@@ -12749,58 +12990,23 @@ zoo`.split("\n");
     if (wallet.segwit !== false) return utxos;
     return Promise.all(utxos.map(async (u) => ({ ...u, prevTxHex: await getTxHex(u.txid, network) })));
   }
-  async function spendableUtxos(w, network, allowUnconfirmed) {
-    const utxos = await getUTXOs(locatorOf(w), network);
-    const s = allowUnconfirmed ? utxos : utxos.filter((u) => u.confirmed);
-    if (!s.length) throw new Error(`no ${allowUnconfirmed ? "" : "confirmed "}UTXOs on ${w.address || "this script"} \u2014 fund it first`);
-    return attachPrevTxs(s, network, w);
+  function assertBroadcastTxid(builtTxid, returnedTxid) {
+    const got = String(returnedTxid == null ? "" : returnedTxid).trim();
+    if (got && got !== builtTxid) throw new Error(`broadcast txid mismatch \u2014 built ${builtTxid}, network reported ${got}`);
+    return got || builtTxid;
   }
-  async function prepareAndSend(opts) {
-    const { source, mnemonic, network, scriptType = "p2wpkh", recipients = [], message = null, index = 0, passphrase = "" } = opts;
-    const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
-    if (w.watchOnly) throw new Error("watch-only (xpub) cannot sign \u2014 use the air-gap tools");
-    if (!w.address) throw new Error("P2PK has no address; spending it is a museum feature (coming soon)");
-    const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
-    const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
-    const built = buildSignedTx({ utxos: spendable, key: w, recipients, message, changeAddress: w.address, feeRate, networkName: network });
-    const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
-    return {
-      from: w.address,
-      ...built,
-      feeRate,
-      broadcast: !!opts.broadcast,
-      broadcastTxid,
-      explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null
-    };
-  }
-  async function prepareSweep(opts) {
-    const { source, mnemonic, network, scriptType = "p2wpkh", toAddress, index = 0, passphrase = "", message = null } = opts;
-    const w = resolveWallet(source ?? mnemonic, network, scriptType, index, passphrase);
-    if (w.watchOnly || !w.address) throw new Error("cannot sweep from this source/type");
-    const spendable = await spendableUtxos(w, network, opts.allowUnconfirmed);
-    const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
-    const built = buildSweepTx({ utxos: spendable, key: w, toAddress, feeRate, networkName: network, message });
-    const broadcastTxid = opts.broadcast ? await broadcast(built.txHex, network) : null;
-    return {
-      from: w.address,
-      to: toAddress,
-      ...built,
-      feeRate,
-      broadcast: !!opts.broadcast,
-      broadcastTxid,
-      explorer: broadcastTxid ? net(network).explorer + broadcastTxid : null
-    };
-  }
-  async function fundP2PK({ source, network, amount, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true, passphrase = "" }) {
+  async function fundP2PK({ source, network, amount, index = 0, feeRate = 2, broadcast: doBroadcast = false, allowUnconfirmed = true, passphrase = "" }) {
     const src = deriveScript(source, network, "p2wpkh", 0, passphrase);
-    const tgt = deriveScript(source, network, "p2pk", 0, passphrase);
+    const tgt = deriveScript(source, network, "p2pk", index, passphrase);
     const utxos = (await getUTXOs(src.address, network)).filter((u) => allowUnconfirmed || u.confirmed);
     if (!utxos.length) throw new Error(`fund your SegWit address first (${src.address}) \u2014 no coins to move into P2PK`);
     const built = buildFundP2PK({ utxos, privKey: src.privKey, pubkey: src.pubkey, targetScript: tgt.spend.script, changeScript: src.spend.script, amount: Number(amount), feeRate: Number(feeRate) });
-    const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
+    const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
     return {
       txid,
+      txHex: built.txHex,
       vout: 0,
+      index,
       amount: Number(amount),
       scriptHex: tgt.scriptHex,
       fee: built.fee,
@@ -12817,36 +13023,160 @@ zoo`.split("\n");
         return {
           txid: op.txid,
           vout: op.vout,
+          index: op.index ?? 0,
           value: vout?.value ?? op.amount,
           type: vout?.scriptpubkey_type,
           confirmed: !!tx.status?.confirmed,
           spent: !!spend?.spent
         };
       } catch (e) {
-        return { txid: op.txid, vout: op.vout, value: op.amount, error: e.message };
+        return { txid: op.txid, vout: op.vout, index: op.index ?? 0, value: op.amount, error: e.message };
       }
     }));
   }
-  async function importP2PK({ source, network, txid, vout = 0, passphrase = "" }) {
-    const tgt = deriveScript(source, network, "p2pk", 0, passphrase);
+  async function importP2PK({ source, network, txid, vout = 0, passphrase = "", scanGap = 50 }) {
     const tx = await getTx(txid, network);
     const out = tx.vout?.[vout];
     if (!out) throw new Error(`no output #${vout} in that transaction`);
-    if ((out.scriptpubkey || "").toLowerCase() !== tgt.scriptHex.toLowerCase())
-      throw new Error(`output #${vout} isn't this wallet's P2PK \u2014 wrong txid, vout, or seed`);
+    const spk = (out.scriptpubkey || "").toLowerCase();
+    let index = -1;
+    for (let i = 0; i < scanGap; i++) {
+      if (deriveScript(source, network, "p2pk", i, passphrase).scriptHex.toLowerCase() === spk) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) throw new Error(`output #${vout} isn't this wallet's P2PK \u2014 wrong txid, vout, or seed`);
     const spend = await getOutspend(txid, vout, network);
-    return { txid, vout, amount: out.value, confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
+    return { txid, vout, index, amount: out.value, confirmed: !!tx.status?.confirmed, spent: !!spend?.spent };
   }
   async function spendP2PK({ source, network, outpoint, toAddress, feeRate = 2, broadcast: doBroadcast = false, passphrase = "", message = null }) {
-    const tgt = deriveScript(source, network, "p2pk", 0, passphrase);
+    const tgt = deriveScript(source, network, "p2pk", outpoint.index ?? 0, passphrase);
     const tx = await getTx(outpoint.txid, network);
     const vout = tx.vout[outpoint.vout];
     if (!vout) throw new Error("P2PK output not found on chain");
     if ((await getOutspend(outpoint.txid, outpoint.vout, network))?.spent) throw new Error("this P2PK coin was already spent");
     const destScript = OutScript.encode(Address(net(network).btc).decode((toAddress || "").trim()));
     const built = buildSpendP2PK({ utxo: { txid: outpoint.txid, vout: outpoint.vout, value: vout.value }, privKey: tgt.privKey, p2pkScriptBytes: tgt.spend.script, destScript, feeRate: Number(feeRate), message });
-    const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
-    return { txid, sent: built.sent, fee: built.fee, to: (toAddress || "").trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+    const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
+    return { txid, txHex: built.txHex, sent: built.sent, fee: built.fee, to: (toAddress || "").trim(), broadcast: !!doBroadcast, explorer: doBroadcast ? net(network).explorer + txid : null };
+  }
+  function deriveAt(source, network, scriptType, chain2, index, passphrase = "") {
+    const s = (source || "").trim();
+    if (isXpub(s)) {
+      if (scriptType !== "p2wpkh") throw new Error("watch-only (xpub) supports native SegWit only");
+      const w2 = watchOnly(s, network, chain2, index);
+      return { address: w2.address, script: w2.script, scripthash: null, watchOnly: true, segwit: true, type: "p2wpkh", chain: chain2, index, path: `m/84'/${net(network).coin}'/0'/${chain2}/${index}` };
+    }
+    const w = deriveScript(s, network, scriptType, index, passphrase, chain2);
+    return { address: w.address, script: w.spend.script, scripthash: w.scripthash, privKey: w.privKey, spend: w.spend, segwit: w.segwit, type: w.type, chain: chain2, index, path: w.path, watchOnly: false };
+  }
+  var locOf = (d) => d.address ? d.address : { scripthash: d.scripthash };
+  async function discoverAccount({ source, network, scriptType = "p2wpkh", passphrase = "", gap = 20 }) {
+    const chains = { 0: [], 1: [] };
+    for (const chain2 of [0, 1]) {
+      let base = 0;
+      for (; ; ) {
+        const window2 = Array.from({ length: gap }, (_, k) => base + k);
+        const probed = await Promise.all(window2.map(async (index) => {
+          const d = deriveAt(source, network, scriptType, chain2, index, passphrase);
+          const [balance, utxos] = await Promise.all([getBalance(locOf(d), network), getUTXOs(locOf(d), network)]);
+          return { d, index, balance, utxos, used: balance.used || utxos.length > 0 };
+        }));
+        let hi = -1;
+        for (const p of probed) if (p.used) {
+          chains[chain2].push({ ...p.d, balance: p.balance, utxos: p.utxos });
+          hi = Math.max(hi, p.index);
+        }
+        if (hi < 0) break;
+        base = hi + 1;
+      }
+      chains[chain2].sort((a, b) => a.index - b.index);
+    }
+    const receive = chains[0], change = chains[1];
+    const all = [...receive, ...change];
+    const confirmed = all.reduce((a, e) => a + e.balance.confirmed, 0);
+    const pending = all.reduce((a, e) => a + e.balance.pending, 0);
+    const usedIdx = (arr) => arr.length ? Math.max(...arr.map((e) => e.index)) + 1 : 0;
+    return {
+      scriptType,
+      network,
+      gap,
+      balance: { confirmed, pending, total: confirmed + pending },
+      receive,
+      change,
+      used: all,
+      utxos: all.flatMap((e) => e.utxos.map((u) => ({ ...u, chain: e.chain, index: e.index, address: e.address }))),
+      nextReceive: usedIdx(receive),
+      nextChange: usedIdx(change)
+    };
+  }
+  async function prepareSendHD(opts) {
+    const { source, mnemonic, network, scriptType = "p2wpkh", recipients = [], message = null, passphrase = "", sweep = false, toAddress } = opts;
+    const src = source ?? mnemonic;
+    if (isXpub((src || "").trim())) throw new Error("watch-only (xpub) cannot sign \u2014 use the air-gap PSBT flow");
+    const disc = await discoverAccount({ source: src, network, scriptType, passphrase });
+    const spend = disc.utxos.filter((u) => opts.allowUnconfirmed || u.confirmed);
+    if (!spend.length) throw new Error(`no ${opts.allowUnconfirmed ? "" : "confirmed "}coins in this ${scriptType} account \u2014 fund it first`);
+    const keyed = await Promise.all(spend.map(async (u) => {
+      const key = deriveAt(src, network, scriptType, u.chain, u.index, passphrase);
+      const k = { txid: u.txid, vout: u.vout, value: u.value, key };
+      if (key.segwit === false) k.prevTxHex = await getTxHex(u.txid, network);
+      return k;
+    }));
+    const feeRate = opts.feeRate ?? await getFeeRate(network, 6);
+    const changeAddress = deriveAt(src, network, scriptType, 1, disc.nextChange, passphrase).address;
+    const built = sweep ? buildSweepTxMulti({ keyedUtxos: keyed, toAddress, feeRate, networkName: network, message }) : buildSignedTxMulti({ keyedUtxos: keyed, recipients, message, changeAddress, feeRate, networkName: network });
+    const txid = opts.broadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
+    return {
+      ...built,
+      from: `${scriptType} account (${keyed.length} coin${keyed.length > 1 ? "s" : ""})`,
+      feeRate,
+      changeAddress,
+      broadcast: !!opts.broadcast,
+      broadcastTxid: opts.broadcast ? txid : null,
+      explorer: opts.broadcast ? net(network).explorer + txid : null
+    };
+  }
+  function decodeRawTx({ hex: hex2, network }) {
+    const n = net(network);
+    const tx = Transaction.fromRaw(hexToBytes(hex2), { allowUnknownOutputs: true, allowUnknownInputs: true });
+    const outputs = [];
+    for (let i = 0; i < tx.outputsLength; i++) {
+      const o = tx.getOutput(i);
+      let address = null, opReturn = null, type = "unknown";
+      if (o.script && o.script[0] === 106) {
+        type = "op_return";
+        try {
+          const dec = Script.decode(o.script);
+          const data = dec.find((x) => x instanceof Uint8Array);
+          opReturn = data ? new TextDecoder().decode(data) : "";
+        } catch {
+          opReturn = "";
+        }
+      } else {
+        try {
+          const d = OutScript.decode(o.script);
+          type = d.type;
+          address = Address(n.btc).encode(d);
+        } catch {
+        }
+      }
+      outputs.push({ vout: i, address, amount: Number(o.amount), type, opReturn });
+    }
+    const inputs = [];
+    for (let i = 0; i < tx.inputsLength; i++) {
+      const inp = tx.getInput(i);
+      inputs.push({ txid: bytesToHex(inp.txid), vout: inp.index });
+    }
+    return { txid: tx.id, vsize: tx.vsize, inputs, outputs, totalOut: outputs.reduce((a, o) => a + o.amount, 0) };
+  }
+  async function broadcastRaw({ hex: hex2, network }) {
+    const expected = decodeRawTx({ hex: hex2, network }).txid;
+    const got = await broadcast(hex2, network);
+    const txid = (got || "").trim() || expected;
+    if (txid !== expected) throw new Error(`broadcast txid mismatch \u2014 expected ${expected}, network reported ${txid}`);
+    return { txid, explorer: net(network).explorer + txid };
   }
   async function inspectWIF({ wif, network }) {
     const rows = wifAddresses(wif, network);
@@ -12868,21 +13198,22 @@ zoo`.split("\n");
     if (scriptType === "p2pk") {
       const destScript = OutScript.encode(Address(net(network).btc).decode((toAddress || "").trim()));
       const feeRate2 = await getFeeRate(network, 6);
-      const txids = [];
+      const txids = [], txHexes = [];
       let sent = 0;
       for (const u of utxos) {
         const built2 = buildSpendP2PK({ utxo: { txid: u.txid, vout: u.vout, value: u.value }, privKey: key.privKey, p2pkScriptBytes: key.spend.script, destScript, message, feeRate: feeRate2 });
-        const txid2 = doBroadcast ? await broadcast(built2.txHex, network) : built2.txid;
+        const txid2 = doBroadcast ? assertBroadcastTxid(built2.txid, await broadcast(built2.txHex, network)) : built2.txid;
         txids.push(txid2);
+        txHexes.push(built2.txHex);
         sent += built2.sent;
       }
-      return { txid: txids[0], txids, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
+      return { txid: txids[0], txids, txHexes, swept: sent, count: txids.length, explorer: net(network).explorer + txids[0] };
     }
     const withPrev = await attachPrevTxs(utxos, network, key);
     const feeRate = await getFeeRate(network, 6);
     const built = buildSweepTx({ utxos: withPrev, key, toAddress: (toAddress || "").trim(), feeRate, networkName: network, message });
-    const txid = doBroadcast ? await broadcast(built.txHex, network) : built.txid;
-    return { txid, swept: built.swept, fee: built.fee, explorer: doBroadcast ? net(network).explorer + txid : null };
+    const txid = doBroadcast ? assertBroadcastTxid(built.txid, await broadcast(built.txHex, network)) : built.txid;
+    return { txid, txHex: built.txHex, swept: built.swept, fee: built.fee, feeRate, explorer: doBroadcast ? net(network).explorer + txid : null };
   }
   function woFrom(source, network, index = 0, passphrase = "") {
     const s = (source || "").trim();
@@ -12903,13 +13234,77 @@ zoo`.split("\n");
     const built = buildUnsignedPSBT({ utxos: spendable, wo: { script: wo.script, address: wo.address }, recipients, message, changeAddress: wo.address, feeRate, network });
     return { from: wo.address, ...built, feeRate };
   }
+  function describePsbt({ psbt, source, network, passphrase = "" }) {
+    const s = (source || "").trim();
+    const axpub = isXpub(s) ? s : accountXpub(s, passphrase || "", network);
+    return describePSBT((psbt || "").trim(), { accountXpub: axpub, network });
+  }
   function signUnsigned({ psbt, mnemonic, network, index = 0, passphrase = "" }) {
+    const d = describePsbt({ psbt, source: mnemonic, network, passphrase });
+    if (!d.anyInputMine)
+      throw new Error("refusing to sign: no input belongs to this wallet \u2014 wrong seed, passphrase, or network?");
+    if (!d.allInputsMine)
+      throw new Error("refusing to sign: this PSBT spends coins that are NOT this wallet's \u2014 a single-sig wallet must never co-sign foreign inputs");
+    if (d.fee == null)
+      throw new Error("refusing to sign: input amounts are missing from the PSBT, so the fee cannot be independently verified");
+    if (d.fee < 0)
+      throw new Error("refusing to sign: outputs exceed inputs \u2014 malformed or malicious PSBT");
+    if (d.inTotal > 0 && d.fee > d.inTotal * 0.2)
+      throw new Error(`refusing to sign: fee (${d.fee} sat) exceeds 20% of the inputs (${d.inTotal} sat) \u2014 rebuild with a sane fee`);
     return signPSBTOffline(psbt, (mnemonic || "").trim(), passphrase || "", network, index);
   }
   async function broadcastSigned({ psbt, network }) {
     const { txHex } = extractTx(psbt);
     const bid = await broadcast(txHex, network);
     return { txid: bid, explorer: net(network).explorer + bid };
+  }
+
+  // src/descriptor.js
+  var INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
+  var CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+  function polymod(c, val) {
+    const c0 = Number(c >> 35n);
+    c = (c & 0x7ffffffffn) << 5n ^ BigInt(val);
+    if (c0 & 1) c ^= 0xf5dee51989n;
+    if (c0 & 2) c ^= 0xa9fdca3312n;
+    if (c0 & 4) c ^= 0x1bab10e32dn;
+    if (c0 & 8) c ^= 0x3706b1677an;
+    if (c0 & 16) c ^= 0x644d626ffdn;
+    return c;
+  }
+  function descriptorChecksum(desc) {
+    let c = 1n, cls = 0, clscount = 0;
+    for (const ch of desc) {
+      const pos = INPUT_CHARSET.indexOf(ch);
+      if (pos === -1) throw new Error("invalid character in descriptor: " + JSON.stringify(ch));
+      c = polymod(c, pos & 31);
+      cls = cls * 3 + (pos >> 5);
+      if (++clscount === 3) {
+        c = polymod(c, cls);
+        cls = 0;
+        clscount = 0;
+      }
+    }
+    if (clscount > 0) c = polymod(c, cls);
+    for (let j2 = 0; j2 < 8; ++j2) c = polymod(c, 0);
+    c ^= 1n;
+    let ret = "";
+    for (let j2 = 0; j2 < 8; ++j2) ret += CHECKSUM_CHARSET[Number(c >> BigInt(5 * (7 - j2)) & 31n)];
+    return ret;
+  }
+  function withChecksum(descNoChecksum) {
+    return `${descNoChecksum}#${descriptorChecksum(descNoChecksum)}`;
+  }
+  function accountDescriptors({ mnemonic, passphrase = "", accountXpub: xpubIn, network }) {
+    const n = net(network);
+    const xpub = xpubIn || accountXpub(mnemonic, passphrase, network);
+    const origin = mnemonic ? `[${masterFingerprint(mnemonic, passphrase, network)}/84h/${n.coin}h/0h]` : "";
+    const body = (chain2) => `wpkh(${origin}${xpub}/${chain2}/*)`;
+    return {
+      receive: withChecksum(body(0)),
+      change: withChecksum(body(1)),
+      xpub
+    };
   }
 
   // node_modules/@noble/hashes/esm/scrypt.js
@@ -13065,7 +13460,7 @@ zoo`.split("\n");
     return scryptOutput(password, dkLen, B, V, tmp);
   }
 
-  // ../../node_modules/@noble/ciphers/esm/_assert.js
+  // node_modules/@noble/ciphers/esm/_assert.js
   function number(n) {
     if (!Number.isSafeInteger(n) || n < 0)
       throw new Error(`positive integer expected, not ${n}`);
@@ -13097,7 +13492,7 @@ zoo`.split("\n");
     }
   }
 
-  // ../../node_modules/@noble/ciphers/esm/utils.js
+  // node_modules/@noble/ciphers/esm/utils.js
   var u323 = (arr) => new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
   var createView3 = (arr) => new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
   var isLE2 = new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68;
@@ -13151,7 +13546,7 @@ zoo`.split("\n");
     view2.setUint32(byteOffset + l, wl, isLE3);
   }
 
-  // ../../node_modules/@noble/ciphers/esm/_poly1305.js
+  // node_modules/@noble/ciphers/esm/_poly1305.js
   var u8to16 = (a, i) => a[i++] & 255 | (a[i++] & 255) << 8;
   var Poly1305 = class {
     constructor(key) {
@@ -13407,7 +13802,7 @@ zoo`.split("\n");
   }
   var poly1305 = wrapConstructorWithKey((key) => new Poly1305(key));
 
-  // ../../node_modules/@noble/ciphers/esm/_arx.js
+  // node_modules/@noble/ciphers/esm/_arx.js
   var _utf8ToBytes = (str) => Uint8Array.from(str.split("").map((c) => c.charCodeAt(0)));
   var sigma16 = _utf8ToBytes("expand 16-byte k");
   var sigma32 = _utf8ToBytes("expand 32-byte k");
@@ -13518,7 +13913,7 @@ zoo`.split("\n");
     };
   }
 
-  // ../../node_modules/@noble/ciphers/esm/chacha.js
+  // node_modules/@noble/ciphers/esm/chacha.js
   function chachaCore(s, k, n, out, cnt, rounds = 20) {
     let y00 = s[0], y01 = s[1], y02 = s[2], y03 = s[3], y04 = k[0], y05 = k[1], y06 = k[2], y07 = k[3], y08 = k[4], y09 = k[5], y10 = k[6], y11 = k[7], y12 = cnt, y13 = n[0], y14 = n[1], y15 = n[2];
     let x00 = y00, x01 = y01, x02 = y02, x03 = y03, x04 = y04, x05 = y05, x06 = y06, x07 = y07, x08 = y08, x09 = y09, x10 = y10, x11 = y11, x12 = y12, x13 = y13, x14 = y14, x15 = y15;
@@ -13761,14 +14156,44 @@ zoo`.split("\n");
 
   // src/vault.js
   var KDF = { N: 2 ** 15, r: 8, p: 1, dkLen: 32 };
-  function sealSeed(mnemonic, pin) {
+  var BITS_PER_WORD = Math.log2(wordlist.length);
+  var MAINNET_MIN_BITS = 60;
+  function generateVaultPassphrase(nWords = 6) {
+    const idx = new Uint32Array(nWords);
+    (globalThis.crypto || crypto).getRandomValues(idx);
+    return {
+      phrase: Array.from(idx, (i) => wordlist[i % wordlist.length]).join(" "),
+      bits: Math.round(nWords * BITS_PER_WORD),
+      words: nWords
+    };
+  }
+  function secretStrength(secret) {
+    const s = String(secret || "");
+    const toks = s.trim().split(/\s+/).filter(Boolean);
+    const allWords = toks.length >= 2 && toks.every((t) => wordlist.includes(t.toLowerCase()));
+    if (allWords) return { kind: "passphrase", bits: Math.round(toks.length * BITS_PER_WORD), words: toks.length, verifiable: true };
+    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].reduce((n, re) => n + (re.test(s) ? 1 : 0), 0);
+    return { kind: "typed", bits: null, verifiable: false, length: s.length, classes };
+  }
+  function meetsMainnetBar(secret) {
+    const st = secretStrength(secret);
+    if (st.kind === "passphrase") return st.bits >= MAINNET_MIN_BITS;
+    return st.length >= 12 && st.classes >= 3;
+  }
+  function sealSeed(mnemonic, pin, { requireStrong = false } = {}) {
     if (!pin || String(pin).length < 6) throw new Error("choose a PIN or passphrase of at least 6 characters");
+    if (requireStrong && !meetsMainnetBar(pin))
+      throw new Error("a mainnet wallet needs a strong secret \u2014 use a generated passphrase (6+ words) or a 12+ character mixed password, not a short PIN");
     const salt = randomBytes(16);
     const nonce = randomBytes(24);
     const key = scrypt(utf8ToBytes2(String(pin)), salt, KDF);
     const ct = xchacha20poly1305(key, nonce).encrypt(utf8ToBytes2(mnemonic));
     return JSON.stringify({ v: 1, kdf: "scrypt-32768-8-1", salt: base64.encode(salt), nonce: base64.encode(nonce), ct: base64.encode(ct) });
   }
+  var SALT_LEN = 16;
+  var NONCE_LEN = 24;
+  var CT_MIN = 16;
+  var CT_MAX = 4096;
   function openSeed(blobJson, pin) {
     let b;
     try {
@@ -13776,10 +14201,21 @@ zoo`.split("\n");
     } catch {
       throw new Error("saved wallet data is corrupted");
     }
+    if (!b || typeof b !== "object") throw new Error("saved wallet data is corrupted");
     if (b.v !== 1) throw new Error(`unsupported vault version ${b.v}`);
-    const key = scrypt(utf8ToBytes2(String(pin || "")), base64.decode(b.salt), KDF);
+    let salt, nonce, ct;
     try {
-      return bytesToUtf82(xchacha20poly1305(key, base64.decode(b.nonce)).decrypt(base64.decode(b.ct)));
+      salt = base64.decode(String(b.salt || ""));
+      nonce = base64.decode(String(b.nonce || ""));
+      ct = base64.decode(String(b.ct || ""));
+    } catch {
+      throw new Error("saved wallet data is corrupted");
+    }
+    if (salt.length !== SALT_LEN || nonce.length !== NONCE_LEN || ct.length < CT_MIN || ct.length > CT_MAX)
+      throw new Error("saved wallet data is corrupted");
+    const key = scrypt(utf8ToBytes2(String(pin || "")), salt, KDF);
+    try {
+      return bytesToUtf82(xchacha20poly1305(key, nonce).decrypt(ct));
     } catch {
       throw new Error("wrong PIN (or the saved data was tampered with)");
     }
@@ -13820,7 +14256,11 @@ zoo`.split("\n");
     } catch {
       throw new Error("wrong password, corrupt file, or tampered metadata");
     }
-    return { mnemonic: bytesToUtf82(pt), passphraseUsed: !!obj.passphraseUsed };
+    return {
+      mnemonic: bytesToUtf82(pt),
+      passphraseUsed: !!obj.passphraseUsed,
+      metadataAuthenticated: obj.version >= 3
+    };
   }
 
   // web/entry.js
@@ -13869,7 +14309,21 @@ zoo`.split("\n");
     status: (source, network, scriptType, index = 0, passphrase = "") => statusFor(T(source), network, scriptType, index, passphrase),
     history: (source, network, scriptType, index = 0, passphrase = "") => historyFor(T(source), network, scriptType, index, passphrase),
     xpub: (mnemonic, network, passphrase = "") => accountXpub(T(mnemonic), passphrase || "", network),
-    send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, index = 0, broadcast: broadcast2 = false, allowUnconfirmed = network !== "mainnet", passphrase = "" }) => prepareAndSend({
+    // Wallet fingerprint: a short, non-reversible code derived from the account
+    // (which already depends on seed + passphrase). Same words + same passphrase
+    // ALWAYS give the same code; a wrong passphrase gives a different one. Lets a
+    // user confirm they re-entered the passphrase correctly WITHOUT revealing it —
+    // the fix for the silent "valid-looking but wrong wallet" trap. Reveals nothing
+    // the exportable account xpub doesn't already.
+    fingerprint: (source, network = "mainnet", passphrase = "") => {
+      const s = T(source);
+      const x = isXpub(s) ? s : accountXpub(s, passphrase || "", network);
+      const h = bytesToHex(sha2562(utf8ToBytes(x))).toUpperCase();
+      return h.slice(0, 4) + "-" + h.slice(4, 8);
+    },
+    // HD send: spends across the whole account (all discovered receive+change
+    // UTXOs), change to the next unused change address (chain 1).
+    send: ({ mnemonic, network, scriptType, toAddress, amount, message, feeRate, broadcast: broadcast2 = false, allowUnconfirmed = network !== "mainnet", passphrase = "" }) => prepareSendHD({
       source: T(mnemonic),
       network,
       scriptType,
@@ -13877,11 +14331,17 @@ zoo`.split("\n");
       recipients: toAddress && Number(amount) > 0 ? [{ address: T(toAddress), amount: Number(amount) }] : [],
       message: message || null,
       feeRate: feeRate ? Number(feeRate) : void 0,
-      index,
       broadcast: broadcast2,
       allowUnconfirmed
     }),
-    sweep: ({ mnemonic, network, scriptType, toAddress, message, feeRate, index = 0, broadcast: broadcast2 = false, allowUnconfirmed = network !== "mainnet", passphrase = "" }) => prepareSweep({ source: T(mnemonic), network, scriptType, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : void 0, index, broadcast: broadcast2, allowUnconfirmed, passphrase }),
+    sweep: ({ mnemonic, network, scriptType, toAddress, message, feeRate, broadcast: broadcast2 = false, allowUnconfirmed = network !== "mainnet", passphrase = "" }) => prepareSendHD({ source: T(mnemonic), network, scriptType, passphrase, sweep: true, toAddress: T(toAddress), message: message || null, feeRate: feeRate ? Number(feeRate) : void 0, broadcast: broadcast2, allowUnconfirmed }),
+    // full-account discovery (gap-limit, from seed or xpub) — deterministic recovery
+    discover: ({ source, network, scriptType = "p2wpkh", passphrase = "", gap = 20 }) => discoverAccount({ source: T(source), network, scriptType, passphrase, gap }),
+    // BIP-84 output descriptors (receive + change) for interoperable watch-only export
+    descriptors: ({ source, network, passphrase = "" }) => {
+      const s = T(source);
+      return isXpub(s) ? accountDescriptors({ accountXpub: s, network }) : accountDescriptors({ mnemonic: s, passphrase, network });
+    },
     // air-gap PSBT flow (P2WPKH)
     buildUnsigned: ({ source, network, toAddress, amount, message, feeRate, index = 0, passphrase = "" }) => prepareUnsigned({
       source: T(source),
@@ -13894,6 +14354,8 @@ zoo`.split("\n");
       allowUnconfirmed: true
     }),
     signPsbt: ({ psbt, mnemonic, network, index = 0, passphrase = "" }) => signUnsigned({ psbt: T(psbt), mnemonic: T(mnemonic), network, index, passphrase }),
+    // independent decode+verify of an untrusted PSBT (for the review-before-sign sheet)
+    describePsbt: ({ psbt, source, network, passphrase = "" }) => describePsbt({ psbt: T(psbt), source: T(source), network, passphrase }),
     broadcastPsbt: ({ psbt, network }) => broadcastSigned({ psbt: T(psbt), network }),
     // encrypted on-device persistence (scrypt + XChaCha20-Poly1305; ciphertext only)
     vault: {
@@ -13904,14 +14366,20 @@ zoo`.split("\n");
           return false;
         }
       },
-      save: (mnemonic, pin, passphrase = "") => {
-        localStorage.setItem("olesia:vault", sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || "") }), pin));
+      // network gates the strength policy: mainnet seeds must not persist under a
+      // weak PIN (see vault.js meetsMainnetBar). Testnet keeps the convenient PIN.
+      save: (mnemonic, pin, passphrase = "", network = "testnet4") => {
+        const requireStrong = network === "mainnet";
+        localStorage.setItem("olesia:vault", sealSeed(JSON.stringify({ w: 2, m: T(mnemonic), p: String(passphrase || "") }), pin, { requireStrong }));
         try {
-          if (/^[0-9]+$/.test(String(pin))) localStorage.setItem("olesia:pinlen", String(String(pin).length));
-          else localStorage.removeItem("olesia:pinlen");
+          localStorage.removeItem("olesia:pinlen");
         } catch {
         }
       },
+      // exact-entropy passphrase for strong protection; strength check for the UI
+      suggest: (words = 6) => generateVaultPassphrase(words),
+      strength: (secret) => secretStrength(secret),
+      strongEnoughForMainnet: (secret) => meetsMainnetBar(secret),
       open: (pin) => {
         const raw = openSeed(localStorage.getItem("olesia:vault"), pin);
         try {
@@ -13925,6 +14393,9 @@ zoo`.split("\n");
     },
     // import an encrypted backup .json exported by the cold generator (offline.olesia.io)
     importBackup: ({ json, password }) => decryptColdBackup(json, password),
+    // freeze-and-broadcast: decode a signed tx for display; broadcast EXACT bytes
+    decodeTx: ({ hex: hex2, network }) => decodeRawTx({ hex: T(hex2), network }),
+    broadcastHex: ({ hex: hex2, network }) => broadcastRaw({ hex: T(hex2), network }),
     // single private key (WIF): inspect every address format + sweep any funded one
     wifInspect: ({ wif, network }) => inspectWIF({ wif: T(wif), network }),
     wifSweep: ({ wif, network, scriptType, toAddress, message, broadcast: broadcast2 = true }) => sweepWIF({ wif: T(wif), network, scriptType, toAddress: T(toAddress), message: message || null, broadcast: broadcast2 }),
@@ -13941,10 +14412,15 @@ zoo`.split("\n");
 (function () {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
+  // HTML-escape for the rare cases where non-constant text lands in an innerHTML
+  // template. Explorer-derived strings (txids, addresses) are charset-constrained
+  // in practice, but we never trust a remote source to stay well-formed.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // ---------- state ----------
   let source = '', mode = '', network = 'testnet4', scriptType = 'p2wpkh', passphrase = '';
   let gen = 0;                 // stale-response guard
+  let acctRecvIdx = null;      // receive index currently shown on the account page (reuse guard)
   let hideBal = false, sweepMode = false, forgetArmed = false;
   const balances = {};         // scriptType -> {confirmed, pending}
   const TYPES = window.OW.scriptTypes();
@@ -14002,7 +14478,7 @@ zoo`.split("\n");
   $('#confirm').addEventListener('click', (e) => { if (e.target.id === 'confirm') closeConfirm(false); });
 
   // ---------- set-a-PIN sheet (keypad, not the OS keyboard; choose + confirm) ----------
-  let pinResolve = null, psBuf = '', psFirst = null, psText = false;
+  let pinResolve = null, psBuf = '', psFirst = null, psText = false, psMainnet = false;
   const psMin = 6;
   function psDots() {
     const d = $('#ps_dots'); d.textContent = '';
@@ -14013,24 +14489,54 @@ zoo`.split("\n");
     $('#ps_title').textContent = psFirst == null ? 'Choose a PIN' : 'Confirm your PIN';
     $('#ps_sub').textContent = psFirst == null ? `${psMin}+ digits — you'll enter this to unlock` : 'type it once more';
   }
-  function askPin() {
+  // opts.mainnet: a mainnet seed must not persist behind a weak PIN — start in
+  // passphrase mode with the strong-passphrase generator, and enforce the bar.
+  function askPin(opts = {}) {
     return new Promise((res) => {
-      pinResolve = res; psBuf = ''; psFirst = null; psText = false;
-      $('#ps_text').value = ''; $('#ps_textrow').style.display = 'none';
-      $('#ps_pad').style.display = 'grid'; $('#ps_dots').style.display = 'flex'; $('#ps_abc').textContent = 'abc';
-      $('#ps_msg').textContent = ''; psTitle(); psDots();
+      pinResolve = res; psBuf = ''; psFirst = null; psMainnet = !!opts.mainnet;
+      psText = psMainnet; // mainnet defaults to a passphrase, not a PIN
+      $('#ps_text').value = ''; $('#ps_msg').textContent = '';
+      $('#ps_textrow').style.display = psText ? 'flex' : 'none';
+      $('#ps_genrow').style.display = psMainnet ? 'block' : 'none';
+      $('#ps_strength').textContent = '';
+      $('#ps_pad').style.display = psText ? 'none' : 'grid';
+      $('#ps_dots').style.display = psText ? 'none' : 'flex';
+      $('#ps_abc').textContent = psText ? '123' : 'abc';
+      psTitle(); psDots();
       $('#pinsheet').classList.add('on');
+      if (psText) setTimeout(() => $('#ps_text').focus(), 30);
     });
   }
   const psClose = (val) => { $('#pinsheet').classList.remove('on'); if (pinResolve) { pinResolve(val); pinResolve = null; } };
   function psSubmit() {
     const val = psText ? $('#ps_text').value : psBuf;
     if (!val || val.length < psMin) { $('#ps_msg').textContent = `at least ${psMin} characters`; return; }
+    // enforce the mainnet strength bar on the FIRST entry (before confirm)
+    if (psMainnet && psFirst == null && !window.OW.vault.strongEnoughForMainnet(val)) {
+      $('#ps_msg').textContent = 'too weak for a mainnet wallet — use a generated passphrase or a 12+ char mixed password';
+      return;
+    }
     if (psFirst == null) { // move to confirm phase
-      psFirst = val; psBuf = ''; $('#ps_text').value = ''; $('#ps_msg').textContent = ''; psTitle(); psDots();
+      psFirst = val; psBuf = ''; $('#ps_text').value = ''; $('#ps_msg').textContent = ''; $('#ps_genrow').style.display = 'none'; psTitle(); psDots();
     } else if (val === psFirst) { psClose(val); }
-    else { $('#ps_msg').textContent = "those didn't match — start again"; psFirst = null; psBuf = ''; $('#ps_text').value = ''; psTitle(); psDots(); }
+    else { $('#ps_msg').textContent = "those didn't match — start again"; psFirst = null; psBuf = ''; $('#ps_text').value = ''; if (psMainnet) $('#ps_genrow').style.display = 'block'; psTitle(); psDots(); }
   }
+  function psShowStrength() {
+    if (!psMainnet || psFirst != null) return;
+    const s = window.OW.vault.strength($('#ps_text').value);
+    const okBar = window.OW.vault.strongEnoughForMainnet($('#ps_text').value);
+    $('#ps_strength').innerHTML = !$('#ps_text').value ? '' :
+      s.verifiable ? `${s.words}-word passphrase · <b>${s.bits} bits</b> ${okBar ? '✓' : '— add more words'}`
+                   : `typed password · strength unverifiable ${okBar ? '✓ (meets the length/variety floor)' : '— need 12+ chars, mixed'}`;
+  }
+  $('#ps_gen').addEventListener('click', () => {
+    const g = window.OW.vault.suggest(6);
+    psText = true; $('#ps_text').type = 'text'; $('#ps_text').value = g.phrase;
+    $('#ps_textrow').style.display = 'flex'; $('#ps_pad').style.display = 'none'; $('#ps_dots').style.display = 'none'; $('#ps_abc').textContent = '123';
+    psShowStrength();
+    toast('Write this passphrase down — it protects your wallet and is not recoverable.', 'bad');
+  });
+  $('#ps_text').addEventListener('input', psShowStrength);
   $('#ps_pad').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b || !b.dataset.k) return;
     if (b.dataset.k === 'back') psBuf = psBuf.slice(0, -1); else if (psBuf.length < 12) psBuf += b.dataset.k;
@@ -14077,6 +14583,8 @@ zoo`.split("\n");
   $$('nav button').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
   $('#back_accounts').addEventListener('click', () => showPane('accounts'));
   $('#back_home').addEventListener('click', () => showPane('home'));
+  // generic back links (‹ Home on Accounts / Learn / Settings, etc.)
+  $$('.back[data-nav]').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.nav)));
 
   // ---------- global helpers: tooltips, copy, paste ----------
   document.addEventListener('click', (e) => {
@@ -14222,9 +14730,9 @@ zoo`.split("\n");
   });
   function openCreated() { source = wizMnemonic; passphrase = $('#c_pass').value; mode = 'full'; scriptType = 'p2wpkh'; wizMnemonic = ''; moveEntropy = ''; moveSamples = 0; $('#c_words').textContent = ''; $('#dice').value = ''; $('#c_pass').value = ''; initWallet(); }
   $('#c_save').addEventListener('click', async () => {
-    const pin = await askPin(); if (pin == null) return;
+    const pin = await askPin({ mainnet: network === 'mainnet' }); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
-    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value); openCreated(); }
+    try { window.OW.vault.save(wizMnemonic, pin, $('#c_pass').value, network); openCreated(); }
     catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
   $('#c_skip').addEventListener('click', () => { openCreated(); toast('Not saved — keep that paper safe; you’ll need the words next time.'); });
@@ -14250,8 +14758,9 @@ zoo`.split("\n");
     await new Promise((r) => setTimeout(r, 30));
     try {
       const text = await f.text();
-      const { mnemonic, passphraseUsed } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
+      const { mnemonic, passphraseUsed, metadataAuthenticated } = window.OW.importBackup({ json: text, password: $('#bkpass').value });
       if (!window.OW.validate(mnemonic)) throw new Error('decrypted, but the recovered phrase is not valid BIP-39');
+      if (metadataAuthenticated === false) toast('Legacy backup: its labels (network/passphrase flag) are not cryptographically authenticated — only the seed itself is verified.', 'bad');
       if (passphraseUsed && !$('#bkbip39').value) {
         $('#bkbip39row').style.display = 'block';
         $('#bkinfo').className = 'hint';
@@ -14281,7 +14790,7 @@ zoo`.split("\n");
         const d = document.createElement('div'); d.style.cssText = 'padding:9px 0;border-top:1px solid var(--line-soft)';
         const balTxt = r.type === 'p2pk' ? 'no address — explorers can’t show P2PK balances' : `${coins(total)} ${unit()}${total ? '' : ' (empty)'}`;
         d.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--muted)">${SHORT[r.type]}</div>
-          <div class="mono" style="font-size:11px;color:var(--faint)">${r.address || '(bare public key)'}</div>
+          <div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.address || '(bare public key)')}</div>
           <div style="font-size:12.5px;margin-top:2px;color:${funded ? 'var(--mint)' : 'var(--text)'}">${balTxt}</div>`;
         if (funded) {
           const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Sweep this →'; b.style.marginTop = '6px';
@@ -14310,19 +14819,29 @@ zoo`.split("\n");
       ], 'Sweep');
       if (!ok) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Sweeping…');
-      const s = await window.OW.wifSweep({ wif: $('#wif').value.trim(), network, scriptType: type, toAddress: to, broadcast: true });
-      const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${s.swept} sat — explorer ↗`;
+      // broadcast the EXACT transaction(s) that were just confirmed — never a rebuild
+      let s;
+      if (dry.txHex) s = await window.OW.broadcastHex({ hex: dry.txHex, network });          // single sweep tx
+      else if (dry.txHexes && dry.txHexes.length) {                                          // L9 — p2pk path: frozen per-UTXO txs
+        for (const hex of dry.txHexes) s = await window.OW.broadcastHex({ hex, network });
+      } else throw new Error('engine did not return the built transaction — refusing to broadcast');
+      const a = document.createElement('a'); a.href = s.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = `✓ swept ${dry.swept} sat — explorer ↗`;
       btn.replaceWith(a); toast('✓ swept', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
 
+  function walletFP() { try { return window.OW.fingerprint(source, network, passphrase); } catch { return null; } }
   function initWallet() {
     $('#lockbtn').style.display = 'inline-block';
     $('#vault_state').textContent = window.OW.vault.exists() ? 'saved encrypted on this device' : 'not saved — seed lives in this tab only';
     $('#acct_watchnote').style.display = mode === 'watch' ? 'block' : 'none';
     renderAccountRows();
+    renderTotal();          // paint the hero + type pills immediately (…), before data lands
     showPane('home');
-    toast(mode === 'watch' ? 'Watch-only wallet opened (xpub).' : '✓ Wallet open', 'ok');
+    // With a passphrase, confirm the RIGHT wallet opened: a wrong passphrase
+    // still "works" but gives a different (empty) wallet — the fingerprint catches it.
+    if (mode === 'full' && passphrase) toast(`Wallet fingerprint ${walletFP()} — the same words + passphrase always give this code. A different code means a different passphrase.`, 'ok');
+    else toast(mode === 'watch' ? 'Watch-only wallet opened (xpub).' : '✓ Wallet open', 'ok');
     refreshAll();
   }
 
@@ -14333,6 +14852,11 @@ zoo`.split("\n");
   // ---------- balances / accounts ----------
   const typesFor = () => (mode === 'watch' ? TYPES.filter((t) => t.id === 'p2wpkh') : TYPES);
 
+  // full HD discovery result per script type (change lives on rotated addresses,
+  // so a single index-0 read would under-count). The active type gets full
+  // discovery; the others get a cheap index-0 read for the home summary and are
+  // discovered in full when opened.
+  const discovered = {};
   async function refreshAll() {
     const g = ++gen;
     const jobs = typesFor().map(async (t) => {
@@ -14344,6 +14868,9 @@ zoo`.split("\n");
           const live = ann.filter((o) => !o.spent && !o.error);
           balances.p2pk = { confirmed: live.filter((o) => o.confirmed).reduce((a, o) => a + o.value, 0),
                             pending: live.filter((o) => !o.confirmed).reduce((a, o) => a + o.value, 0) };
+        } else if (t.id === (mode === 'watch' ? 'p2wpkh' : scriptType) || t.id === 'p2wpkh') {
+          const disc = await window.OW.discover({ source, network, scriptType: t.id, passphrase });
+          discovered[t.id] = disc; balances[t.id] = disc.balance;
         } else {
           const st = await window.OW.status(source, network, t.id, 0, passphrase);
           balances[t.id] = st.balance;
@@ -14355,14 +14882,57 @@ zoo`.split("\n");
     renderAccountRows(); renderTotal();
     refreshHomeActivity(g);
   }
-  function renderTotal() {
-    const total = sum(balances);
-    const pend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
-    $('#bal_total').innerHTML = (hideBal ? '••••' : coins(total)) + `<span class="u">${unit()}</span>`;
-    $('#bal_sub').textContent = pend ? `+ ${hideBal ? '•' : coins(pend)} pending  ›  view` : '';
-    $('#bal_sub').style.display = pend ? 'block' : 'none';
-    $('#bal_sub').style.cursor = pend ? 'pointer' : 'default';
+  // The Home headline shows the SELECTED script type, with a per-type selector
+  // (each pill carries its own balance, so 1 tBTC on Legacy is never invisible
+  // while viewing P2PK) plus a smaller all-accounts combined total underneath.
+  const activeType = () => (mode === 'watch' ? 'p2wpkh' : scriptType);
+  function renderTypeSel() {
+    const box = $('#type_sel'); if (!box) return;
+    const cur = activeType();
+    box.textContent = '';
+    typesFor().forEach((t) => {
+      const b = balances[t.id];
+      const amt = b == null ? '…' : hideBal ? '••' : coins(b.confirmed);
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'typepill' + (t.id === cur ? ' on' : '');
+      pill.innerHTML = `<span class="tn">${SHORT[t.id]}</span><span class="tv">${amt}</span>`;
+      pill.addEventListener('click', () => setActiveType(t.id));
+      box.appendChild(pill);
+    });
   }
+  async function setActiveType(id) {
+    if (mode === 'watch' || id === activeType()) return; // watch-only exposes SegWit only
+    scriptType = id;
+    renderTotal();
+    // upgrade the newly-selected type to full HD discovery (change addresses too)
+    if (id !== 'p2pk' && !discovered[id]) {
+      const g = gen;
+      try {
+        const disc = await window.OW.discover({ source, network, scriptType: id, passphrase });
+        if (g !== gen) return;
+        discovered[id] = disc; balances[id] = disc.balance;
+        renderTotal(); renderAccountRows();
+      } catch { /* keep the cheap index-0 read */ }
+    }
+  }
+  function renderTotal() {
+    const cur = activeType();
+    const active = balances[cur] || { confirmed: 0, pending: 0 };
+    const combined = sum(balances);
+    const combPend = Object.values(balances).reduce((a, b) => a + (b?.pending || 0), 0);
+    $('#bal_label').textContent = SHORT[cur] ? SHORT[cur].toUpperCase() : 'BALANCE';
+    $('#bal_total').innerHTML = (hideBal ? '••••' : coins(active.confirmed)) + `<span class="u">${unit()}</span>`;
+    const ap = active.pending || 0;
+    $('#bal_sub').textContent = ap ? `+ ${hideBal ? '•' : coins(ap)} pending  ›  view` : '';
+    $('#bal_sub').style.display = ap ? 'block' : 'none';
+    $('#bal_sub').style.cursor = ap ? 'pointer' : 'default';
+    const all = $('#bal_all');
+    const extra = combPend ? ` (+${hideBal ? '•' : coins(combPend)} pending)` : '';
+    all.innerHTML = `All types · <b>${hideBal ? '••••' : coins(combined)}</b> ${unit()}${extra}`;
+    renderTypeSel();
+  }
+  $('#bal_all').addEventListener('click', () => showPane('accounts'));
   $('#bal_sub').addEventListener('click', () => { const a = $('#home_activity'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   $('#bal_eye').addEventListener('click', () => { hideBal = !hideBal; renderTotal(); renderAccountRows(); });
 
@@ -14389,12 +14959,22 @@ zoo`.split("\n");
       if (!txs.length) { box.innerHTML = '<div class="hint" style="padding:8px 0">No transactions yet — get coins from the faucet to start.</div>'; return; }
       const base = window.OW.explorer(network);
       txs.slice(0, 6).forEach((t) => {
-        const d = document.createElement('div'); d.className = 'tx'; d.style.cursor = 'pointer';
         const dir = t.net >= 0;
-        d.innerHTML = `<span class="ti" style="color:${dir ? 'var(--mint)' : 'var(--accent)'}">${dir ? '↙' : '↗'}</span>
-          <span><b>${dir ? 'Received' : 'Sent'}</b><br><span style="font-size:11.5px;color:var(--faint)">${t.confirmed ? '✓ confirmed' : '⧗ pending'} · ${t.txid.slice(0, 10)}… · open ↗</span></span>
-          <span class="v" style="color:${dir ? 'var(--mint)' : 'var(--text)'}">${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat</span>`;
-        d.addEventListener('click', () => window.open(base + t.txid, '_blank', 'noopener'));
+        // Built with textContent/createElement (not innerHTML): the explorer-supplied
+        // txid is never interpreted as markup, whatever a remote source returns.
+        const d = document.createElement('div'); d.className = 'tx'; d.style.cursor = 'pointer';
+        const ti = document.createElement('span'); ti.className = 'ti';
+        ti.style.color = dir ? 'var(--mint)' : 'var(--accent)'; ti.textContent = dir ? '↙' : '↗';
+        const mid = document.createElement('span');
+        const b = document.createElement('b'); b.textContent = dir ? 'Received' : 'Sent';
+        const meta = document.createElement('span'); meta.style.cssText = 'font-size:11.5px;color:var(--faint)';
+        meta.textContent = `${t.confirmed ? '✓ confirmed' : '⧗ pending'} · ${String(t.txid).slice(0, 10)}… · open ↗`;
+        mid.append(b, document.createElement('br'), meta);
+        const v = document.createElement('span'); v.className = 'v';
+        v.style.color = dir ? 'var(--mint)' : 'var(--text)';
+        v.textContent = `${dir ? '+' : '−'}${Math.abs(t.net).toLocaleString()} sat`;
+        d.append(ti, mid, v);
+        d.addEventListener('click', () => window.open(base + encodeURIComponent(t.txid), '_blank', 'noopener'));
         box.appendChild(d);
       });
     } catch { /* home activity is best-effort */ }
@@ -14427,15 +15007,22 @@ zoo`.split("\n");
     $('#acc_about').textContent = t.about; $('#acc_about').style.display = 'none'; $('#acc_moretog').textContent = 'about ▾';
     $('#lab').style.display = type === 'p2pk' && mode === 'full' ? 'block' : 'none';
     $('#acc_label').style.display = type === 'p2pk' ? 'none' : 'block';
+    acctRecvIdx = null;   // reset the reuse guard for the newly opened account
     try {
       const info = window.OW.info(source, network, type, 0, passphrase);
-      $('#acc_addr').textContent = info.address || info.scriptHex;
-      document.querySelector('.qrbox').classList.toggle('noaddr', !info.address);
-      if (info.address) $('#acc_qr').src = await window.OW.qr(info.address);
-      $('#acc_label').value = info.address ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
-      $('#acc_recvhint').innerHTML = type === 'p2pk'
-        ? 'P2PK has no address — this is its raw locking script. Fund it from the Lab below.'
-        : 'Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a>';
+      const hasAddr = !!info.address;
+      document.querySelector('.qrbox').classList.toggle('noaddr', !hasAddr);
+      $('#acc_label').value = hasAddr ? (localStorage.getItem('olesia:label:' + info.address) || '') : '';
+      if (hasAddr) {
+        // Never show index 0 up front — it may already be used. refreshAccount
+        // fills in the next UNUSED address once discovery finishes (no reuse window).
+        $('#acc_addr').textContent = 'finding a fresh address…';
+        $('#acc_qr').removeAttribute('src');
+        $('#acc_recvhint').innerHTML = 'Scan or copy to receive. Need coins? <a href="https://olesia.io/faucet/" target="_blank" rel="noopener">Free testnet coins →</a>';
+      } else {
+        $('#acc_addr').textContent = info.scriptHex;
+        $('#acc_recvhint').innerHTML = 'P2PK has no address — each fund uses a fresh key (rotated). This is the current locking script; fund it from the Lab below.';
+      }
     } catch (e) { toast('✗ ' + e.message, 'bad'); return; }
     showPane('account');
     refreshAccount();
@@ -14446,6 +15033,11 @@ zoo`.split("\n");
     try { const a = window.OW.info(source, network, scriptType, 0, passphrase).address; if (a) localStorage.setItem('olesia:label:' + a, $('#acc_label').value); } catch {}
   });
   $('#acc_refresh').addEventListener('click', refreshAccount);
+  // Returning to the tab re-checks the open account, so a payment that landed
+  // while you were away auto-advances to a fresh receive address.
+  window.addEventListener('focus', () => {
+    if (source && scriptType !== 'p2pk' && $('#pane-account').classList.contains('on')) refreshAccount();
+  });
   async function refreshAccount() {
     const g = ++gen;
     if (scriptType === 'p2pk') {
@@ -14454,11 +15046,27 @@ zoo`.split("\n");
       return;
     }
     try {
-      const st = await window.OW.status(source, network, scriptType, 0, passphrase);
+      // full HD discovery: balance + UTXOs across ALL receive & change addresses
+      const disc = await window.OW.discover({ source, network, scriptType, passphrase });
       if (g !== gen) return;
-      balances[scriptType] = st.balance;
-      $('#acc_bal').textContent = `${coins(st.balance.confirmed)} ${unit()} confirmed` + (st.balance.pending ? ` · ${coins(st.balance.pending)} pending` : '');
-      $('#acc_utxos').textContent = st.utxos.length ? st.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
+      discovered[scriptType] = disc; balances[scriptType] = disc.balance;
+      $('#acc_bal').textContent = `${coins(disc.balance.confirmed)} ${unit()} confirmed` + (disc.balance.pending ? ` · ${coins(disc.balance.pending)} pending` : '')
+        + (disc.used.length > 1 ? ` · across ${disc.used.length} addresses` : '');
+      $('#acc_utxos').textContent = disc.utxos.length ? disc.utxos.map((u) => `${u.value.toLocaleString()} sat ${u.confirmed ? '✓' : '⧗'}`).join('  ·  ') : '(no UTXOs yet)';
+      // rotate the receive address to the next UNUSED one (avoids address reuse) —
+      // for full wallets AND watch-only xpubs (SegWit), since an xpub derives too.
+      const nextAddr = window.OW.address(source, network, scriptType, disc.nextReceive, passphrase);
+      if (nextAddr && $('#acc_addr').textContent !== nextAddr) {
+        // if we were already showing a fresh address and the index advanced, a
+        // payment landed on it — tell the user we moved on for their privacy.
+        if (acctRecvIdx != null && disc.nextReceive > acctRecvIdx)
+          toast('Payment received — showing a fresh address to avoid reuse.', 'ok');
+        $('#acc_addr').textContent = nextAddr;
+        document.querySelector('.qrbox').classList.remove('noaddr');
+        $('#acc_qr').src = await window.OW.qr(nextAddr);
+        $('#acc_recvhint').innerHTML = `Fresh unused address (receive #${disc.nextReceive}). Older addresses still work and their funds are always found from your seed.`;
+      }
+      acctRecvIdx = disc.nextReceive;
       renderTotal(); renderAccountRows();
     } catch (e) { if (g === gen) toast('✗ ' + e.message, 'bad'); }
     try {
@@ -14485,6 +15093,10 @@ zoo`.split("\n");
   const p2pkKey = () => { try { return `olesia:p2pk:${network}:${window.OW.info(source, network, 'p2pk', 0, passphrase).scriptHex}`; } catch { return `olesia:p2pk:${network}:x`; } };
   const p2pkLoad = () => { try { return JSON.parse(localStorage.getItem(p2pkKey()) || '[]'); } catch { return []; } };
   const p2pkStore = (l) => { try { localStorage.setItem(p2pkKey(), JSON.stringify(l)); } catch {} };
+  // Monotonic P2PK key index so each fund uses a fresh pubkey (never reused, even
+  // after a coin is spent and dropped from the list).
+  const p2pkNextIdx = () => { const v = parseInt(localStorage.getItem(p2pkKey() + ':next') || '0', 10); return Number.isFinite(v) && v >= 0 ? v : 0; };
+  const p2pkBumpIdx = (used) => { try { localStorage.setItem(p2pkKey() + ':next', String(Math.max(p2pkNextIdx(), (used | 0) + 1))); } catch {} };
   async function refreshLab() {
     try {
       const st = await window.OW.status(source, network, 'p2wpkh', 0, passphrase);
@@ -14504,11 +15116,11 @@ zoo`.split("\n");
       const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-top:1px solid var(--line-soft)';
       const state = o.error ? '⚠ ' + o.error : o.spent ? 'spent' : (o.confirmed ? '✓ confirmed' : '⧗ pending');
       const head = document.createElement('div'); head.className = 'mono'; head.style.color = o.spent ? 'var(--faint)' : 'var(--text)';
-      head.textContent = `${(o.value / 1e8).toFixed(8)} · ${state} · ${o.txid.slice(0, 12)}…:${o.vout}`;
+      head.textContent = `${(o.value / 1e8).toFixed(8)} · ${state} · key #${o.index ?? 0} · ${o.txid.slice(0, 12)}…:${o.vout}`;
       row.appendChild(head);
       if (!o.spent && !o.error) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'sec'; b.textContent = 'Spend this →'; b.style.marginTop = '6px';
-        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout }, b));
+        b.addEventListener('click', () => spendOneP2PK({ txid: o.txid, vout: o.vout, index: o.index ?? 0 }, b));
         row.appendChild(b);
       }
       el.appendChild(row);
@@ -14533,10 +15145,11 @@ zoo`.split("\n");
       const okGo = await confirmSheet('Spend this P2PK coin?', rows);
       if (!okGo) { btn.disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Spending P2PK…');
-      const r = await window.OW.spendP2PK({ source, network, outpoint, toAddress: to, message: msg, broadcast: true, passphrase });
+      // L9 — broadcast the EXACT bytes just confirmed, no rebuild
+      const b = await window.OW.broadcastHex({ hex: dry.txHex, network });
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
-      res.textContent = `✓ swept ${r.sent} sat → ${r.to} (fee ${r.fee})  `;
-      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      res.textContent = `✓ swept ${dry.sent} sat → ${dry.to} (fee ${dry.fee})  `;
+      const a = document.createElement('a'); a.href = b.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
       toast('✓ P2PK spent', 'ok'); setTimeout(refreshP2PKList, 1500);
     } catch (e) { toast('✗ ' + e.message, 'bad'); btn.disabled = false; }
   }
@@ -14546,21 +15159,24 @@ zoo`.split("\n");
     $('#p2pk_fundbtn').disabled = true;
     try {
       toast('Building…');
-      const dry = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: false, passphrase });
+      const idx = p2pkNextIdx();   // fresh, rotated key for this fund (same for preview + broadcast)
+      const dry = await window.OW.fundP2PK({ source, network, amount: amt, index: idx, broadcast: false, passphrase });
       const px = await usdPrice();
       const okGo = await confirmSheet('Move coins into P2PK?', [
-        ['To', 'your own P2PK (bare public key — no address)'],
+        ['To', `your own P2PK — a fresh key (#${idx}, no address)`],
         ['Amount', `${amt.toLocaleString()} sat`, `${coins(amt)} ${unit()}${px ? ' · ' + fmtUsd(amt, px) : ''}`],
         ['Network fee', `${dry.fee.toLocaleString()} sat`, px ? fmtUsd(dry.fee, px) : ''],
         ['From', 'Native SegWit · ' + network],
       ]);
       if (!okGo) { $('#p2pk_fundbtn').disabled = false; return toast('Cancelled — nothing sent.'); }
       toast('Funding P2PK…');
-      const r = await window.OW.fundP2PK({ source, network, amount: amt, broadcast: true, passphrase });
-      const list = p2pkLoad(); list.push({ txid: r.txid, vout: r.vout, amount: r.amount }); p2pkStore(list);
+      // L9 — broadcast the EXACT bytes just confirmed, no rebuild (keeps the previewed txid/outpoint)
+      const b = await window.OW.broadcastHex({ hex: dry.txHex, network });
+      const list = p2pkLoad(); list.push({ txid: dry.txid, vout: dry.vout, amount: dry.amount, index: dry.index }); p2pkStore(list);
+      p2pkBumpIdx(dry.index);   // never reuse this key index again
       const res = $('#p2pk_result'); res.style.display = 'block'; res.className = 'mono ok';
-      res.textContent = `✓ moved ${r.amount} sat into P2PK (fee ${r.fee})  `;
-      const a = document.createElement('a'); a.href = r.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
+      res.textContent = `✓ moved ${dry.amount} sat into P2PK (fee ${dry.fee})  `;
+      const a = document.createElement('a'); a.href = b.explorer; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'explorer ↗'; res.appendChild(a);
       toast('✓ P2PK funded', 'ok'); $('#p2pk_amt').value = ''; setTimeout(refreshLab, 1500);
     } catch (e) { toast('✗ ' + e.message, 'bad'); $('#p2pk_fundbtn').disabled = false; }
   });
@@ -14575,7 +15191,7 @@ zoo`.split("\n");
       const o = await window.OW.p2pkImport({ source, network, txid: txid.trim(), vout, passphrase });
       const list = p2pkLoad();
       if (list.some((x) => x.txid === o.txid && x.vout === o.vout)) toast('already tracked');
-      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount }); p2pkStore(list); toast('✓ P2PK coin recovered', 'ok'); }
+      else { list.push({ txid: o.txid, vout: o.vout, amount: o.amount, index: o.index ?? 0 }); p2pkStore(list); p2pkBumpIdx(o.index ?? 0); toast(`✓ P2PK coin recovered (key #${o.index ?? 0})`, 'ok'); }
       $('#p2pk_import').value = ''; refreshP2PKList();
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
@@ -14619,7 +15235,7 @@ zoo`.split("\n");
     const el = $('#send_empty');
     if (mode === 'watch' || (b && b.confirmed > 0)) { el.style.display = 'none'; return; }
     el.style.display = 'block';
-    el.innerHTML = `This <b>${SHORT[sendType]}</b> account has no confirmed coins to spend${b && b.pending ? ' (some are still pending here)' : ''}. Pick a funded account in the <b>Account</b> selector above.` + fundedHint(sendType);
+    el.innerHTML = `This <b>${SHORT[sendType]}</b> address type has no confirmed coins to spend${b && b.pending ? ' (some are still pending here)' : ''}. Pick a funded one in the <b>Address type</b> selector above.` + fundedHint(sendType);
   }
   async function selectSendType(type) {
     sendType = type;
@@ -14656,7 +15272,10 @@ zoo`.split("\n");
     $('#send_pay').style.display = m === 'pay' ? 'block' : 'none';
     $('#send').textContent = m === 'msg' ? 'Write on the chain' : 'Send';
     // in message-only mode the note becomes required and the explainer opens
-    if (m === 'msg') { $('#orbody').style.display = 'block'; $('#orchev').textContent = 'Hide ▴'; $('#msg').focus(); }
+    if (m === 'msg') {
+      $('#orbody').style.display = 'block'; $('#orchev').textContent = 'Hide ▴'; $('#msg').focus();
+      if (network === 'mainnet') toast('Mainnet: this writes to every Bitcoin node, forever. Testnets are the place to practise.', 'bad');
+    }
   }
   $$('#send_mode .feep').forEach((b) => b.addEventListener('click', () => setSendMode(b.dataset.mode)));
   $('#maxbtn').addEventListener('click', () => {
@@ -14694,6 +15313,9 @@ zoo`.split("\n");
   };
   const myAddress = () => window.OW.info(source, network, sendType, 0, passphrase).address;
 
+  // SECURITY INVARIANT: build ONCE, decode the actual transaction for display,
+  // confirm, then broadcast the EXACT SAME BYTES. After the confirmation sheet
+  // is shown, nothing is re-fetched, re-selected, re-priced, or re-signed.
   async function runSend(broadcast) {
     const msgOnly = sendMode === 'msg';
     const to = msgOnly ? myAddress() : $('#to').value.trim();
@@ -14701,29 +15323,41 @@ zoo`.split("\n");
     if (msgOnly && !$('#msg').value.trim()) return toast('type the message you want to write on the chain', 'bad');
     try {
       toast('Building…');
-      const dry = await buildTx(false);        // dry-run first -> real fee shown
-      if (!broadcast) return renderResult(dry, false);
+      const built = await buildTx(false);      // signed but NOT broadcast — frozen bytes
+      if (!broadcast) return renderResult(built, false);
+      const frozenHex = built.txHex, frozenTxid = built.txid;
+      if (!frozenHex) throw new Error('engine did not return the built transaction — refusing to continue');
       const px = await usdPrice();
-      const amount = (sweepMode || msgOnly) ? dry.swept : Number($('#amt').value);
-      const msg = $('#msg').value.trim();
+      // render the confirmation from the transaction itself, not the form.
+      // change now lands on the CHANGE chain (built.changeAddress), so mark that
+      // (or the self-address in message-only mode) as change — everything else is external.
+      const dec = window.OW.decodeTx({ hex: frozenHex, network });
+      const mine = myAddress();
+      const changeAddr = built.changeAddress || mine;
       const rows = [];
-      if (msgOnly) rows.push(['Message', `“${msg.slice(0, 48)}${msg.length > 48 ? '…' : ''}”`, 'written permanently on-chain']);
-      else {
-        rows.push(['To', to]);
-        rows.push([sweepMode ? 'Amount (sweep)' : 'Amount', `${amount.toLocaleString()} sat`, `${coins(amount)} ${unit()}${px ? ' · ' + fmtUsd(amount, px) : ''}`]);
-        if (msg) rows.push(['OP_RETURN', `“${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}”`, 'permanent public message']);
+      for (const o of dec.outputs) {
+        if (o.type === 'op_return') rows.push(['OP_RETURN', `“${(o.opReturn || '').slice(0, 48)}”`, 'permanent public message']);
+        else if (o.address === changeAddr || o.address === mine) rows.push([msgOnly ? 'Back to you' : 'Change (back to you)', o.address, `${o.amount.toLocaleString()} sat`]);
+        else rows.push(['To', o.address || `(unknown script)`, `${o.amount.toLocaleString()} sat · ${coins(o.amount)} ${unit()}${px ? ' · ' + fmtUsd(o.amount, px) : ''}`]);
       }
-      rows.push(['Network fee', `${dry.fee.toLocaleString()} sat`, `${dry.feeRate} sat/vB${px ? ' · ' + fmtUsd(dry.fee, px) : ''}`]);
+      rows.push(['Network fee', `${built.fee.toLocaleString()} sat`, `${built.feeRate} sat/vB${px ? ' · ' + fmtUsd(built.fee, px) : ''}`]);
+      // abnormal-fee tripwires: % of what leaves the wallet, and absolute rate
+      const paidOut = dec.outputs.filter((o) => o.type !== 'op_return' && o.address !== mine && o.address !== changeAddr).reduce((a, o) => a + o.amount, 0);
+      const feePct = paidOut > 0 ? (built.fee / paidOut) * 100 : 0;
+      if (feePct > 10) rows.push(['⚠ UNUSUALLY HIGH FEE', `${feePct.toFixed(1)}% of the amount sent`, 'check the fee field before confirming']);
+      if (built.feeRate > 200) rows.push(['⚠ HIGH FEE RATE', `${built.feeRate} sat/vB`, 'typical is 1–20; confirm this is deliberate']);
       rows.push(['From', SHORT[sendType] + ' · ' + network]);
+      rows.push(['txid', frozenTxid.slice(0, 16) + '…', 'this exact transaction will be sent']);
       const okGo = await confirmSheet(msgOnly ? 'Write this on the chain?' : sweepMode ? 'Sweep everything?' : 'Send this?', rows, msgOnly ? 'Write it' : 'Confirm & send');
       if (!okGo) return toast('Cancelled — nothing sent.');
       toast('Broadcasting…');
-      renderResult(await buildTx(true), true);
+      const res = await window.OW.broadcastHex({ hex: frozenHex, network });
+      renderResult({ ...built, broadcastTxid: res.txid, explorer: res.explorer }, true);
     } catch (e) {
       let m = e.message;
       // the most common tripwire: trying to spend from an empty script-type account
       if (/no UTXOs|insufficient|not enough|no coins/i.test(m)) {
-        m = `The ${SHORT[sendType]} account has no spendable coins here. Switch the Account selector at the top of this screen to a funded one.` + fundedHint(sendType);
+        m = `The ${SHORT[sendType]} address type has no spendable coins here. Switch the Address type selector at the top of this screen to a funded one.` + fundedHint(sendType);
         updateEmptyBanner(balances[sendType]);
       }
       toast('✗ ' + m, 'bad');
@@ -14752,12 +15386,12 @@ zoo`.split("\n");
     ['Entropy', 'A wallet is a very large secret number. If it’s <b>random enough</b>, nobody can ever guess it — there are more possible keys (2<sup>256</sup>) than atoms in the observable universe. Weak randomness is how early browser wallets were drained. Olesia draws entropy from your OS’s cryptographic generator.'],
     ['The seed phrase', 'That number is encoded as <b>12 or 24 words</b> (BIP-39). The words <i>are</i> the wallet — no reset, no recovery without them. Write them on paper, in order. A photo in your camera roll is a photo in someone’s cloud.'],
     ['Keys', 'From the seed come <b>private keys</b>; each has a <b>public key</b> made by one-way maths. You sign with the private key; anyone can verify with the public one. Olesia signs with RFC-6979 deterministic nonces — the classic nonce-reuse mistake is impossible by construction.'],
-    ['Addresses', 'An address is <b>a lock, not a place</b> — a friendly encoding of the rule “satisfy this script to spend”. Different script types are different locks, which is why one seed gives you five different addresses. Explore them in Accounts.'],
+    ['Addresses', 'An address is <b>a lock, not a place</b> — a friendly encoding of the rule “satisfy this script to spend”. Different script types are different locks, which is why one seed gives you five different addresses. Explore them under Addresses.'],
     ['UTXOs', 'Bitcoin has no balance field. You own discrete chunks — <b>unspent transaction outputs</b> — like odd-denomination coins in a pocket. A payment consumes some coins and mints new ones: one to the recipient, change back to you.'],
     ['Fees', 'Miners include transactions that pay them, priced in <b>sat/vB</b>. Busier network → higher rate to confirm fast. <b>Auto</b> in the Send screen asks the network for a live estimate; on testnets fees barely matter, so experiment freely.'],
     ['Networks', '<b>Testnet3/4</b> and <b>Signet</b> share mainnet’s rules but use worthless coins — perfect for practice. <b>Mainnet</b> is real money. Every test network uses the same key maths, so what you learn here is the real thing, pointed at a playground.'],
     ['Hot vs cold', 'A <b>hot</b> wallet keeps keys on a connected device — convenient, fine for small amounts. A <b>cold</b> wallet generates and signs offline, so keys never touch the internet. The one rule: real value belongs in cold storage — use the <a href="https://offline.olesia.io" target="_blank" rel="noopener">cold generator</a> and the air-gap tools.'],
-    ['Writing on-chain', 'OP_RETURN attaches a tiny permanent note to a transaction — no coins, unspendable, forever public. Satoshi set the tone by writing a newspaper headline into the first block. People disagree about data on Bitcoin; Olesia is neutral — it’s part of the protocol, explained, for thoughtful use.'],
+    ['Writing on-chain', 'OP_RETURN attaches a tiny permanent note to a transaction — no coins, unspendable, forever public. Satoshi set the tone by writing a newspaper headline into the first block. Know the debate: critics say block space is for money and every byte lives on every node forever; supporters note OP_RETURN was <i>designed</i> as the honest, prunable way to carry a small note — kinder than hiding data in fake addresses that bloat the UTXO set. Olesia teaches only the tidy form: 80 bytes, one output, no inscriptions. Practice on testnets; on mainnet, ask if it truly needs to be forever.'],
   ];
   const learnRead = () => { try { return new Set(JSON.parse(localStorage.getItem('olesia:learn') || '[]')); } catch { return new Set(); } };
   function renderLearn() {
@@ -14788,7 +15422,13 @@ zoo`.split("\n");
   const tog = (id) => $(id).classList.toggle('on');
   $('#set_xpub').addEventListener('click', () => {
     try {
-      $('#set_xpub_out').textContent = mode === 'watch' ? source : window.OW.xpub(source, network, passphrase);
+      const xpub = mode === 'watch' ? source : window.OW.xpub(source, network, passphrase);
+      const d = window.OW.descriptors({ source, network, passphrase });
+      $('#set_xpub_out').textContent =
+        `Account key (${xpub.slice(0, 4)}):\n${xpub}\n\n` +
+        `Output descriptors — the unambiguous way to import this wallet as watch-only ` +
+        `(Bitcoin Core / Sparrow). They carry the script type, fingerprint, path and branch:\n\n` +
+        `receive:\n${d.receive}\n\nchange:\n${d.change}`;
       tog('#xpub_body');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
@@ -14807,10 +15447,10 @@ zoo`.split("\n");
   $('#set_airgap').addEventListener('click', () => tog('#airgap_body'));
   $('#vsave').addEventListener('click', async () => {
     if (!source || mode !== 'full') return toast('open a wallet with a seed first', 'bad');
-    const pin = await askPin(); if (pin == null) return;
+    const pin = await askPin({ mainnet: network === 'mainnet' }); if (pin == null) return;
     toast('Encrypting…'); await new Promise((r) => setTimeout(r, 30));
     try {
-      window.OW.vault.save(source, pin, passphrase);
+      window.OW.vault.save(source, pin, passphrase, network);
       $('#vault_state').textContent = 'saved encrypted on this device';
       toast('✓ saved — next visit, unlock with your PIN', 'ok');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
@@ -14838,12 +15478,31 @@ zoo`.split("\n");
       r.textContent = `unsigned PSBT built — fee ${u.fee} sat, ~${u.vsize} vB. Copy it to your offline signer.`;
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
   });
-  $('#signbtn').addEventListener('click', () => {
+  // SECURITY INVARIANT: verify-before-sign. The PSBT (and the online machine
+  // that built it) is untrusted. Decode it independently, verify which coins
+  // are ours and which outputs are cryptographically OUR change, compute the
+  // fee ourselves, show everything — and only then allow signing.
+  $('#signbtn').addEventListener('click', async () => {
     try {
       if (mode !== 'full') return toast('signing needs the seed', 'bad');
       if (network === 'mainnet' && navigator.onLine) toast('⚠ signing a mainnet PSBT while ONLINE — for real funds, do this offline.', 'bad');
       const psbt = $('#signin').value.trim() || $('#unsignedout').value.trim();
       if (!psbt) return toast('paste an unsigned PSBT to sign', 'bad');
+      const d = window.OW.describePsbt({ psbt, source, network, passphrase });
+      const rows = [['Network', (NETLABEL[network] || network) + (network === 'mainnet' ? ' — REAL bitcoin' : '')]];
+      d.inputs.forEach((inp, i) => rows.push([
+        `Input ${i + 1}`,
+        inp.amount != null ? `${inp.amount.toLocaleString()} sat` : '⚠ amount unknown',
+        inp.mine ? `✓ this wallet's coin · ${inp.path}` : "⚠ NOT this wallet's coin",
+      ]));
+      d.outputs.forEach((o) => {
+        if (o.type === 'op_return') rows.push(['OP_RETURN', `“${(o.opReturn || '').slice(0, 40)}”`, 'permanent public message']);
+        else if (o.change) rows.push(['Change — verified yours', o.address, `${o.amount.toLocaleString()} sat · ${o.path}`]);
+        else rows.push(['PAYMENT → external', o.address || '(unknown script)', `${o.amount.toLocaleString()} sat — leaves the wallet`]);
+      });
+      rows.push(['Network fee (computed)', d.fee != null ? `${d.fee.toLocaleString()} sat` : 'UNKNOWN — cannot verify', d.feeRate != null ? `≈${d.feeRate} sat/vB` : '']);
+      const okGo = await confirmSheet('Sign this transaction?', rows, 'Sign');
+      if (!okGo) return toast('Cancelled — nothing signed.');
       const s = window.OW.signPsbt({ psbt, mnemonic: source, network, passphrase });
       $('#signedout').value = s.psbt;
       const r = $('#agresult'); r.style.display = 'block'; r.className = 'mono ok';
@@ -14867,7 +15526,11 @@ zoo`.split("\n");
   // auto-submit once the PIN reaches its known length (default 6). If length was
   // never stored (older vault) and a 6-digit auto-attempt fails, fall back to
   // manual so a longer PIN can still be typed.
-  const storedLen = (() => { try { return localStorage.getItem('olesia:pinlen'); } catch { return null; } })();
+  // L12 — PIN length is no longer persisted (it would narrow an attacker's brute-force space).
+  // Auto-submit uses the default length; a wrong auto-attempt falls back to manual entry so a
+  // longer PIN still works. Any legacy olesia:pinlen is proactively cleared.
+  try { localStorage.removeItem('olesia:pinlen'); } catch {}
+  const storedLen = null;
   let pinLen = storedLen ? +storedLen : 6, autoOn = true, lenKnown = !!storedLen;
   function renderDots() {
     const d = $('#pindots'); d.textContent = '';
@@ -14950,7 +15613,11 @@ zoo`.split("\n");
       const s = document.createElement('span'); const n = document.createElement('i');
       n.textContent = i + 1; s.append(n, w); box.appendChild(s);
     });
-    if (p) { const s = document.createElement('span'); s.style.gridColumn = '1 / -1'; s.style.color = 'var(--accent)'; s.textContent = '+ passphrase set (not shown — remember it separately; it is part of this wallet)'; box.appendChild(s); }
+    if (p) {
+      const s = document.createElement('span'); s.style.gridColumn = '1 / -1'; s.style.color = 'var(--accent)';
+      s.textContent = `+ passphrase set (not shown — remember it separately; it is part of this wallet). Wallet fingerprint: ${walletFP()} — check this matches when you restore, to prove the passphrase was right.`;
+      box.appendChild(s);
+    }
     $('#bk_gate').style.display = 'none'; $('#bk_show').style.display = 'block';
     clearTimeout(bkTimer); bkTimer = setTimeout(hideBackup, 60000); // auto-hide after 60s
   }

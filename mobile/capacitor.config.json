@@ -3,5 +3,5 @@
   "appName": "Olesia",
   "webDir": "www",
   "backgroundColor": "#0e1116",
-  "ios": { "contentInset": "always", "backgroundColor": "#0e1116", "limitsNavigationsToAppBoundDomains": false }
+  "ios": { "contentInset": "always", "backgroundColor": "#0e1116", "limitsNavigationsToAppBoundDomains": true }
 }
