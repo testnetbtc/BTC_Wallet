@@ -1,0 +1,148 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="">
+<title>Olesia · Connect</title>
+<style>
+:root{--bg:#0b0f14;--surface:#121a23;--panel:#0e151d;--line:#22303c;--text:#e8eef4;--muted:#8aa0b4;--faint:#5b7286;
+  --accent:#f0a020;--accent-ink:#1a1205;--mint:#7ee2a8;--bad:#ff9ca0;--info:#5aa9e6;--mono:ui-monospace,Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;color:var(--text);
+  background:radial-gradient(900px 500px at 15% -10%,#101a13 0%,transparent 55%),var(--bg);-webkit-font-smoothing:antialiased}
+#wrap{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+header{display:flex;align-items:center;gap:10px;padding:6px 0 2px}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em}.ldot{color:var(--accent)}
+.badge{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:#0f2016;border:1px solid #1e5233;color:var(--mint);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700}
+.badge .d{width:8px;height:8px;border-radius:50%;background:var(--mint)}
+h1{font-size:20px;letter-spacing:-.01em;margin:10px 0 2px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px}
+.step{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:0 0 10px}
+label{display:block;font-weight:600;margin:8px 0 6px;font-size:13.5px}
+input,select{width:100%;padding:11px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--text);font-family:inherit;font-size:15px;margin-bottom:6px}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:11px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer;min-height:42px;width:100%}
+button.sec{background:var(--surface);border:1px solid var(--line);color:var(--text);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px}.row>*{flex:1}.hint{color:var(--muted);font-size:12.5px;margin:6px 0}
+.mono{font-family:var(--mono);word-break:break-all;font-size:12.5px}
+.io{border-top:1px solid var(--line);padding:9px 0;font-size:13px}.io:first-child{border-top:0}
+.io .amt{float:right;font-variant-numeric:tabular-nums;font-weight:700}
+.verdict{border-radius:11px;padding:11px 13px;font-size:13.5px;font-weight:600;margin:2px 0 10px}
+.verdict.ok{background:#0f2016;border:1px solid #1e5233;color:var(--mint)}
+.verdict.bad{background:#2a1012;border:1px solid #5c2126;color:var(--bad)}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;padding:1px 6px;margin-left:6px}
+.tag.claim{background:#0f2016;border:1px solid #1e5233;color:var(--mint)}.tag.refund{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a}
+.warn{background:#2a1e08;border:1px solid #6b4e12;color:#f0cd8a;border-radius:11px;padding:10px 12px;font-size:12.5px;margin:8px 0}
+.origin{font-family:var(--mono);color:var(--info)}
+</style></head><body><div id="wrap">
+<header><span class="logo">Olesia<span class="ldot">.</span></span><span class="badge"><span class="d"></span>Connect · non-custodial</span></header>
+<h1>Connect to swap</h1>
+<p class="sub">A swap on <span class="origin" id="peer">olesia.io/swap</span> is asking to use your Olesia wallet. Your seed never leaves this page — you only ever hand back a signed transaction the engine re-verifies before broadcast.</p>
+
+<div class="card" id="waitCard"><div class="step">Waiting</div>
+  <p class="hint" id="waitMsg">Waiting for the swap page to send a request…</p></div>
+
+<div class="card" id="lockCard" style="display:none"><div class="step">1 · Unlock your wallet</div>
+  <label for="net">Network</label>
+  <select id="net"><option value="testnet4">Testnet 4</option><option value="signet">Signet</option></select>
+  <label for="pin">Wallet PIN / passphrase</label>
+  <input id="pin" type="password" autocomplete="off" placeholder="unlock your saved Olesia wallet">
+  <button id="unlock">Unlock</button>
+  <p class="hint" id="lockMsg"></p>
+  <p class="hint" id="noVault" style="display:none">No saved wallet found in this browser. Open <b>app.olesia.io</b>, create or restore your wallet and save it, then reconnect.</p>
+</div>
+
+<div class="card" id="reqCard" style="display:none"><div class="step" id="reqStep">2 · Approve</div>
+  <div id="verdict"></div>
+  <div id="body"></div>
+  <div class="row" style="margin-top:12px"><button class="sec" id="reject">Reject</button><button id="approve">Approve</button></div>
+</div>
+
+<script>/*__CONNECT_BUNDLE__*/</script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var fmt=function(sat){return (sat==null?'?':(sat/1e8).toFixed(8))+' BTC'};
+  var short=function(a){return a?(a.length>24?a.slice(0,14)+'…'+a.slice(-8):a):'(unknown)'};
+  // The swap page is served same-SITE with this wallet (swap.olesia.io or olesia.io/swap).
+  // Accept postMessage requests ONLY from these pinned origins.
+  var ALLOWED=['https://swap.olesia.io','https://olesia.io','https://www.olesia.io'];
+  try{ if(/^http:\/\/localhost(:\d+)?$/.test(location.hash.slice(1))) ALLOWED.push(location.hash.slice(1)); }catch(e){}
+  var opener=window.opener||window.parent;
+  var peerOrigin=null, unlocked=null, current=null;
+
+  function send(id, result, error){ if(!opener||!peerOrigin) return; opener.postMessage({__olesia_res:{id:id, result:result, error:error||null}}, peerOrigin); }
+  function fail(id, code, message){ send(id, null, {code:code||4001, message:message||'rejected'}); }
+
+  window.addEventListener('message', function(e){
+    if(ALLOWED.indexOf(e.origin)<0) return;                 // origin allow-list (security)
+    var req=e.data && e.data.__olesia_req; if(!req) return;
+    peerOrigin=e.origin; $('peer').textContent=e.origin.replace(/^https?:\/\//,'')+'/swap';
+    current=req; $('waitCard').style.display='none';
+    route();
+  });
+
+  function route(){
+    if(!current) return;
+    if(!window.OLESIA_CONNECT.hasVault()){ $('lockCard').style.display='block'; $('noVault').style.display='block'; $('pin').disabled=true; $('unlock').disabled=true; return; }
+    if(!unlocked){ $('lockCard').style.display='block'; return; }
+    renderRequest();
+  }
+
+  $('unlock').onclick=function(){
+    try{ unlocked=window.OLESIA_CONNECT.unlock($('pin').value); $('pin').value=''; $('lockMsg').textContent=''; $('lockCard').style.display='none'; renderRequest(); }
+    catch(e){ $('lockMsg').textContent='✗ '+e.message; }
+  };
+
+  function renderRequest(){
+    var m=current.method, params=current.params;
+    $('reqCard').style.display='block';
+    if(m==='olesia_getAccount'){
+      $('reqStep').textContent='2 · Approve connection';
+      $('verdict').className='verdict ok';
+      $('verdict').textContent='This swap wants to see your public wallet address on '+$('net').value+'. No key or seed is shared.';
+      $('body').textContent=''; $('approve').textContent='Connect'; return;
+    }
+    if(m==='olesia_signPsbt'){
+      $('reqStep').textContent='2 · Review & sign';
+      var net=(Array.isArray(params)?params[0]:params).network;
+      var r; try{ r=window.OLESIA_CONNECT.review({mnemonic:unlocked.mnemonic, passphrase:unlocked.passphrase, network:net, params:params}); }
+      catch(e){ $('verdict').className='verdict bad'; $('verdict').textContent='✗ Cannot read this request: '+e.message; $('body').textContent=''; $('approve').disabled=true; return; }
+      renderReview(r); return;
+    }
+    $('verdict').className='verdict bad'; $('verdict').textContent='✗ Unsupported method: '+m; $('approve').disabled=true;
+  }
+
+  function renderReview(r){
+    $('verdict').className='verdict '+(r.safeToSign?'ok':'bad');
+    $('verdict').textContent=r.safeToSign
+      ? '✓ Verified — this '+(r.branch==='redeem'?'CLAIM':'REFUND')+' spends your own HTLC. Safe to sign.'
+      : '✗ Do NOT sign: '+(!r.mine?'this HTLC key is not in your wallet':(r.branch==='redeem'&&!r.haveSecret?'the swap did not provide the secret yet':'unverifiable'));
+    var body=$('body'); body.textContent='';
+    var head=document.createElement('div'); head.className='io';
+    var amt=document.createElement('span'); amt.className='amt'; amt.textContent=fmt(r.amount); head.appendChild(amt);
+    var lbl=document.createElement('span'); lbl.textContent=(r.branch==='redeem'?'Claim from HTLC':'Refund from HTLC')+' · '+r.network;
+    var tag=document.createElement('span'); tag.className='tag '+(r.branch==='redeem'?'claim':'refund'); tag.textContent=r.branch; head.appendChild(lbl); head.appendChild(tag);
+    body.appendChild(head);
+    (r.outputs||[]).forEach(function(o){
+      var row=document.createElement('div'); row.className='io';
+      var a=document.createElement('span'); a.className='amt'; a.textContent=fmt(o.value); row.appendChild(a);
+      var w=document.createElement('span'); w.className='mono'; w.textContent=short(o.scriptHex); row.appendChild(w); body.appendChild(row);
+    });
+    if(r.branch==='refund'){ var wn=document.createElement('div'); wn.className='warn'; wn.textContent='Refund is only valid at/after block height '+r.refundHeight+'.'; body.appendChild(wn); }
+    $('approve').textContent='Sign'; $('approve').disabled=!r.safeToSign;
+  }
+
+  $('reject').onclick=function(){ if(current){ fail(current.id, 4001, 'user rejected the request'); } window.close(); };
+  $('approve').onclick=function(){
+    if(!current) return; var m=current.method, id=current.id;
+    try{
+      if(m==='olesia_getAccount'){ send(id, window.OLESIA_CONNECT.getAccount({mnemonic:unlocked.mnemonic, passphrase:unlocked.passphrase, network:$('net').value})); }
+      else if(m==='olesia_signPsbt'){ var net=(Array.isArray(current.params)?current.params[0]:current.params).network; send(id, window.OLESIA_CONNECT.sign({mnemonic:unlocked.mnemonic, passphrase:unlocked.passphrase, network:net, params:current.params})); }
+      $('verdict').className='verdict ok'; $('verdict').textContent='✓ Sent back to the swap. You can close this window.'; $('approve').disabled=true; $('reject').disabled=true;
+      setTimeout(function(){ try{window.close();}catch(e){} }, 900);
+    }catch(e){ fail(id, 4900, e.message); $('verdict').className='verdict bad'; $('verdict').textContent='✗ '+e.message; }
+  };
+
+  // Tell the opener we're ready to receive the request.
+  try{ if(opener) opener.postMessage({__olesia_ready:true}, '*'); }catch(e){}
+})();
+</script>
+</div></body></html>
