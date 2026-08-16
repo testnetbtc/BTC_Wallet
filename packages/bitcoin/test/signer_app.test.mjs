@@ -23,6 +23,12 @@ ok('offline: script-src is hash-based, NO unsafe-inline', /script-src[^;]*'sha25
 ok('offline: no runtime network primitives (XHR / WebSocket / sendBeacon)',
    !/XMLHttpRequest|new WebSocket|navigator\.sendBeacon|EventSource/.test(html));
 ok('page exposes window.SIGN', html.includes('window.SIGN'));
+// M2 — the review I/O list (which includes attacker-controlled OP_RETURN text) is built with
+// DOM/textContent, NEVER assigned into innerHTML.
+ok('M2: review I/O built via textContent, not innerHTML', /io\.textContent=''/.test(html) && !/\$\('io'\)\.innerHTML/.test(html));
+// L2 — an edit to seed/passphrase/network/PSBT voids the prior review, and Sign uses the exact
+// REVIEWED args (lastReview.args), never re-reading the live fields.
+ok('L2: Sign bound to reviewed bytes; edits invalidate the review', /invalidateReview/.test(html) && /window\.SIGN\.sign\(lastReview\.args\)/.test(html));
 
 // ── browser smoke test (jsdom): the bundle loads and the API behaves ──
 {

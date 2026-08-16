@@ -76,43 +76,65 @@ button:disabled{opacity:.45;cursor:default}
 (function(){
   var $=function(id){return document.getElementById(id)};
   var fmt=function(sat){return (sat==null?'?':(sat/1e8).toFixed(8))+' BTC'};
-  var lastReview=null;
+  var lastReview=null;   // { result, args } — Sign uses THESE exact reviewed bytes, never live fields
   function shortAddr(a){return a?(a.length>22?a.slice(0,12)+'…'+a.slice(-8):a):'(unknown script)'}
-  $('gen24').onclick=function(){$('seed').value=window.SIGN.generate(24);refreshXpub()};
-  $('gen12').onclick=function(){$('seed').value=window.SIGN.generate(12);refreshXpub()};
+  // L2 — any edit to seed / passphrase / network / PSBT voids a prior review, so Sign can
+  // never apply to bytes the user did not see reviewed. review() re-arms it.
+  function invalidateReview(){lastReview=null;$('reviewcard').style.display='none';$('signedcard').style.display='none';$('sign').disabled=true}
+  $('gen24').onclick=function(){$('seed').value=window.SIGN.generate(24);invalidateReview();refreshXpub()};
+  $('gen12').onclick=function(){$('seed').value=window.SIGN.generate(12);invalidateReview();refreshXpub()};
+  ['seed','pass','psbt'].forEach(function(id){$(id).addEventListener('input',invalidateReview)});
+  $('net').addEventListener('change',invalidateReview);
   $('seed').addEventListener('input',refreshXpub);$('net').addEventListener('change',refreshXpub);$('pass').addEventListener('input',refreshXpub);
   function refreshXpub(){
     var m=$('seed').value.trim();$('xpubline').textContent='';
     if(!m)return; if(!window.SIGN.validate(m)){$('xpubline').textContent='⚠ phrase is not a valid BIP-39 mnemonic';return}
-    try{$('xpubline').innerHTML='Account xpub (for watch-only): <span class="mono">'+window.SIGN.xpub(m,$('net').value,$('pass').value)+'</span>'}catch(e){$('xpubline').textContent=''}
+    try{
+      var xp=window.SIGN.xpub(m,$('net').value,$('pass').value);
+      $('xpubline').appendChild(document.createTextNode('Account xpub (for watch-only): '));
+      var sp=document.createElement('span');sp.className='mono';sp.textContent=xp;$('xpubline').appendChild(sp);
+    }catch(e){$('xpubline').textContent=''}
   }
   $('pickfile').onclick=function(){$('file').click()};
-  $('file').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){$('psbt').value=String(r.result||'').trim()};r.readAsText(f)};
+  $('file').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){$('psbt').value=String(r.result||'').trim();invalidateReview()};r.readAsText(f)};
   $('review').onclick=function(){
-    var m=$('seed').value.trim();
-    if(!window.SIGN.validate(m)){alert('Enter a valid 12/24-word recovery phrase first.');return}
-    var r;try{r=window.SIGN.review({mnemonic:m,passphrase:$('pass').value,network:$('net').value,psbt:$('psbt').value})}catch(e){alert('Could not read that PSBT: '+e.message);return}
-    lastReview=r;renderReview(r);$('reviewcard').style.display='';$('signedcard').style.display='none';
+    var args={mnemonic:$('seed').value.trim(),passphrase:$('pass').value,network:$('net').value,psbt:$('psbt').value};
+    if(!window.SIGN.validate(args.mnemonic)){alert('Enter a valid 12/24-word recovery phrase first.');return}
+    var r;try{r=window.SIGN.review(args)}catch(e){alert('Could not read that PSBT: '+e.message);return}
+    lastReview={result:r,args:args};renderReview(r);$('reviewcard').style.display='';$('signedcard').style.display='none';
     $('reviewcard').scrollIntoView({behavior:'smooth',block:'start'});
   };
   function renderReview(r){
     var s=r.summary;
     $('verdict').className='verdict '+(r.safeToSign?'ok':'bad');
     $('verdict').textContent=r.safeToSign?'✓ Verified — every input is yours and the fee checks out. Safe to sign.':'✗ Do NOT sign: '+r.reasons.join('; ');
-    var html='';
+    // M2 — build the I/O list as DOM with textContent only. OP_RETURN text is PSBT-controlled
+    // (attacker-supplied); it must NEVER reach innerHTML, or a hostile builder could paint a
+    // fake review screen on the one page whose entire security model is display integrity.
+    var io=$('io');io.textContent='';
     s.outputs.forEach(function(o){
-      var who=o.opReturn!=null?('OP_RETURN “'+o.opReturn+'”'):(o.change?'Change (back to you)':shortAddr(o.address));
-      var tag=o.opReturn!=null?'':(o.change?'<span class="tag change">change</span>':'<span class="tag ext">sending</span>');
-      html+='<div class="io"><span class="amt">'+fmt(o.amount)+'</span>'+who+tag+'</div>';
+      var row=document.createElement('div');row.className='io';
+      var amt=document.createElement('span');amt.className='amt';amt.textContent=fmt(o.amount);row.appendChild(amt);
+      if(o.opReturn!=null){
+        var lbl=document.createElement('span');lbl.textContent='OP_RETURN “'+o.opReturn+'”';row.appendChild(lbl);
+        if(o.amount>0){var b=document.createElement('span');b.className='tag ext';b.textContent='burns '+fmt(o.amount);row.appendChild(b)}
+      }else{
+        var who=document.createElement('span');who.textContent=o.change?'Change (back to you)':shortAddr(o.address);row.appendChild(who);
+        var tag=document.createElement('span');tag.className='tag '+(o.change?'change':'ext');tag.textContent=o.change?'change':'sending';row.appendChild(tag);
+      }
+      io.appendChild(row);
     });
-    $('io').innerHTML=html;
-    $('feeline').textContent='Inputs '+fmt(s.inTotal)+' · sending '+fmt(s.externalTotal)+' · change '+fmt(s.changeTotal)+' · fee '+(s.fee==null?'?':s.fee+' sat'+(s.feeRate?' ('+s.feeRate+' sat/vB)':''));
-    $('warnings').innerHTML = s.allInputsMine ? '' : '<div class="warn">Some inputs are not from this wallet — a single-sig signer will refuse to co-sign them.</div>';
+    $('feeline').textContent='Inputs '+fmt(s.inTotal)+' · sending '+fmt(s.externalTotal)+' · change '+fmt(s.changeTotal)+(s.burnedTotal>0?' · burned '+fmt(s.burnedTotal):'')+' · fee '+(s.fee==null?'?':s.fee+' sat'+(s.feeRate?' ('+s.feeRate+' sat/vB)':''));
+    var warn='';
+    if(!s.allInputsMine)warn+='Some inputs are not from this wallet — a single-sig signer will refuse to co-sign them. ';
+    if(s.burnedTotal>0)warn+='This transaction permanently BURNS '+fmt(s.burnedTotal)+' in an OP_RETURN output. ';
+    $('warnings').textContent='';
+    if(warn){var wd=document.createElement('div');wd.className='warn';wd.textContent=warn;$('warnings').appendChild(wd)}
     $('sign').disabled=!r.safeToSign;
   }
   $('sign').onclick=function(){
-    if(!lastReview||!lastReview.safeToSign)return;
-    var out;try{out=window.SIGN.sign({mnemonic:$('seed').value.trim(),passphrase:$('pass').value,network:$('net').value,psbt:$('psbt').value})}catch(e){alert('Signing refused: '+e.message);return}
+    if(!lastReview||!lastReview.result.safeToSign)return;
+    var out;try{out=window.SIGN.sign(lastReview.args)}catch(e){alert('Signing refused: '+e.message);return} // L2 — the REVIEWED bytes
     $('signed').value=out.signedPsbtB64;$('txid').textContent=out.txid;$('signedcard').style.display='';
     $('signedcard').scrollIntoView({behavior:'smooth',block:'start'});
   };

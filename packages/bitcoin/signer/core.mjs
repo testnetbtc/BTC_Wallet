@@ -16,6 +16,10 @@ import { accountXpub, deriveKey, normalizeMnemonic } from '../src/wallet.js';
 import { describePSBT } from '../src/psbt.js';
 
 export const MAX_FEE_FRACTION = 0.2;   // fee must not exceed 20% of the inputs
+// L4 — an ABSOLUTE fee-rate ceiling, independent of the fraction cap above. A large-input tx
+// can pay an absurd sat/vB while still sitting under 20% of the inputs; this catches that.
+// Deliberately high (a fat-finger / hostile-builder guard, not fee policy).
+export const MAX_FEERATE_SANITY = 1000; // sat/vB
 
 // Review a PSBT with the seed's own account xpub. Returns the full WYSIWYS breakdown plus a
 // safety verdict — NEVER signs. `summary.fee` is computed as inputs-minus-outputs, so a tampered
@@ -30,6 +34,12 @@ export function reviewPSBT({ mnemonic, passphrase = '', network, psbtB64 }) {
   if (summary.fee == null) reasons.push('input amounts are missing from the PSBT — the fee cannot be independently verified');
   else if (summary.fee < 0) reasons.push('outputs exceed inputs — malformed or malicious PSBT');
   else if (summary.inTotal > 0 && summary.fee > summary.inTotal * MAX_FEE_FRACTION) reasons.push(`fee (${summary.fee} sat) exceeds ${MAX_FEE_FRACTION * 100}% of the inputs (${summary.inTotal} sat)`);
+  if (summary.feeRate != null && summary.feeRate > MAX_FEERATE_SANITY) reasons.push(`fee rate (${summary.feeRate} sat/vB) exceeds the ${MAX_FEERATE_SANITY} sat/vB sanity ceiling`); // L4
+  // L3 — the signature commits to a sighash type. Only SIGHASH_ALL (0x01), taproot DEFAULT
+  // (0x00), or an absent field (signer applies ALL) is safe. NONE/SINGLE/ANYONECANPAY change
+  // what is being signed and must never pass a "safe to sign" verdict.
+  if (summary.inputs.some((i) => i.sighashType != null && i.sighashType !== 0x01 && i.sighashType !== 0x00))
+    reasons.push('a PSBT input requests a non-default sighash type — only SIGHASH_ALL is allowed');
   return { summary, safeToSign: reasons.length === 0, reasons };
 }
 

@@ -6,9 +6,10 @@
 import * as btc from '@scure/btc-signer';
 import { HDKey } from '@scure/bip32';
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha256';
 import { base64 } from '@scure/base';
 import { net } from './networks.js';
-import { opReturnScript, assertFeeRate } from './tx.js';
+import { opReturnScript, assertFeeRate, assertRecipientAmount, assertAddressNetwork } from './tx.js';
 import { deriveKey, parseExtendedKey } from './wallet.js';
 
 // Watch-only: derive a receive script/address from an ACCOUNT xpub (m/84'/coin'/0').
@@ -26,7 +27,11 @@ export function buildUnsignedPSBT({ utxos, wo, recipients = [], message = null,
   const n = net(network);
   feeRate = assertFeeRate(feeRate);
   const outputs = [];
-  for (const r of recipients) outputs.push({ address: r.address, amount: BigInt(r.amount) });
+  for (const r of recipients) {
+    const amount = assertRecipientAmount(r.amount);   // L10 — reuse tx.js validators (integer sats >= dust floor)
+    assertAddressNetwork(r.address, network);         // and the wrong-network guard
+    outputs.push({ address: r.address, amount });
+  }
   if (message != null) outputs.push({ script: opReturnScript(message), amount: 0n });
   if (!outputs.length) throw new Error('nothing to send');
   const inputs = utxos.map((u) => ({
@@ -73,15 +78,30 @@ export function describePSBT(psbtB64, { accountXpub, network, gap = 20 }) {
     const inp = tx.getInput(i);
     let script = inp.witnessUtxo?.script ?? null;
     let amount = inp.witnessUtxo ? Number(inp.witnessUtxo.amount) : null;
+    // L1 — this wallet is SegWit (P2WPKH) only, so an input it owns always carries a
+    // witnessUtxo. A nonWitnessUtxo (legacy prevtx) is trusted for its amount/script ONLY if
+    // its serialization actually double-SHA256-hashes to THIS input's prevout txid. btc-signer
+    // does not enforce that match for a non-final fabricated prevtx, so an attacker could
+    // otherwise inflate the input value in the review. Unverifiable -> amount stays unknown ->
+    // fee becomes null -> the signer refuses (input amounts cannot be independently verified).
     if (!script && inp.nonWitnessUtxo?.outputs) {
-      const prevOut = inp.nonWitnessUtxo.outputs[inp.index];
-      if (prevOut) { script = prevOut.script; amount = Number(prevOut.amount); }
+      let verified = false;
+      try {
+        const raw = btc.RawTx.encode(inp.nonWitnessUtxo);
+        const gotTxid = bytesToHex(Uint8Array.from(sha256(sha256(raw))).reverse());
+        verified = !!inp.txid && gotTxid === bytesToHex(inp.txid);
+      } catch { verified = false; }
+      if (verified) {
+        const prevOut = inp.nonWitnessUtxo.outputs[inp.index];
+        if (prevOut) { script = prevOut.script; amount = Number(prevOut.amount); }
+      }
     }
     const o = script ? own.get(bytesToHex(script)) : null;
     if (amount == null) unknownAmounts = true; else inTotal += amount;
     inputs.push({
       txid: inp.txid ? bytesToHex(inp.txid) : null, vout: inp.index,
       amount, mine: !!o, path: o?.path ?? null, address: o?.address ?? null,
+      sighashType: inp.sighashType ?? null,   // L3 — surfaced so the review can gate on it
     });
   }
 
@@ -114,6 +134,9 @@ export function describePSBT(psbtB64, { accountXpub, network, gap = 20 }) {
     allInputsMine: inputs.length > 0 && inputs.every((x) => x.mine),
     externalTotal: outputs.filter((x) => !x.change && x.type !== 'op_return').reduce((a, x) => a + x.amount, 0),
     changeTotal: outputs.filter((x) => x.change).reduce((a, x) => a + x.amount, 0),
+    // L4 — value irrevocably BURNED in OP_RETURN outputs (normally 0). Surfaced so a "valued
+    // OP_RETURN" can never be hidden from the totals the user reviews.
+    burnedTotal: outputs.filter((x) => x.type === 'op_return').reduce((a, x) => a + x.amount, 0),
   };
 }
 
