@@ -20,6 +20,7 @@ import { makeNodeApi, DEFAULT_API } from '../src/nodeapi.js';
 import { Session, MAINNET_WINDOW, TEST_WINDOW } from '../src/session.js';
 import { NETWORKS } from '../src/networks.js';
 import { lockWallet, LockedWallet } from '../src/locked.js';
+import { analyzePattern as vanityAnalyze, estimate as vanityEstimate, humanTime, TYPES as VANITY_TYPES, MAX_PATTERN as VANITY_MAX } from '../src/vanity.js';
 
 const NETWORK = 'mainnet';
 const API_BASE = (typeof __OLESIA_API__ === 'string' && __OLESIA_API__) || DEFAULT_API;
@@ -131,7 +132,58 @@ function openLocked({ pubs, vaultText, scriptType = null }) {
   };
 }
 
+// ---- vanity addresses: the search runs in Web Workers built from code bundled into this page ----
+const VANITY_WORKER = typeof __OLESIA_VANITY_WORKER__ === 'string' ? __OLESIA_VANITY_WORKER__ : '';
+const VANITY_SCRIPT = typeof __OLESIA_VANITY_SCRIPT__ === 'object' ? __OLESIA_VANITY_SCRIPT__ : null;
+let vanityWorkerUrl = null;
+function vanityWorker() {
+  if (!VANITY_WORKER) throw new Error('vanity worker not bundled');
+  if (!vanityWorkerUrl) vanityWorkerUrl = URL.createObjectURL(new Blob([VANITY_WORKER], { type: 'text/javascript' }));
+  return new Worker(vanityWorkerUrl);
+}
+const vanity = {
+  types: VANITY_TYPES, maxChars: VANITY_MAX, script: VANITY_SCRIPT, humanTime,
+  threads: Math.max(1, Math.min(16, (navigator.hardwareConcurrency || 4) - 1)),
+  /** validity, exact difficulty, notes, suggestions — plain data for the UI (no BigInt) */
+  analyze: ({ type, text, ignoreCase }) => {
+    const a = vanityAnalyze({ type, text, ignoreCase });
+    return { ok: a.ok, type: a.type, display: a.display, text: a.text, ignoreCase: !!a.ignoreCase, errors: a.errors || [], notes: a.notes || [],
+             suggestions: (a.suggestions || []).map((s) => ({ text: s.text, why: s.why, difficulty: s.difficulty, ignoreCase: !!s.ignoreCase })),
+             difficulty: a.difficulty || null, difficultyHuman: a.difficultyHuman || null };
+  },
+  estimate: (difficulty, keysPerSecond) => vanityEstimate(difficulty, keysPerSecond),
+  /** keys/s for one thread on this device, measured in a worker so the page stays responsive */
+  benchmark: () => new Promise((resolve, reject) => {
+    const w = vanityWorker();
+    w.onmessage = (e) => { w.terminate(); if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.rate); };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'worker failed')); };
+    w.postMessage({ cmd: 'bench', ms: 1200 });
+  }),
+  /** start a search on `threads` workers; onProgress(keysTriedTotal); resolves {wif, address, type, tried} */
+  start: ({ type, text, ignoreCase, threads, onProgress }) => {
+    const n = Math.max(1, threads || vanity.threads);
+    const workers = []; let tried = 0; let done = false;
+    const stopAll = () => { for (const w of workers) w.terminate(); };
+    const promise = new Promise((resolve, reject) => {
+      for (let i = 0; i < n; i++) {
+        const w = vanityWorker();
+        w.onmessage = (e) => {
+          const m = e.data;
+          if (m.progress) { tried += m.progress; if (onProgress) onProgress(tried); }
+          if (m.error && !done) { done = true; stopAll(); reject(new Error(m.error)); }
+          if (m.found && !done) { done = true; tried += m.tried || 0; stopAll(); resolve({ ...m.found, tried }); }
+        };
+        w.onerror = (e) => { if (!done) { done = true; stopAll(); reject(new Error(e.message || 'worker failed')); } };
+        w.postMessage({ cmd: 'start', type, text, ignoreCase: !!ignoreCase });
+        workers.push(w);
+      }
+    });
+    return { promise, stop: () => { if (!done) { done = true; stopAll(); } }, get tried() { return tried; } };
+  },
+};
+
 window.OM = {
+  vanity,
   network: NETWORK, apiBase: API_BASE, typeLabel: TYPE_LABEL, maxFeeRate: MAX_FEERATE,
   netInfo: NET_INFO, practiceNetworks: PRACTICE, faucetUrl: FAUCET_URL,
   messageMax: MESSAGE_MAX_BYTES, messageBytes: (t) => new TextEncoder().encode(String(t || '')).length,

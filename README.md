@@ -14,6 +14,7 @@ down describes that earlier platform and is **not accurate for the live site**.
 | Source | [`packages/bitcoin/mainnet/`](packages/bitcoin/mainnet/) (page) and `packages/bitcoin/src/` (engine) — start with the [mainnet README](packages/bitcoin/mainnet/README.md) |
 | Node API | `https://api.olesia.io` — [`infra/nodeapi/`](infra/nodeapi/), in front of the operator's own Bitcoin Core node |
 | Build hash | [`packages/bitcoin/mainnet/BUILD_HASH.txt`](packages/bitcoin/mainnet/BUILD_HASH.txt) — compare with `curl -s https://olesia.io/ | sha256sum` |
+| Vanity addresses | in the wallet ("Create a vanity address") or offline with `olesia-vanity.mjs` — [how-to guide](docs/VANITY_OFFLINE_GUIDE.md), [design](docs/VANITY_DESIGN.md) |
 
 ## What it does
 

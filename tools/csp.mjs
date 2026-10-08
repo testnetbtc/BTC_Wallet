@@ -24,7 +24,7 @@ export function inlineScriptHashes(html) {
 // `style: 'unsafe-inline'` is the one deliberate allowance — inline style="..."
 // ATTRIBUTES cannot be hashed and carry no script-execution risk; documented in
 // docs/THREAT_MODEL.md. There is NO 'unsafe-inline'/'unsafe-eval' for scripts.
-export function buildCSP({ scriptHashes = [], scriptHosts = [], connect = "'none'", img = 'data:', manifest = false, frame = "'none'", formAction = "'none'" }) {
+export function buildCSP({ scriptHashes = [], scriptHosts = [], connect = "'none'", img = 'data:', manifest = false, frame = "'none'", formAction = "'none'", worker = null }) {
   const script = [...scriptHashes, ...scriptHosts];
   return [
     "default-src 'none'",
@@ -32,6 +32,9 @@ export function buildCSP({ scriptHashes = [], scriptHosts = [], connect = "'none
     "style-src 'unsafe-inline'",
     `img-src ${img}`,
     'font-src data:',
+    // `worker: 'blob:'` lets the page start Web Workers from code it built itself (the vanity
+    // search). A blob: worker can only contain what the page's own (hash-pinned) script put in it.
+    ...(worker ? [`worker-src ${worker}`] : []),
     ...(manifest ? ["manifest-src 'self'"] : []),
     `connect-src ${connect}`,
     `frame-src ${frame}`,
@@ -64,9 +67,9 @@ export function headersBlock(path, csp) {
 // <meta> CSP to match (no script 'unsafe-inline'), and write the sibling `_headers`
 // with the full CSP + security headers. Returns the CSP for logging. Deterministic.
 import { readFileSync, writeFileSync } from 'node:fs';
-export function hardenHtml({ htmlPath, headersPath, connect = "'none'", img = 'data:', manifest = false, extraHeaderBlocks = '' }) {
+export function hardenHtml({ htmlPath, headersPath, connect = "'none'", img = 'data:', manifest = false, extraHeaderBlocks = '', worker = null }) {
   let html = readFileSync(htmlPath, 'utf8');
-  const csp = buildCSP({ scriptHashes: inlineScriptHashes(html), connect, img, manifest });
+  const csp = buildCSP({ scriptHashes: inlineScriptHashes(html), connect, img, manifest, worker });
   html = injectMetaCSP(html, csp);
   writeFileSync(htmlPath, html);
   writeFileSync(headersPath, headersBlock('/*', csp) + (extraHeaderBlocks ? '\n' + extraHeaderBlocks : ''));

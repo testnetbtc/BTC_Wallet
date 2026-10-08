@@ -20,6 +20,9 @@ const IC = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   file: svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
   imp: svg('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/>'),
+  star: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/>'),
+  dl: svg('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/>'),
+  cpu: svg('<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>'),
 };
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -154,6 +157,23 @@ a.btn.off{opacity:.45;pointer-events:none}
 footer{margin-top:26px;color:var(--faint);font-size:12px;line-height:1.6}
 footer a{color:var(--muted)}
 .hide{display:none!important}
+.vin{display:flex;align-items:stretch;margin-bottom:6px}
+.vin .fx{display:flex;align-items:center;padding:0 10px;background:#1c1c1c;border:1px solid var(--line);border-right:0;border-radius:var(--r) 0 0 var(--r);font-family:var(--mono);font-size:16px;color:var(--muted);white-space:nowrap}
+.vin input{margin:0;border-radius:0 var(--r) var(--r) 0;font-family:var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 2px}
+.chips button{background:var(--panel);border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:13px;font-weight:500;padding:7px 11px;min-height:0;border-radius:var(--r)}
+.chips button:hover{border-color:var(--accent-text)}
+.chips button small{display:block;font-family:var(--sans);font-size:11px;color:var(--muted);font-weight:400}
+.est{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+@media(max-width:460px){.est{grid-template-columns:1fr}}
+.est div{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.est .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.est .v{font-family:var(--mono);font-size:17px;margin-top:2px}
+.est .s{font-size:12px;color:var(--muted)}
+.addr{font-family:var(--mono);font-size:17px;word-break:break-all;line-height:1.4;padding:12px 14px;background:var(--panel);border:1px solid #2f7a4b;border-radius:var(--r);margin:8px 0}
+.addr b{color:var(--accent-text);font-weight:500}
+.stat{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);margin:6px 0;flex-wrap:wrap}
+.stat span b{color:var(--text);font-family:var(--mono);font-weight:500}
 </style></head>
 <body><div id="shell">
 <header>
@@ -174,6 +194,7 @@ footer a{color:var(--muted)}
   <button class="choice primary" id="w_create" type="button"><span class="ic">${IC.plus}</span><span><b>Create a new wallet</b><span>12 or 24 words · your own randomness mixed in</span></span></button>
   <button class="choice" id="w_open" type="button"><span class="ic">${IC.file}</span><span><b>Open a wallet file</b><span>Load your encrypted <code>.dat</code> file and enter its password</span></span></button>
   <button class="choice" id="w_import" type="button"><span class="ic">${IC.imp}</span><span><b>Import a wallet</b><span>Recovery phrase (12 or 24 words) or a private key (WIF)</span></span></button>
+  <button class="choice" id="w_vanity" type="button"><span class="ic">${IC.star}</span><span><b>Create a vanity address</b><span>An address that starts with characters you choose · <code>bc1qjon…</code></span></span></button>
   <div class="warn"><b>This is a hot wallet for real bitcoin.</b> Keep here only an amount you could afford to lose. Olesia cannot recover a lost password or recovery phrase — nobody can. No independent security firm has audited this software.</div>
 </section>
 
@@ -378,7 +399,87 @@ footer a{color:var(--muted)}
     <button class="sec wide" id="a_deeper" type="button">Search more addresses</button>
     <p class="hint">Use this if you restored a heavily used wallet and coins seem to be missing.</p>
   </div>
+  <h3>More</h3>
+  <button class="sec wide" id="set_vanity" type="button" style="margin-bottom:10px">Create a vanity address</button>
   <button class="sec wide" id="set_lock" type="button">Lock wallet</button>
+</section>
+
+<!-- ===================== VANITY ===================== -->
+<section class="pane" id="pane-vanity">
+  <button class="back" id="v_back" type="button">‹ Back</button>
+  <h2>Create a vanity address</h2>
+  <p class="sub">A vanity address is a normal address that happens to start with characters you chose, like <code>bc1qjon…</code>. There is no shortcut: keys are generated at random until one fits. <b>The key is made on your device and is never sent anywhere.</b></p>
+  <div class="card">
+    <label>Address type</label>
+    <div class="seg" id="v_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1q…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
+    <p class="hint" id="v_typehint">SegWit is the modern standard: lower fees, and each character is only 32× harder than the last (Legacy: 58×). Always lower-case.</p>
+    <label>The characters you want</label>
+    <div class="vin"><span class="fx" id="v_fixed">bc1q</span><input id="v_text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="12" placeholder="jon"></div>
+    <p class="hint" id="v_alpha"></p>
+    <label class="inline hide" id="v_icrow"><input type="checkbox" id="v_ic"><span>Any capitalisation is fine (<code>1jon</code>, <code>1JON</code>, <code>1Jon</code>…) — usually much easier</span></label>
+  </div>
+  <div class="card" id="v_status">
+    <div class="danger hide" id="v_errors"></div>
+    <div id="v_notes"></div>
+    <div id="v_suggwrap" class="hide"><p class="hint" style="margin:6px 0 0">Nearest possible versions — tap one:</p><div class="chips" id="v_sugg"></div></div>
+    <div id="v_okwrap" class="hide">
+      <div class="stat"><span>Looking for <b id="v_display"></b></span><span>about 1 in <b id="v_diff"></b> keys</span></div>
+      <div class="est">
+        <div><div class="k">In this browser</div><div class="v" id="v_est_here">measuring…</div><div class="s" id="v_est_here_s"></div></div>
+        <div><div class="k">Offline script</div><div class="v" id="v_est_script"></div><div class="s">on a computer with <select id="v_cores" style="width:auto;padding:2px 6px;font-size:12px;margin:0;display:inline"><option>4</option><option selected>8</option><option>16</option><option>32</option></select> CPU threads</div></div>
+      </div>
+      <p class="hint" style="margin-top:8px">Expected times. The search is random: half of all runs finish sooner, 95% within 3× the expected time, and one run in 150 takes longer than 5×.</p>
+    </div>
+  </div>
+
+  <div id="v_choose" class="hide">
+    <h3>How to run it</h3>
+    <button class="choice primary" id="v_pick_script" type="button"><span class="ic">${IC.dl}</span><span><b>Offline script — recommended</b><span>Download one small file and run it on your own computer, disconnected. Safest, and uses all your CPU.</span></span></button>
+    <button class="choice" id="v_pick_browser" type="button"><span class="ic">${IC.cpu}</span><span><b>In this browser</b><span>Starts right here. Fine for short patterns — keep this tab open and the device plugged in.</span></span></button>
+  </div>
+
+  <div id="v_script" class="hide">
+    <h3>Offline script</h3>
+    <div class="card">
+      <p class="hint" style="margin-top:0">The script is the same search code as this page, in one file with no dependencies. It needs <b style="color:var(--text)">Node.js</b> (free, nodejs.org). Nothing is sent anywhere; you run it with the network off.</p>
+      <div class="steps">
+        <div class="step"><i>1</i><div><b>Download the file and check it</b>Its SHA-256 must be exactly<br><code class="mono" id="v_sha" style="font-size:11.5px"></code><br>Linux/macOS: <code>sha256sum olesia-vanity.mjs</code> · Windows: <code>certutil -hashfile olesia-vanity.mjs SHA256</code>. The script also prints its own hash when it starts.</div></div>
+        <div class="step"><i>2</i><div><b>Go offline</b>Turn off Wi-Fi / unplug the network. The script never needs it.</div></div>
+        <div class="step"><i>3</i><div><b>Run it</b><code class="mono" id="v_cmd"></code><br>It checks itself, shows the expected time, searches on all your CPU threads, and writes the result to <code>olesia-vanity-result.txt</code> (readable only by you).</div></div>
+        <div class="step"><i>4</i><div><b>Import</b>Back here: <span style="font-weight:600;color:var(--text)">Import a wallet → Private key (WIF)</span>, choose a password, save the <code>.dat</code> file. Then delete the result file securely.</div></div>
+      </div>
+      <a class="btn" id="v_dl" href="/olesia-vanity.mjs" download="olesia-vanity.mjs">${IC.dl} Download olesia-vanity.mjs <span id="v_size" style="font-weight:400;opacity:.8"></span></a>
+      <p class="hint" style="margin-top:10px">Full guide with screenshots and troubleshooting: <a id="v_guide" href="https://github.com/testnetbtc/BTC_Wallet/blob/main/docs/VANITY_OFFLINE_GUIDE.md" target="_blank" rel="noopener noreferrer">docs/VANITY_OFFLINE_GUIDE.md</a>. The source is open — read it before you run it.</p>
+    </div>
+  </div>
+
+  <div id="v_browser" class="hide">
+    <h3>In this browser</h3>
+    <div class="card">
+      <div class="warn" style="margin-top:0"><b>Keep this tab open</b> until it finishes — closing it abandons the search (nothing is saved anywhere, so nothing is lost either). On a laptop or phone, plug in: this uses all the CPU it can.</div>
+      <button class="wide" id="v_start" type="button">Start searching</button>
+      <div id="v_running" class="hide">
+        <div class="bar"><i id="v_bar"></i></div>
+        <div class="stat"><span><b id="v_tried">0</b> keys tried</span><span><b id="v_rate">0</b> keys/s</span><span><b id="v_elapsed">0s</b> elapsed</span></div>
+        <div class="stat"><span>Chance it would have been found by now: <b id="v_chance">0%</b></span><span>Expected: <b id="v_remaining"></b></span></div>
+        <button class="sec wide" id="v_stop" type="button">Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="v_result" class="hide">
+    <h3>Found</h3>
+    <div class="card">
+      <div class="addr" id="v_addr"></div>
+      <p class="hint ok" style="margin:0 0 10px">✓ Re-derived from the private key by the wallet's own code — the address and key belong together.</p>
+      <p class="hint" id="v_found_stats"></p>
+      <button class="wide" id="v_save" type="button">Save as an encrypted wallet file</button>
+      <p class="hint" style="margin:10px 0 6px">The address becomes a normal Olesia wallet: you choose a password, the key is encrypted into a <code>.dat</code> file on this computer, and you can receive and send from it like any other.</p>
+      <div class="row"><button class="sec" id="v_showkey" type="button">Show private key</button><button class="sec" id="v_discard" type="button">Discard</button></div>
+      <p class="mono hide" id="v_wif" style="margin-top:10px"></p>
+      <div class="danger hide" id="v_wifwarn">This is the private key. Anyone who sees it can spend everything the address ever receives. Nothing has been saved — if you leave this screen without saving, the address is gone for good.</div>
+    </div>
+  </div>
 </section>
 
 <!-- ===================== RECEIVE ===================== -->

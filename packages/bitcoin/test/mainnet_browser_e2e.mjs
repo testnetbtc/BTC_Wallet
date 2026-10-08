@@ -15,6 +15,7 @@ import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import http from 'node:http';
 import * as btc from '@scure/btc-signer';
+import { secp256k1 } from '@noble/curves/secp256k1';
 import { createBase58check } from '@scure/base';
 import { sha256 } from '@noble/hashes/sha256';
 import { encryptBackup } from '../../../src/backup.js';
@@ -547,6 +548,39 @@ try {
   await tap(page, '#c_go');
   await page.waitForFunction(() => !document.querySelector('#t_result').classList.contains('hide'), { timeout: 60000 });
   ok('paper-wallet sweep is accepted by Bitcoin Core', JSON.parse(cli('getrawmempool')).includes(await text(page, '#t_result p.mono')));
+
+  // ================= vanity address (Web Workers under the real CSP) =================
+  await tab(page, 'settings'); await tap(page, '#set_vanity'); await onPane(page, 'vanity');
+  await page.type('#v_text', 'jon');
+  ok('vanity: an impossible SegWit text is explained and nearest versions offered',
+     await visible(page, '#v_errors') && /never contain "o"/.test(await text(page, '#v_errors')) && (await page.$$eval('#v_sugg button', (b) => b.map((x) => x.firstChild.textContent))).includes('bc1qj0n'));
+  await page.$$eval('#v_sugg button', (b) => b.find((x) => x.firstChild.textContent === 'bc1qj0n').click());
+  ok('vanity: tapping a suggestion fixes the text and shows the exact difficulty (1 in 32.8 k)',
+     await page.$eval('#v_text', (e) => e.value) === 'j0n' && (await text(page, '#v_diff')) === '32.8 k' && await visible(page, '#v_choose'));
+  await page.waitForFunction(() => !/measuring/.test(document.querySelector('#v_est_here').textContent), { timeout: 30000 });
+  ok('vanity: a time estimate for this device appears after the in-worker benchmark', /second|minute|hour/.test(await text(page, '#v_est_here')) && /keys\/s on \d+ threads/.test(await text(page, '#v_est_here_s')));
+  await tap(page, '#v_pick_script');
+  const shaShown = await text(page, '#v_sha');
+  const builtSha = readFileSync(join(HERE, '../mainnet/BUILD_HASH.txt'), 'utf8').split('\n').find((l) => l.includes('olesia-vanity.mjs')).slice(0, 64);
+  ok('vanity: the offline-script section shows the SHA-256 of the built script', shaShown === builtSha && (await text(page, '#v_cmd')) === 'node olesia-vanity.mjs bc1qj0n');
+  await page.$$eval('#v_type button', (b) => b.find((x) => x.dataset.type === 'p2pkh').click());
+  await page.$eval('#v_text', (e) => { e.value = ''; }); await page.type('#v_text', 'Jo');
+  ok('vanity: Legacy "1Jo" is 1 in 1.33 k keys and offers the ignore-case variant', (await text(page, '#v_diff')) === '1.33 k' && (await page.$$eval('#v_sugg button', (b) => b.map((x) => x.firstChild.textContent))).includes('1Jo'));
+  await tap(page, '#v_pick_browser'); await tap(page, '#v_start');
+  await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 120000 });
+  const vAddr = await text(page, '#v_addr');
+  ok('vanity: the in-browser search finds a 1Jo… address', vAddr.startsWith('1Jo') && /Found after [\d,]+ keys/.test(await text(page, '#v_found_stats')));
+  await tap(page, '#v_showkey');
+  const vWif = await text(page, '#v_wif');
+  const vKey = b58.decode(vWif);
+  const vDerived = btc.p2pkh(secp256k1.getPublicKey(vKey.slice(1, 33), true)).address;
+  ok('vanity: the shown private key (WIF) re-derives to the shown address', vKey[0] === 0x80 && vKey.length === 34 && vDerived === vAddr);
+  ok('vanity: no plaintext key in storage while the result is on screen', await page.evaluate(() => Object.keys(localStorage).every((k) => !/^[KL5]/.test(localStorage.getItem(k)))));
+  await tap(page, '#v_save'); curPw = await saveStep(page);
+  await tap(page, '#a_recv'); await onPane(page, 'receive');
+  await page.select('#r_type', 'p2pkh');
+  ok('vanity: saved as a wallet file and opened — the wallet receives on the vanity address', (await text(page, '#r_addr')) === vAddr);
+  await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
 
   // ================= global invariants =================
   ok('the page talked to exactly one remote host: api.olesia.io', [...hosts].sort().join(',') === ['127.0.0.1:' + WEBPORT, 'api.olesia.io'].sort().join(','));

@@ -45,6 +45,7 @@
     $$('#tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === TAB_OF[name]));
     hideReveal(); closeConfirm(false); closePw(null);
     if (name !== 'open') resetOpen();   // a decrypted-but-not-yet-opened file is dropped when leaving that screen
+    if (name !== 'vanity' && name !== 'save') vanityLeave();   // an unsaved vanity key is dropped when leaving that screen
     window.scrollTo(0, 0);
   }
   $$('.back[data-go]').forEach((b) => b.addEventListener('click', () => pane(b.dataset.go)));
@@ -784,4 +785,133 @@
       msg.className = 'hint bad'; msg.textContent = '✗ ' + m;
     } finally { btn.disabled = false; }
   });
+
+  // =====================================================================================
+  // VANITY ADDRESS
+  // =====================================================================================
+  // The search runs in Web Workers (OM.vanity). A found key lives in `vanityResult` only until
+  // it is saved (it becomes `pending` for the normal save step) or the screen is left.
+  let vType = 'p2wpkh', vAnalysis = null, vRate = null, vRun = null, vanityResult = null, vBenchP = null;
+  const V = OM.vanity;
+  const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
+  function vanityOpen() {
+    show($('#v_result'), false); show($('#v_browser'), false); show($('#v_script'), false);
+    $('#v_text').value = ''; $('#v_ic').checked = false; vanitySetType('p2wpkh');
+    if (V.script) { $('#v_sha').textContent = V.script.sha256; $('#v_size').textContent = '(' + Math.round(V.script.bytes / 1024) + ' kB)'; }
+    pane('vanity'); $('#v_text').focus();
+    if (!vRate && !vBenchP) {
+      vBenchP = V.benchmark().then((r) => { vRate = r; vanityRender(); }).catch(() => { vRate = 0; vanityRender(); });
+    }
+  }
+  function vanityLeave() {
+    if (vRun) { vRun.stop(); vRun = null; }
+    vanityResult = null; $('#v_wif').textContent = ''; show($('#v_wif'), false); show($('#v_wifwarn'), false); $('#v_showkey').textContent = 'Show private key';
+  }
+  function vanitySetType(t) {
+    vType = t;
+    $$('#v_type button').forEach((b) => b.classList.toggle('on', b.dataset.type === t));
+    $('#v_fixed').textContent = V.types[t].hrp;
+    $('#v_text').placeholder = t === 'p2wpkh' ? 'jon' : 'Jon';
+    $('#v_typehint').textContent = t === 'p2wpkh'
+      ? 'SegWit is the modern standard: lower fees, and each character is only 32× harder than the last (Legacy: 58×). Always lower-case.'
+      : 'Legacy "1…" addresses: older style, higher fees. Upper and lower case are different characters — tick "any capitalisation" to make it easier.';
+    $('#v_alpha').textContent = t === 'p2wpkh'
+      ? 'Allowed: q p z r y 9 x 8 g f 2 t v d w 0 s 3 j n 5 4 k h c e 6 m u a 7 l — no b, i, o or 1.'
+      : 'Allowed: digits 1–9 and letters except 0, O, I and l. The second character is usually 2–Q (others are ~60× rarer).';
+    show($('#v_icrow'), t === 'p2pkh');
+    vanityRender();
+  }
+  function vanityRender() {
+    const text = $('#v_text').value, ic = vType === 'p2pkh' && $('#v_ic').checked;
+    vAnalysis = text.trim() ? V.analyze({ type: vType, text, ignoreCase: ic }) : null;
+    const errs = $('#v_errors'), notes = $('#v_notes'), sugg = $('#v_sugg');
+    errs.textContent = ''; notes.textContent = ''; sugg.textContent = '';
+    show($('#v_choose'), false); show($('#v_okwrap'), false); show($('#v_suggwrap'), false); show(errs, false);
+    if (!vAnalysis) { notes.appendChild(el('p', 'hint', 'Type the characters you want. Short is fast; every extra character multiplies the work.')); notes.lastChild.style.margin = '0'; return; }
+    for (const n of vAnalysis.notes) { const p = el('p', 'hint', n); p.style.margin = '0 0 6px'; notes.appendChild(p); }
+    if (vAnalysis.suggestions.length) {
+      show($('#v_suggwrap'), true);
+      for (const sg of vAnalysis.suggestions) {
+        const b = el('button', null, sg.text); b.type = 'button';
+        b.appendChild(el('small', null, sg.why + ' · 1 in ' + fmtInt(sg.difficulty)));
+        b.addEventListener('click', () => {
+          $('#v_text').value = sg.text.replace(/^bc1q/, '').replace(/^1/, '');
+          if (sg.ignoreCase) $('#v_ic').checked = true;
+          vanityRender();
+        });
+        sugg.appendChild(b);
+      }
+    }
+    if (!vAnalysis.ok) { errs.textContent = vAnalysis.errors.join(' · '); show(errs, true); return; }
+    show($('#v_okwrap'), true); show($('#v_choose'), true);
+    $('#v_display').textContent = vAnalysis.display + (vAnalysis.ignoreCase ? ' (any capitalisation)' : '');
+    $('#v_diff').textContent = vAnalysis.difficultyHuman;
+    const here = $('#v_est_here'), hereS = $('#v_est_here_s');
+    if (vRate == null) { here.textContent = 'measuring…'; hereS.textContent = ''; }
+    else if (!vRate) { here.textContent = 'unavailable'; hereS.textContent = 'this browser cannot run the search — use the script'; }
+    else {
+      const e = V.estimate(vAnalysis.difficulty, vRate * V.threads);
+      here.textContent = e.expected; hereS.textContent = fmtInt(vRate * V.threads) + ' keys/s on ' + V.threads + ' threads';
+    }
+    const cores = parseInt($('#v_cores').value, 10) || 8;
+    const perThread = vRate || 50000;   // until measured, assume a typical desktop thread
+    const es = V.estimate(vAnalysis.difficulty, perThread * cores);
+    $('#v_est_script').textContent = es.expected;
+    $('#v_cmd').textContent = 'node olesia-vanity.mjs ' + vAnalysis.display + (vAnalysis.ignoreCase ? ' --ignore-case' : '');
+  }
+  $('#w_vanity').addEventListener('click', vanityOpen);
+  $('#set_vanity').addEventListener('click', vanityOpen);
+  $('#v_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
+  $$('#v_type button').forEach((b) => b.addEventListener('click', () => vanitySetType(b.dataset.type)));
+  $('#v_text').addEventListener('input', vanityRender);
+  $('#v_ic').addEventListener('change', vanityRender);
+  $('#v_cores').addEventListener('change', vanityRender);
+  $('#v_pick_script').addEventListener('click', () => { show($('#v_script'), true); show($('#v_browser'), false); $('#v_script').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#v_pick_browser').addEventListener('click', () => { show($('#v_browser'), true); show($('#v_script'), false); $('#v_browser').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+  $('#v_start').addEventListener('click', async () => {
+    if (!vAnalysis || !vAnalysis.ok || vRun) return;
+    const a = vAnalysis, t0 = Date.now();
+    show($('#v_start'), false); show($('#v_running'), true); show($('#v_result'), false);
+    $('#v_text').disabled = true; $$('#v_type button').forEach((b) => { b.disabled = true; }); $('#v_ic').disabled = true;
+    const paint = (tried) => {
+      const secs = (Date.now() - t0) / 1000, rate = tried / Math.max(secs, 0.5);
+      const p = 1 - Math.exp(-tried / a.difficulty);
+      $('#v_tried').textContent = fmtInt(tried); $('#v_rate').textContent = fmtInt(rate);
+      $('#v_elapsed').textContent = V.humanTime(secs); $('#v_chance').textContent = (100 * p).toFixed(1) + '%';
+      $('#v_remaining').textContent = rate > 0 ? V.humanTime(a.difficulty / rate) : '…';
+      $('#v_bar').style.width = Math.min(100, 100 * p).toFixed(1) + '%';
+    };
+    const ticker = setInterval(() => { if (vRun) paint(vRun.tried); }, 500);
+    try {
+      vRun = V.start({ type: a.type, text: a.text, ignoreCase: a.ignoreCase, threads: V.threads, onProgress: paint });
+      const r = await vRun.promise;
+      vanityResult = { wif: r.wif, address: r.address };
+      $('#v_addr').textContent = '';
+      const lead = r.address.slice(0, a.display.length); const b = el('b', null, lead); $('#v_addr').appendChild(b); $('#v_addr').appendChild(document.createTextNode(r.address.slice(lead.length)));
+      $('#v_found_stats').textContent = 'Found after ' + fmtInt(r.tried) + ' keys in ' + V.humanTime((Date.now() - t0) / 1000) + '.';
+      show($('#v_result'), true); show($('#v_browser'), false); show($('#v_choose'), false);
+      $('#v_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('Vanity address found. Save it as a wallet file to keep it.', 'ok');
+    } catch (e) {
+      if (vRun) toast('Search failed: ' + e.message, 'bad');
+    } finally {
+      clearInterval(ticker); vRun = null;
+      show($('#v_start'), true); show($('#v_running'), false);
+      $('#v_text').disabled = false; $$('#v_type button').forEach((x) => { x.disabled = false; }); $('#v_ic').disabled = false;
+    }
+  });
+  $('#v_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Search stopped.'); } });
+  $('#v_save').addEventListener('click', () => {
+    if (!vanityResult) return;
+    pending = { kind: 'wif', wif: vanityResult.wif }; vanityResult = null;
+    openSave('import');
+  });
+  $('#v_showkey').addEventListener('click', () => {
+    if (!vanityResult) return;
+    const on = $('#v_wif').classList.contains('hide');
+    $('#v_wif').textContent = on ? vanityResult.wif : ''; show($('#v_wif'), on); show($('#v_wifwarn'), on);
+    $('#v_showkey').textContent = on ? 'Hide private key' : 'Show private key';
+  });
+  $('#v_discard').addEventListener('click', () => { vanityLeave(); show($('#v_result'), false); show($('#v_choose'), true); toast('Discarded — nothing was saved.'); });
 })();

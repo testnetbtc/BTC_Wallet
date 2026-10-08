@@ -17,6 +17,13 @@ them — the node API relays a public Esplora API under `/n/<network>/…`. Main
 relay. The faucet's claim page is on a separate origin (`app.olesia.io/faucet/`,
 `infra/faucet-page/`) because it runs a third-party human check; the wallet only links to it.
 
+**Vanity addresses.** "Create a vanity address" (welcome screen / Settings) searches for an address
+starting with chosen characters. The search runs in Web Workers inside the page or — recommended —
+in `olesia-vanity.mjs`, the same engine as one offline Node.js file (`vanity/cli.mjs`, SHA-256 in
+`BUILD_HASH.txt` and shown in the page). Keys come from the OS CSPRNG only; every result is re-derived
+by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIGN.md` and
+`docs/VANITY_OFFLINE_GUIDE.md`.
+
 ## Layout
 
 | File | Role |
@@ -33,6 +40,9 @@ relay. The faucet's claim page is on a separate origin (`app.olesia.io/faucet/`,
 | `../src/locked.js` | the wallet held encrypted while open; password → short-lived signer |
 | `../src/legacy_sign.js` | signer for uncompressed-key P2PKH and bare P2PK |
 | `../src/nodeapi.js` | client for the node API |
+| `../src/vanity.js` | vanity search: pattern analysis, exact difficulty, batch-inversion search, second-path verification |
+| `vanity_worker.js` | the Web Worker wrapper (bundled into the page, started from a `blob:` URL) |
+| `../vanity/cli.mjs` | the offline script, bundled to `publish/olesia-vanity.mjs` |
 | `../../../infra/nodeapi/` | the node API server (`olesia-nodeapi.service`): coins, fees, prev-tx, broadcast, and the display-only price feed |
 
 Reused unchanged from the existing engine: `tx.js`, `scripts.js`, `wallet.js`, `networks.js`,
@@ -61,6 +71,7 @@ node test/mainnet_live_check.mjs https://olesia.io/      # served bytes == repo 
 
 1. Any change to signing or derivation must be proven against Bitcoin Core (the two e2e tests).
 2. The page must make no request to any host except `api.olesia.io` (asserted by the browser test).
+   The CSP additionally allows `worker-src blob:` for the vanity search workers — code the page built itself.
 3. Nothing secret is ever written to `localStorage`/`sessionStorage`, and no plaintext secret is
    kept in a variable, form field or DOM node once a wallet is open (asserted by the browser test).
 4. Untrusted text goes into the DOM with `textContent` only.
