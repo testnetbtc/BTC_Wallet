@@ -10,6 +10,10 @@ The script is the same search code as the page at olesia.io, bundled into one fi
 The source is `packages/bitcoin/vanity/cli.mjs` + `packages/bitcoin/src/vanity.js` in this
 repository; the build that produces the file is `packages/bitcoin/mainnet/build.mjs`.
 
+The page also offers "Let the Olesia server search" (split-key): your browser keeps a secret and
+sends only a public key, so the server can never learn your private key — but it does learn which
+address was made for you. This guide is for the offline script, which tells nobody anything.
+
 ## Why offline, and why a script
 
 * **Your private key is produced where the search runs.** In your browser that is your device —

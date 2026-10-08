@@ -507,3 +507,92 @@ export class EsploraBackend {
   }
   gc() { const now = this.now(); for (const [id, j] of this.jobs) if (now - j.created > this.jobTtl) this.jobs.delete(id); if (this.cache.size > 5000) this.cache.clear(); }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Split-key vanity jobs. The client keeps a secret a and sends only A = a·G; a job finds an offset
+// k with address(A + k·G) matching the pattern. Nothing here can learn a key. One job runs at a
+// time in a `nice -n 19` child process (vanity_runner.mjs); the rest wait in a FIFO queue.
+// Limits: difficulty cap (expected seconds at the measured rate), queue length, one job per
+// client, a hard time limit per job (5× expected), abandonment when nobody polls, and a short
+// retention of results.
+export class VanityQueue {
+  constructor({ spawn, analyze, log = () => {}, threads = 8, keysPerSecond = 300_000, maxExpectedSeconds = 900,
+                maxQueued = 20, pollTimeoutMs = 10 * 60_000, retainMs = 30 * 60_000, now = () => Date.now() }) {
+    this.spawn = spawn; this.analyze = analyze; this.log = log; this.threads = threads;
+    this.rate = keysPerSecond; this.maxExpectedSeconds = maxExpectedSeconds; this.maxQueued = maxQueued;
+    this.pollTimeoutMs = pollTimeoutMs; this.retainMs = retainMs; this.now = now;
+    this.jobs = new Map(); this.queue = []; this.running = null;
+  }
+  /** Validate and enqueue. Throws ApiError on anything the client did wrong. */
+  submit({ type, text, ignoreCase, pubkey }, client) {
+    if (type !== 'p2wpkh' && type !== 'p2pkh') throw new ApiError(400, 'type must be p2wpkh or p2pkh');
+    if (typeof pubkey !== 'string' || !/^0[23][0-9a-f]{64}$/.test(pubkey)) throw new ApiError(400, 'pubkey must be a compressed public key (66 hex)');
+    if (typeof text !== 'string' || text.length === 0 || text.length > 12) throw new ApiError(400, 'text must be 1–12 characters');
+    const a = this.analyze({ type, text, ignoreCase: !!ignoreCase });
+    if (!a.ok) throw new ApiError(400, a.errors.join('; '));
+    const expected = a.difficulty / this.rate;
+    if (expected > this.maxExpectedSeconds) throw new ApiError(400, `too long for the shared server (expected ${Math.round(expected / 60)} min, limit ${Math.round(this.maxExpectedSeconds / 60)} min) — use the offline script or a shorter text`);
+    for (const j of this.jobs.values()) if (j.client === client && (j.state === 'queued' || j.state === 'running')) throw new ApiError(429, 'you already have a job in progress — wait for it or cancel it');
+    if (this.queue.length >= this.maxQueued) throw new ApiError(503, 'the queue is full — try again later or use the offline script');
+    const id = randomBytes(18).toString('hex');
+    const job = { id, client, type, text: a.text, ignoreCase: !!a.ignoreCase, display: a.display, pubkey, difficulty: a.difficulty,
+                  state: 'queued', tried: 0, createdAt: this.now(), startedAt: null, endedAt: null, lastPoll: this.now(), result: null, error: null, proc: null };
+    this.jobs.set(id, job); this.queue.push(job);
+    this.log(`vanity job ${id.slice(0, 8)} queued: ${job.display}${job.ignoreCase ? ' (ic)' : ''} difficulty ${Math.round(a.difficulty)} from ${client}`);
+    this._pump();
+    return this.view(id);
+  }
+  view(id) {
+    const j = this.jobs.get(id);
+    if (!j) throw new ApiError(404, 'no such job (jobs are forgotten 30 minutes after they finish)');
+    j.lastPoll = this.now();
+    const position = j.state === 'queued' ? this.queue.indexOf(j) + 1 + (this.running ? 1 : 0) : 0;
+    const secs = j.startedAt ? (this.now() - j.startedAt) / 1000 : 0;
+    return { id: j.id, state: j.state, position, tried: j.tried, keysPerSecond: secs > 1 ? Math.round(j.tried / secs) : null,
+             difficulty: j.difficulty, expectedSeconds: j.difficulty / this.rate, elapsedSeconds: Math.round(secs),
+             result: j.result, error: j.error };
+  }
+  cancel(id, client) {
+    const j = this.jobs.get(id);
+    if (!j) throw new ApiError(404, 'no such job');
+    if (j.client !== client) throw new ApiError(403, 'not your job');
+    this._end(j, 'cancelled', null, 'cancelled by the client');
+    return this.view(id);
+  }
+  _pump() {
+    if (this.running || !this.queue.length) return;
+    const j = this.queue.shift();
+    if (j.state !== 'queued') return this._pump();
+    j.state = 'running'; j.startedAt = this.now(); this.running = j;
+    const limitMs = Math.max(60_000, 5 * (j.difficulty / this.rate) * 1000);
+    try {
+      j.proc = this.spawn({ type: j.type, text: j.text, ignoreCase: j.ignoreCase, pubkey: j.pubkey, threads: this.threads }, {
+        progress: (n) => { j.tried += n; },
+        found: (r) => this._end(j, 'done', r, null),
+        error: (m) => this._end(j, 'failed', null, m || 'the search process failed'),
+      });
+    } catch (e) { this._end(j, 'failed', null, 'could not start the search: ' + e.message); return; }
+    j.timer = setTimeout(() => this._end(j, 'failed', null, 'gave up: five times the expected time passed without a match (the search is random — try again or use the offline script)'), limitMs);
+    if (j.timer.unref) j.timer.unref();
+    this.log(`vanity job ${j.id.slice(0, 8)} running (limit ${Math.round(limitMs / 1000)} s)`);
+  }
+  _end(j, state, result, error) {
+    if (j.state === 'done' || j.state === 'failed' || j.state === 'cancelled') return;
+    if (j.timer) clearTimeout(j.timer);
+    if (j.state === 'queued') { const i = this.queue.indexOf(j); if (i >= 0) this.queue.splice(i, 1); }
+    j.state = state; j.result = result; j.error = error; j.endedAt = this.now();
+    if (j.proc) { try { j.proc.kill(); } catch {} j.proc = null; }
+    if (this.running === j) this.running = null;
+    this.log(`vanity job ${j.id.slice(0, 8)} ${state}${error ? ': ' + error : ''} after ${j.tried} keys`);
+    this._pump();
+  }
+  /** housekeeping: drop abandoned jobs, forget old results */
+  gc() {
+    const t = this.now();
+    for (const j of [...this.jobs.values()]) {
+      if ((j.state === 'queued' || j.state === 'running') && t - j.lastPoll > this.pollTimeoutMs) this._end(j, 'cancelled', null, 'abandoned: nobody asked about this job for 10 minutes');
+      else if (j.endedAt && t - j.endedAt > this.retainMs) this.jobs.delete(j.id);
+    }
+  }
+  stats() { return { queued: this.queue.length, running: this.running ? 1 : 0, threads: this.threads, keysPerSecond: this.rate, maxExpectedSeconds: this.maxExpectedSeconds }; }
+}

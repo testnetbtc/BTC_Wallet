@@ -4,7 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { createBase58check } from '@scure/base';
 import { sha256 } from '@noble/hashes/sha256';
-import { analyzePattern, createSearch, benchmark, estimate, humanTime, addressOf, addressFromHash160, compileMatcher, finalMatch, hash160, MAX_PATTERN } from '../src/vanity.js';
+import { analyzePattern, createSearch, benchmark, estimate, humanTime, addressOf, addressFromHash160, compileMatcher, finalMatch, hash160, MAX_PATTERN, splitKeyStart, splitKeyFinish } from '../src/vanity.js';
+import { bytesToHex } from '@noble/hashes/utils';
 
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(84), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
@@ -78,6 +79,22 @@ for (const [type, text, ic] of [['p2wpkh', 'q', false], ['p2pkh', 'A', false], [
   let threw = false;
   try { createSearch({ analysis: { ...a, ok: false }, randomBytes }); } catch { threw = true; }
   ok('an unsearchable analysis is refused', threw);
+}
+// ---------------------------------------------------------------- split-key
+{
+  const a = A('p2pkh', 'a', true);
+  const client = splitKeyStart(randomBytes);
+  ok('split-key: the client share is a valid compressed public key', /^0[23][0-9a-f]{64}$/.test(client.pubkey) && client.secret.length === 32);
+  const s = createSearch({ analysis: a, randomBytes, startPoint: client.pubkey }); let r = null; while (!r) r = s.step(1024);
+  ok('split-key: the searcher gets an offset and an address, never a key', r.found.offset && !r.found.privKey && !r.found.wif && /^1[Aa]/.test(r.found.address));
+  const fin = splitKeyFinish({ secret: client.secret, offsetHex: bytesToHex(r.found.offset), analysis: a, expectAddress: r.found.address });
+  ok('split-key: secret + offset gives the key for exactly that address', fin.address === r.found.address && addressOf(secp256k1.getPublicKey(fin.privKey, true), 'p2pkh') === fin.address);
+  const flipped = bytesToHex(r.found.offset).replace(/^./, (c) => (c === 'f' ? '0' : 'f'));
+  ok('split-key: a tampered offset is refused', (() => { try { splitKeyFinish({ secret: client.secret, offsetHex: flipped, analysis: a }); return false; } catch (e) { return /refused|range/.test(e.message); } })());
+  ok('split-key: a wrong reported address is refused', (() => { try { splitKeyFinish({ secret: client.secret, offsetHex: bytesToHex(r.found.offset), analysis: a, expectAddress: '1AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaB' }); return false; } catch (e) { return /different address/.test(e.message); } })());
+  ok('split-key: a malformed offset is refused', (() => { try { splitKeyFinish({ secret: client.secret, offsetHex: 'zz', analysis: a }); return false; } catch { return true; } })());
+  const other = splitKeyStart(randomBytes);
+  ok("split-key: someone else's secret with the same offset does NOT give the address", (() => { try { splitKeyFinish({ secret: other.secret, offsetHex: bytesToHex(r.found.offset), analysis: a }); return false; } catch { return true; } })());
 }
 ok('benchmark returns a sane per-thread rate', (() => { const r = benchmark({ randomBytes, ms: 400 }); return r > 1000 && r < 5e6; })());
 

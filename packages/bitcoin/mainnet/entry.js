@@ -20,7 +20,7 @@ import { makeNodeApi, DEFAULT_API } from '../src/nodeapi.js';
 import { Session, MAINNET_WINDOW, TEST_WINDOW } from '../src/session.js';
 import { NETWORKS } from '../src/networks.js';
 import { lockWallet, LockedWallet } from '../src/locked.js';
-import { analyzePattern as vanityAnalyze, estimate as vanityEstimate, humanTime, TYPES as VANITY_TYPES, MAX_PATTERN as VANITY_MAX } from '../src/vanity.js';
+import { analyzePattern as vanityAnalyze, estimate as vanityEstimate, humanTime, TYPES as VANITY_TYPES, MAX_PATTERN as VANITY_MAX, splitKeyStart, splitKeyFinish } from '../src/vanity.js';
 
 const NETWORK = 'mainnet';
 const API_BASE = (typeof __OLESIA_API__ === 'string' && __OLESIA_API__) || DEFAULT_API;
@@ -179,6 +179,37 @@ const vanity = {
       }
     });
     return { promise, stop: () => { if (!done) { done = true; stopAll(); } }, get tried() { return tried; } };
+  },
+  /** the server's split-key service: limits and current load */
+  serverInfo: () => api.vanityInfo(),
+  /**
+   * Server-assisted split-key search. The secret `a` is made here and never leaves this page; the
+   * server gets only A = a·G and returns an offset. The final key is combined and re-derived HERE,
+   * and the server's answer is refused unless it produces the requested address.
+   * onStatus({state, position, tried, keysPerSecond, elapsedSeconds, expectedSeconds}).
+   */
+  serverStart: ({ type, text, ignoreCase, onStatus }) => {
+    const analysis = vanityAnalyze({ type, text, ignoreCase: !!ignoreCase });
+    if (!analysis.ok) throw new Error(analysis.errors.join('; '));
+    const kp = splitKeyStart((n) => crypto.getRandomValues(new Uint8Array(n)));
+    let id = null, stopped = false;
+    const promise = (async () => {
+      const first = await api.vanitySubmit({ type: analysis.type, text: analysis.text, ignoreCase: analysis.ignoreCase, pubkey: kp.pubkey });
+      id = first.id; let v = first;
+      for (;;) {
+        if (stopped) throw new Error('cancelled');
+        if (onStatus) onStatus(v);
+        if (v.state === 'done') {
+          const r = splitKeyFinish({ secret: kp.secret, offsetHex: v.result.offset, analysis, network: NETWORK, expectAddress: v.result.address });
+          kp.secret.fill(0);
+          return { wif: r.wif, address: r.address, type: r.type, tried: v.tried };
+        }
+        if (v.state === 'failed' || v.state === 'cancelled') throw new Error(v.error || 'the server stopped the job');
+        await new Promise((r) => setTimeout(r, v.state === 'queued' ? 4000 : 2000));
+        v = await api.vanityView(id);
+      }
+    })();
+    return { promise, stop: () => { stopped = true; kp.secret.fill(0); if (id) api.vanityCancel(id).catch(() => {}); } };
   },
 };
 

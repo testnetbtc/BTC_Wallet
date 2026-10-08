@@ -1,6 +1,6 @@
 // Node API logic with a MOCKED Bitcoin Core RPC: input validation, amount conversion, the
 // batching scan manager, incremental block following, reorg handling, and prev-tx fetching.
-import { validateScripts, validateOutpoints, validateRawTx, isStandardScript, btcToSats, feerateToSatVb, txidOfRaw,
+import { VanityQueue, validateScripts, validateOutpoints, validateRawTx, isStandardScript, btcToSats, feerateToSatVb, txidOfRaw,
          RateLimiter, ScanManager, fetchPrevTx, ApiError, PriceFeed, quoteFromCoinbase, quotesFromCoinGecko, EsploraBackend, TEST_NETWORKS } from '../../../infra/nodeapi/lib.mjs';
 
 let bad = false;
@@ -227,6 +227,44 @@ const waitDone = async (m, id) => { for (let i = 0; i < 200; i++) { const v = aw
   const j2 = be.submit([A]); for (let i = 0; i < 50; i++) { v = be.view(j2.id); if (v.state !== 'scanning') break; await sleep(5); }
   ok('data source down -> clean error, no internals leaked', v.state === 'error' && !/503/.test(v.error));
   ok('unknown job id -> 404', (() => { try { be.view('x'); return false; } catch (e) { return e.status === 404; } })());
+}
+
+// ---- VanityQueue: split-key job queue with a fake runner and a fake clock ----
+{
+  const { analyzePattern } = await import('../src/vanity.js');
+  let now = 1_000_000; const clock = () => now;
+  const procs = [];
+  const spawn = (job, on) => { const p = { job, on, killed: false, kill() { this.killed = true; } }; procs.push(p); return p; };
+  const q = new VanityQueue({ spawn, analyze: analyzePattern, threads: 2, keysPerSecond: 1000, maxExpectedSeconds: 60, maxQueued: 2, now: clock });
+  const PUB = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
+  const err = (f) => { try { f(); return null; } catch (e) { return e.status; } };
+  ok('vanity: bad type -> 400', err(() => q.submit({ type: 'p2tr', text: 'q', pubkey: PUB }, 'A')) === 400);
+  ok('vanity: bad pubkey -> 400', err(() => q.submit({ type: 'p2wpkh', text: 'q', pubkey: '04ab' }, 'A')) === 400);
+  ok('vanity: impossible text -> 400 with the reason', err(() => q.submit({ type: 'p2wpkh', text: 'bob', pubkey: PUB }, 'A')) === 400);
+  ok('vanity: over the expected-time cap -> 400 (32^4 = 65 s at 1000 keys/s > 60 s)', err(() => q.submit({ type: 'p2wpkh', text: 'qqqq', pubkey: PUB }, 'A')) === 400);
+  const j1 = q.submit({ type: 'p2wpkh', text: 'qq', pubkey: PUB }, 'A');
+  ok('vanity: first job starts immediately', j1.state === 'running' && j1.position === 0 && procs.length === 1 && procs[0].job.threads === 2 && procs[0].job.pubkey === PUB);
+  ok('vanity: a client may hold one job at a time -> 429', err(() => q.submit({ type: 'p2wpkh', text: 'qq', pubkey: PUB }, 'A')) === 429);
+  const j2 = q.submit({ type: 'p2pkh', text: 'A', pubkey: PUB }, 'B');
+  const j3 = q.submit({ type: 'p2pkh', text: 'B', pubkey: PUB }, 'C');
+  ok('vanity: later jobs queue in order with positions', j2.state === 'queued' && j2.position === 2 && j3.position === 3 && procs.length === 1);
+  ok('vanity: queue limit -> 503', err(() => q.submit({ type: 'p2pkh', text: 'C', pubkey: PUB }, 'D')) === 503);
+  procs[0].on.progress(500); now += 2000;
+  const v1 = q.view(j1.id);
+  ok('vanity: progress and rate are reported', v1.tried === 500 && v1.keysPerSecond === 250 && v1.elapsedSeconds === 2);
+  procs[0].on.found({ offset: 'ab'.repeat(32), address: 'bc1qqq' });
+  ok('vanity: found -> done with the result; next job starts', q.view(j1.id).state === 'done' && q.view(j1.id).result.address === 'bc1qqq' && q.view(j2.id).state === 'running' && procs.length === 2);
+  ok('vanity: cancel by another client -> 403', err(() => q.cancel(j3.id, 'Z')) === 403);
+  q.cancel(j3.id, 'C');
+  ok('vanity: cancel removes a queued job', q.view(j3.id).state === 'cancelled' && q.stats().queued === 0);
+  procs[1].on.error('boom');
+  ok('vanity: runner error -> failed, process killed', q.view(j2.id).state === 'failed' && procs[1].killed && q.stats().running === 0);
+  const j4 = q.submit({ type: 'p2wpkh', text: 'qq', pubkey: PUB }, 'A');
+  ok('vanity: a client whose job finished may submit again', j4.state === 'running');
+  now += 11 * 60_000; q.gc();
+  ok('vanity: a job nobody polls for 10 minutes is abandoned and its process killed', q.view(j4.id).state === 'cancelled' && procs[2].killed);
+  now += 31 * 60_000; q.gc();
+  ok('vanity: finished jobs are forgotten after 30 minutes', err(() => q.view(j1.id)) === 404);
 }
 
 console.log(bad ? '\nNODEAPI LIB TESTS FAILED' : '\nnodeapi lib: all checks passed');

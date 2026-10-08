@@ -23,6 +23,7 @@ const IC = {
   star: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/>'),
   dl: svg('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/>'),
   cpu: svg('<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>'),
+  cloud: svg('<path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/>'),
 };
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -436,6 +437,24 @@ footer a{color:var(--muted)}
     <h3>How to run it</h3>
     <button class="choice primary" id="v_pick_script" type="button"><span class="ic">${IC.dl}</span><span><b>Offline script — recommended</b><span>Download one small file and run it on your own computer, disconnected. Safest, and uses all your CPU.</span></span></button>
     <button class="choice" id="v_pick_browser" type="button"><span class="ic">${IC.cpu}</span><span><b>In this browser</b><span>Starts right here. Fine for short patterns — keep this tab open and the device plugged in.</span></span></button>
+    <button class="choice" id="v_pick_server" type="button"><span class="ic">${IC.cloud}</span><span><b>Let the Olesia server search</b><span>Split-key: your browser keeps a secret, the server only gets a public key and can never learn your private key. Shared and queued.</span></span></button>
+  </div>
+
+  <div id="v_server" class="hide">
+    <h3>Olesia server · split-key</h3>
+    <div class="card">
+      <p class="hint" style="margin-top:0"><b style="color:var(--text)">How it stays safe.</b> Your browser makes a secret number and sends the server only the matching <i>public</i> key. The server searches for an offset that makes the address start with your text and sends the offset back. Your browser adds the offset to its secret — that sum is your private key. The server never had the secret, so it cannot compute or steal the key, and your browser checks the answer before accepting it.</p>
+      <div class="note"><b>What the server does learn:</b> the public key it searched from and the final address — so it can tell that this address was made for someone who used this service. If that matters to you, use the offline script. The server is shared: jobs run one at a time, longer texts are refused (<span id="v_srv_limit">…</span>), and a job nobody asks about for 10 minutes is dropped.</div>
+      <p class="hint" id="v_srv_status"></p>
+      <button class="wide" id="v_srv_start" type="button">Submit to the server</button>
+      <div id="v_srv_running" class="hide">
+        <div class="bar"><i id="v_srv_bar"></i></div>
+        <div class="stat"><span id="v_srv_state"></span><span><b id="v_srv_tried">0</b> keys tried</span><span><b id="v_srv_rate">0</b> keys/s</span></div>
+        <div class="stat"><span>Elapsed <b id="v_srv_elapsed">0s</b></span><span>Chance found by now: <b id="v_srv_chance">0%</b></span></div>
+        <p class="hint">You can leave this screen open and come back; closing the tab abandons the job (nothing is lost — nothing exists yet).</p>
+        <button class="sec wide" id="v_srv_stop" type="button">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <div id="v_script" class="hide">

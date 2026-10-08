@@ -249,25 +249,32 @@ function compressed(x, y) {
  * Create a search. `randomBytes(n)` must be a CSPRNG (crypto.getRandomValues wrapper or node:crypto).
  * step(count) advances about `count` keys and returns {found} or null. Pure CPU; call it in a worker.
  */
-export function createSearch({ analysis, randomBytes, batch = 1024, network = 'mainnet' }) {
+export function createSearch({ analysis, randomBytes, batch = 1024, network = 'mainnet', startPoint = null }) {
   if (!analysis || !analysis.ok) throw new Error('pattern is not searchable');
   const T = table(batch), quick = compileMatcher(analysis.matcher);
+  // SPLIT-KEY: with `startPoint` (someone else's public key A, compressed hex) the walk is over
+  // A + k·G and what is found is the OFFSET k — useless on its own; only the holder of A's secret
+  // can turn it into a key (splitKeyFinish). Without it the walk is over k·G and k is the key.
+  const A = startPoint ? Point.fromHex(startPoint) : null;
+  if (A) A.assertValidity();
   let k = randomScalar(randomBytes);
-  let P = Point.BASE.multiply(k).toAffine(); let px = P.x, py = P.y;
+  const pointFor = (scalar) => (A ? A.add(Point.BASE.multiply(scalar)) : Point.BASE.multiply(scalar)).toAffine();
+  let P = pointFor(k); let px = P.x, py = P.y;
   let tried = 0n;
   const verify = (key) => {                                   // THE SECOND PATH — nothing from above
     const kb = new Uint8Array(32); let v = key; for (let i = 31; i >= 0; i--) { kb[i] = Number(v & 0xffn); v >>= 8n; }
     if (!secp256k1.utils.isValidPrivateKey(kb)) return null;
-    const pub = secp256k1.getPublicKey(kb, true);
+    const pub = A ? A.add(Point.BASE.multiply(key)).toRawBytes(true) : secp256k1.getPublicKey(kb, true);
     const address = addressOf(pub, analysis.type, network);
     if (!finalMatch(address, analysis)) return null;
+    if (A) return { offset: kb, pubkey: pub, address, type: analysis.type };
     return { privKey: kb, pubkey: pub, address, wif: wifOf(kb, network), type: analysis.type };
   };
   function step(count = batch) {
     for (let done = 0; done < count; done += batch) {
       const dx = new Array(batch);
       for (let i = 0; i < batch; i++) dx[i] = Fp.sub(T[i][0], px);
-      if (dx.some((d) => d === 0n)) { k = randomScalar(randomBytes); P = Point.BASE.multiply(k).toAffine(); px = P.x; py = P.y; continue; }   // P = ±(i+1)G: astronomically rare; restart
+      if (dx.some((d) => d === 0n)) { k = randomScalar(randomBytes); P = pointFor(k); px = P.x; py = P.y; continue; }   // P = ±(i+1)G: astronomically rare; restart
       const inv = Fp.invertBatch(dx);
       let lx = 0n, ly = 0n;
       for (let i = 0; i < batch; i++) {
@@ -286,6 +293,29 @@ export function createSearch({ analysis, randomBytes, batch = 1024, network = 'm
     return null;
   }
   return { step, get tried() { return tried; } };
+}
+
+// ---- split-key: a server (or anyone) searches without ever being able to learn the key ---------
+// Client: {secret a, public A = a·G} = splitKeyStart(). Send only A. The searcher returns an offset
+// i with address(A + i·G) matching. Client: k = a + i (mod n) — and re-derives the address itself.
+const bytes32 = (v) => { const b = new Uint8Array(32); for (let i = 31; i >= 0; i--) { b[i] = Number(v & 0xffn); v >>= 8n; } return b; };
+export function splitKeyStart(randomBytes) {
+  const a = randomScalar(randomBytes);
+  return { secret: bytes32(a), pubkey: bytesToHex(Point.BASE.multiply(a).toRawBytes(true)) };
+}
+/** Combine the secret with a returned offset; refuses anything that does not produce a matching address. */
+export function splitKeyFinish({ secret, offsetHex, analysis, network = 'mainnet', expectAddress = null }) {
+  if (!/^[0-9a-f]{64}$/i.test(offsetHex || '')) throw new Error('the server returned a malformed offset');
+  const a = BigInt('0x' + bytesToHex(secret)), i = BigInt('0x' + offsetHex);
+  if (i <= 0n || i >= N) throw new Error('the server returned an offset out of range');
+  const k = (a + i) % N;
+  if (k === 0n) throw new Error('degenerate key');
+  const kb = bytes32(k);
+  const pub = secp256k1.getPublicKey(kb, true);                 // independent of the search entirely
+  const address = addressOf(pub, analysis.type, network);
+  if (!finalMatch(address, analysis)) throw new Error('the server returned an offset that does not produce the requested address — result refused');
+  if (expectAddress && expectAddress !== address) throw new Error('the server reported a different address than the key produces — result refused');
+  return { privKey: kb, pubkey: pub, address, wif: wifOf(kb, network), type: analysis.type };
 }
 
 /** Measure this machine's rate (keys/s, one thread) for the estimate. */

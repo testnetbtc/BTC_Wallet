@@ -1,2 +1,2 @@
-6be5461a7d92733a5beba4cef8fecf3ded9bf6712fd1761c82d633e221581c27  mainnet/publish/index.html
-a17a6b851a3476394945e17119d926668b0dea4aecdca3e372b39f64952d575d  mainnet/publish/olesia-vanity.mjs
+d0ae3a55ae0d26847f607fb5ccdcf01b171e63f37ae9f5aa2b2d65b7f99e8029  mainnet/publish/index.html
+1c955f88a8dd54d0bca42903f2219d523dc1ec9a3aadd1f9d1f9f75bb830cc86  mainnet/publish/olesia-vanity.mjs

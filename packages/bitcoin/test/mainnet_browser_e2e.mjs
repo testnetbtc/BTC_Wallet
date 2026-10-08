@@ -122,7 +122,7 @@ try {
   const ORIGIN = `http://127.0.0.1:${WEBPORT}`;
 
   browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu'] });
-  const consoleErrors = [], hosts = new Set(), apiCalls = [];
+  const consoleErrors = [], hosts = new Set(), apiCalls = [], apiRequestBodies = [];
   async function newPage() {
     const page = await browser.newPage();
     await page.setViewport({ width: 900, height: 1000 });
@@ -131,6 +131,7 @@ try {
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
     page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
     await page.setRequestInterception(true);
+
     page.on('request', async (req) => {
       const u = new URL(req.url());
       if (u.protocol === 'blob:' || u.protocol === 'data:') return req.continue();
@@ -139,6 +140,7 @@ try {
       const cors = { 'access-control-allow-origin': ORIGIN, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
       if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: cors });
       apiCalls.push(req.method() + ' ' + u.pathname.replace(/\/scan\/.*/, '/scan/<id>'));
+      if (req.method() === 'POST' && req.postData()) apiRequestBodies.push(req.postData());
       try {
         const r = await fetch(localApi + u.pathname, { method: req.method(), headers: { 'content-type': 'application/json', origin: ORIGIN }, body: req.method() === 'POST' ? req.postData() : undefined });
         req.respond({ status: r.status, headers: { ...cors, 'content-type': 'application/json' }, body: await r.text() });
@@ -581,6 +583,22 @@ try {
   await page.select('#r_type', 'p2pkh');
   ok('vanity: saved as a wallet file and opened — the wallet receives on the vanity address', (await text(page, '#r_addr')) === vAddr);
   await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
+
+  // ---- server-assisted split-key search: real API, real nice'd child process, real workers ----
+  await tab(page, 'settings'); await tap(page, '#set_vanity'); await onPane(page, 'vanity');
+  await page.type('#v_text', 'jn');
+  await tap(page, '#v_pick_server');
+  await page.waitForFunction(() => /idle|ahead/.test(document.querySelector('#v_srv_status').textContent), { timeout: 20000 });
+  ok('vanity/server: the page fetched the service limits and expects the text to be allowed', /Expected .* once it starts/.test(await text(page, '#v_srv_status')) && await page.$eval('#v_srv_start', (b) => !b.disabled));
+  await tap(page, '#v_srv_start');
+  await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 180000 });
+  const sAddr = await text(page, '#v_addr');
+  await tap(page, '#v_showkey');
+  const sWif = await text(page, '#v_wif'); const sKey = b58.decode(sWif);
+  ok('vanity/server: a bc1qjn… address came back and the key combined in the browser derives to it', sAddr.startsWith('bc1qjn') && btc.p2wpkh(secp256k1.getPublicKey(sKey.slice(1, 33), true)).address === sAddr);
+  ok('vanity/server: the API never saw a private key (only the public point was posted)', !apiRequestBodies.some((b) => /"secret"|"wif"|"privKey"/.test(b)) && apiRequestBodies.some((b) => /"pubkey":"0[23][0-9a-f]{64}"/.test(b)));
+  await tap(page, '#v_discard');
+  await tab(page, 'wallet');
 
   // ================= global invariants =================
   ok('the page talked to exactly one remote host: api.olesia.io', [...hosts].sort().join(',') === ['127.0.0.1:' + WEBPORT, 'api.olesia.io'].sort().join(','));

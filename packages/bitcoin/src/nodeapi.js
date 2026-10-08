@@ -36,6 +36,11 @@ export function makeNodeApi({ base = DEFAULT_API, network = 'mainnet', fetchFn =
     fees: () => call('GET', '/fees'),
     // display-only market price; never used when building a transaction
     price: () => call('GET', '/price'),
+    // split-key vanity jobs: the server only ever sees a public point (see src/vanity.js)
+    vanityInfo: () => call('GET', '/vanity'),
+    vanitySubmit: ({ type, text, ignoreCase, pubkey }) => call('POST', '/vanity/jobs', { type, text, ignoreCase: !!ignoreCase, pubkey }),
+    vanityView: (id) => call('GET', '/vanity/jobs/' + id),
+    vanityCancel: (id) => call('POST', '/vanity/jobs/' + id + '/cancel', {}),
 
     // Look up every unspent coin locked to any of `scripts` (hex scriptPubKeys). The node
     // walks its UTXO set, which can take minutes the first time; progress is reported via

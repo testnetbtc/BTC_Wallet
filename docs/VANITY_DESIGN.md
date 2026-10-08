@@ -32,16 +32,24 @@ rules below follow from it:
 |---|---|---|---|
 | In this browser | Web Workers in the tab | the user only | nothing sent anywhere; tab must stay open; good to ~6 chars |
 | Offline script (**recommended**) | the user's own computer, offline | the user only | one self-contained `.mjs` file, runs with Node.js, SHA-256 published; see the guide |
-| Server-assisted — **split-key** (phase 2) | the VPS, queued and capped | the user only; the server learns the public point and the final address | see below |
+| Server-assisted — **split-key** | the VPS, queued and capped | the user only; the server learns the public point and the final address | built 2026-10-08, see below |
 
-### Split-key (phase 2), and why "via the Internet" is not a key-theft risk here
+### Split-key, and why "via the Internet" is not a key-theft risk here
 The browser makes a secret `a` and sends only `A = a·G`. The server searches `A + i·G` for the
 pattern and returns the offset `i`. The browser computes `k = a + i mod n`, re-derives the address,
 and refuses the answer if it does not match. The server never sees `a` or `k`; the worst a hostile
 server can do is return a useless `i`. What it does learn: that this public point / this address
-belongs to whoever submitted it (privacy, not security). Server limits: one job at a time per client,
-global queue, difficulty cap (≈ 6 characters), `nice 19`, a fixed CPU budget so the trading research
-on the same machine keeps priority. Not built until phase 1 is live and throughput is measured.
+belongs to whoever submitted it (privacy, not security). Implementation: `infra/nodeapi/lib.mjs VanityQueue` (FIFO, one job running, one job per client,
+queue ≤ 20, difficulty cap as *expected seconds* at the measured rate — `OLESIA_VANITY_MAX_SECONDS`,
+900 — a hard limit of 5× expected per job, abandonment after 10 minutes without a poll, results
+kept 30 minutes); `infra/nodeapi/vanity_runner.mjs` (one child process per job under `nice -n 19`,
+`OLESIA_VANITY_THREADS` = 8 worker threads of the same engine); routes `GET /vanity`,
+`POST /vanity/jobs`, `GET /vanity/jobs/<id>`, `POST /vanity/jobs/<id>/cancel`; client side
+`src/vanity.js splitKeyStart/splitKeyFinish` and `OM.vanity.serverStart` (secret made and zeroed in
+the page; the answer is refused unless `a + offset` produces the requested address). Measured on
+the VPS: ~250–280k keys/s, so the 15-minute cap admits five SegWit characters (~2 min) and refuses
+six (~70 min expected). The service unit's `CPUQuota` is 900 % so the runner can use its 8 threads
+while the trading research keeps the other cores.
 
 ## Product flow (one screen, progressive)
 1. **Type**: `bc1q…` (SegWit, recommended: cheaper per character, lowercase) or `1…` (Legacy).

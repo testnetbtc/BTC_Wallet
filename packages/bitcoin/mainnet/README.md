@@ -20,7 +20,8 @@ relay. The faucet's claim page is on a separate origin (`app.olesia.io/faucet/`,
 **Vanity addresses.** "Create a vanity address" (welcome screen / Settings) searches for an address
 starting with chosen characters. The search runs in Web Workers inside the page or — recommended —
 in `olesia-vanity.mjs`, the same engine as one offline Node.js file (`vanity/cli.mjs`, SHA-256 in
-`BUILD_HASH.txt` and shown in the page). Keys come from the OS CSPRNG only; every result is re-derived
+`BUILD_HASH.txt` and shown in the page) — or by the node API as a **split-key** job (`/vanity/jobs`):
+the page sends only a public point and refuses any answer that does not produce the requested address. Keys come from the OS CSPRNG only; every result is re-derived
 by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIGN.md` and
 `docs/VANITY_OFFLINE_GUIDE.md`.
 

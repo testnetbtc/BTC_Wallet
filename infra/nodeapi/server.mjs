@@ -19,7 +19,10 @@
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { ApiError, RateLimiter, ScanManager, validateScripts, validateOutpoints, validateRawTx,
+import { spawn as spawnProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { analyzePattern as vanityAnalyze } from '../../packages/bitcoin/src/vanity.js';
+import { ApiError, RateLimiter, ScanManager, VanityQueue, validateScripts, validateOutpoints, validateRawTx,
          btcToSats, feerateToSatVb, fetchPrevTx, txidOfRaw, PriceFeed, EsploraBackend, TEST_NETWORKS } from './lib.mjs';
 
 const PORT = Number(process.env.OLESIA_API_PORT || 8787);
@@ -88,8 +91,39 @@ const limiter = new RateLimiter({
   scan: lim(30, 10 * 60_000), poll: lim(240, 60_000),
   txout: lim(60, 60_000), prevtx: lim(40, 10 * 60_000),
   broadcast: lim(12, 60_000),
+  vanity: lim(6, 10 * 60_000),
 });
-setInterval(() => { limiter.prune(); scans.gc(); }, 60_000).unref();
+// Split-key vanity jobs (see lib.mjs VanityQueue): a child process per job under nice -n 19.
+// OLESIA_VANITY=off disables; OLESIA_VANITY_THREADS, OLESIA_VANITY_RATE (keys/s the threads
+// achieve, for the cap and the estimates), OLESIA_VANITY_MAX_SECONDS (cap on expected time).
+const VANITY_RUNNER = join(dirname(fileURLToPath(import.meta.url)), 'vanity_runner.mjs');
+function spawnVanity(job, on) {
+  const p = spawnProcess('nice', ['-n', '19', process.execPath, VANITY_RUNNER], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let buf = '';
+  p.stdout.setEncoding('utf8');
+  p.stdout.on('data', (c) => {
+    buf += c; let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      let m; try { m = JSON.parse(line); } catch { continue; }
+      if (m.tried) on.progress(m.tried);
+      if (m.found) on.found(m.found);
+      if (m.error) on.error(m.error);
+    }
+  });
+  p.stderr.on('data', (c) => log('vanity runner: ' + String(c).trim().slice(0, 200)));
+  p.on('exit', (code) => { if (code !== 0 && code !== null) on.error('search process exited with code ' + code); });
+  p.on('error', (e) => on.error(e.message));
+  p.stdin.end(JSON.stringify(job));
+  return p;
+}
+const vanity = process.env.OLESIA_VANITY === 'off' ? null : new VanityQueue({
+  spawn: spawnVanity, analyze: vanityAnalyze, log,
+  threads: Math.max(1, Number(process.env.OLESIA_VANITY_THREADS) || 8),
+  keysPerSecond: Math.max(1000, Number(process.env.OLESIA_VANITY_RATE) || 250_000),
+  maxExpectedSeconds: Math.max(10, Number(process.env.OLESIA_VANITY_MAX_SECONDS) || 900),
+});
+setInterval(() => { limiter.prune(); scans.gc(); if (vanity) vanity.gc(); }, 60_000).unref();
 
 // ---- small caches for cheap public reads ----
 const cached = (ttl, fn) => { let at = 0, val = null, inflight = null; return async () => {
@@ -200,6 +234,21 @@ async function route(req, res) {
     const id = path.slice(6);
     if (!/^[0-9a-f]{36}$/.test(id)) throw new ApiError(400, 'malformed scan id');
     return send(res, 200, await scans.view(id));
+  }
+
+  // ---- split-key vanity jobs ----
+  if (path === '/vanity' || path.startsWith('/vanity/')) {
+    if (!vanity) throw new ApiError(404, 'the server-assisted vanity search is switched off');
+    if (req.method === 'GET' && path === '/vanity') { gate('status'); return send(res, 200, vanity.stats()); }
+    if (req.method === 'POST' && path === '/vanity/jobs') {
+      gate('vanity');
+      const b = await readJson(req);
+      return send(res, 202, vanity.submit({ type: b.type, text: b.text, ignoreCase: b.ignoreCase === true, pubkey: String(b.pubkey || '').toLowerCase() }, ip));
+    }
+    const jm = path.match(/^\/vanity\/jobs\/([0-9a-f]{36})(\/cancel)?$/);
+    if (jm && req.method === 'GET' && !jm[2]) { gate('poll'); return send(res, 200, vanity.view(jm[1])); }
+    if (jm && req.method === 'POST' && jm[2]) { gate('poll'); return send(res, 200, vanity.cancel(jm[1], ip)); }
+    throw new ApiError(404, 'not found');
   }
 
   if (req.method === 'POST' && path === '/txout') {

@@ -795,7 +795,7 @@
   const V = OM.vanity;
   const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
   function vanityOpen() {
-    show($('#v_result'), false); show($('#v_browser'), false); show($('#v_script'), false);
+    show($('#v_result'), false); show($('#v_browser'), false); show($('#v_script'), false); show($('#v_server'), false);
     $('#v_text').value = ''; $('#v_ic').checked = false; vanitySetType('p2wpkh');
     if (V.script) { $('#v_sha').textContent = V.script.sha256; $('#v_size').textContent = '(' + Math.round(V.script.bytes / 1024) + ' kB)'; }
     pane('vanity'); $('#v_text').focus();
@@ -866,8 +866,54 @@
   $('#v_text').addEventListener('input', vanityRender);
   $('#v_ic').addEventListener('change', vanityRender);
   $('#v_cores').addEventListener('change', vanityRender);
-  $('#v_pick_script').addEventListener('click', () => { show($('#v_script'), true); show($('#v_browser'), false); $('#v_script').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-  $('#v_pick_browser').addEventListener('click', () => { show($('#v_browser'), true); show($('#v_script'), false); $('#v_browser').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#v_pick_script').addEventListener('click', () => { show($('#v_script'), true); show($('#v_browser'), false); show($('#v_server'), false); $('#v_script').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#v_pick_browser').addEventListener('click', () => { show($('#v_browser'), true); show($('#v_script'), false); show($('#v_server'), false); $('#v_browser').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#v_pick_server').addEventListener('click', async () => {
+    show($('#v_server'), true); show($('#v_script'), false); show($('#v_browser'), false); $('#v_server').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      const i = await V.serverInfo();
+      $('#v_srv_limit').textContent = 'about ' + Math.round(i.maxExpectedSeconds / 60) + ' minutes of expected work at ' + fmtInt(i.keysPerSecond) + ' keys/s';
+      const es = vAnalysis && vAnalysis.ok ? V.estimate(vAnalysis.difficulty, i.keysPerSecond) : null;
+      const okHere = es && es.expectedSeconds <= i.maxExpectedSeconds;
+      $('#v_srv_status').textContent = (i.queued + i.running ? `${i.queued + i.running} job(s) ahead of you. ` : 'The server is idle. ')
+        + (es ? (okHere ? `Expected ${es.expected} for your text once it starts.` : `Your text would take about ${es.expected} on the server — over its limit. Use the offline script.`) : '');
+      $('#v_srv_start').disabled = !okHere;
+    } catch (e) { $('#v_srv_status').textContent = 'The server-assisted search is not available right now (' + e.message + ').'; $('#v_srv_start').disabled = true; }
+  });
+  $('#v_srv_start').addEventListener('click', async () => {
+    if (!vAnalysis || !vAnalysis.ok || vRun) return;
+    const a = vAnalysis, t0 = Date.now();
+    show($('#v_srv_start'), false); show($('#v_srv_running'), true); show($('#v_result'), false);
+    $('#v_text').disabled = true; $$('#v_type button').forEach((b) => { b.disabled = true; }); $('#v_ic').disabled = true;
+    const paint = (v) => {
+      const p = 1 - Math.exp(-(v.tried || 0) / a.difficulty);
+      $('#v_srv_state').textContent = v.state === 'queued' ? `Queued · position ${v.position}` : v.state === 'running' ? 'Searching on the server' : v.state;
+      $('#v_srv_tried').textContent = fmtInt(v.tried || 0); $('#v_srv_rate').textContent = fmtInt(v.keysPerSecond || 0);
+      $('#v_srv_elapsed').textContent = V.humanTime((Date.now() - t0) / 1000); $('#v_srv_chance').textContent = (100 * p).toFixed(1) + '%';
+      $('#v_srv_bar').style.width = Math.min(100, 100 * p).toFixed(1) + '%';
+    };
+    try {
+      vRun = V.serverStart({ type: a.type, text: a.text, ignoreCase: a.ignoreCase, onStatus: paint });
+      const r = await vRun.promise;
+      vanityShowResult(r, t0, a);
+      show($('#v_server'), false);
+      toast('Vanity address found and verified. Save it as a wallet file to keep it.', 'ok');
+    } catch (e) {
+      if (vRun) toast('Server search: ' + e.message, 'bad');
+    } finally {
+      vRun = null; show($('#v_srv_start'), true); show($('#v_srv_running'), false);
+      $('#v_text').disabled = false; $$('#v_type button').forEach((x) => { x.disabled = false; }); $('#v_ic').disabled = false;
+    }
+  });
+  $('#v_srv_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Job cancelled.'); } });
+  function vanityShowResult(r, t0, a) {
+    vanityResult = { wif: r.wif, address: r.address };
+    $('#v_addr').textContent = '';
+    const lead = r.address.slice(0, a.display.length); const b = el('b', null, lead); $('#v_addr').appendChild(b); $('#v_addr').appendChild(document.createTextNode(r.address.slice(lead.length)));
+    $('#v_found_stats').textContent = 'Found after ' + fmtInt(r.tried) + ' keys in ' + V.humanTime((Date.now() - t0) / 1000) + '.';
+    show($('#v_result'), true); show($('#v_choose'), false);
+    $('#v_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   $('#v_start').addEventListener('click', async () => {
     if (!vAnalysis || !vAnalysis.ok || vRun) return;
@@ -886,12 +932,8 @@
     try {
       vRun = V.start({ type: a.type, text: a.text, ignoreCase: a.ignoreCase, threads: V.threads, onProgress: paint });
       const r = await vRun.promise;
-      vanityResult = { wif: r.wif, address: r.address };
-      $('#v_addr').textContent = '';
-      const lead = r.address.slice(0, a.display.length); const b = el('b', null, lead); $('#v_addr').appendChild(b); $('#v_addr').appendChild(document.createTextNode(r.address.slice(lead.length)));
-      $('#v_found_stats').textContent = 'Found after ' + fmtInt(r.tried) + ' keys in ' + V.humanTime((Date.now() - t0) / 1000) + '.';
-      show($('#v_result'), true); show($('#v_browser'), false); show($('#v_choose'), false);
-      $('#v_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      vanityShowResult(r, t0, a);
+      show($('#v_browser'), false);
       toast('Vanity address found. Save it as a wallet file to keep it.', 'ok');
     } catch (e) {
       if (vRun) toast('Search failed: ' + e.message, 'bad');
