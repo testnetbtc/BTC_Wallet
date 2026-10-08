@@ -1,3 +1,9 @@
+> **HISTORICAL DOCUMENT — it does not describe the live wallet.**
+> In October 2026 Olesia was re-scoped to a single product: the mainnet hot wallet at <https://olesia.io>.
+> The cold generator, watch-only and air-gap paths below are mothballed; the live wallet is a hot web wallet whose trust model is described in the mainnet README.
+> Current documentation: [`packages/bitcoin/mainnet/README.md`](../packages/bitcoin/mainnet/README.md) and the top of the main [`README.md`](../README.md).
+> What was switched off, and how to restore it: [`docs/MOTHBALL_2026-10.md`](MOTHBALL_2026-10.md).
+
 # Olesia — Threat Model (online / offline)
 
 Honest description of what protects your keys, what does not, and what each party

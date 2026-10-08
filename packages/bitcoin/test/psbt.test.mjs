@@ -35,7 +35,7 @@ const ext = extractTx(signed.psbt);
 ok('extract matches signer txid', ext.txid === signed.txid);
 try {
   const dec = JSON.parse(execSync(
-    `sudo -u bitcoin /usr/local/bin/bitcoin-cli -datadir=/var/lib/bitcoind decoderawtransaction ${ext.txHex}`,
+    `/usr/local/bin/bitcoin-cli -datadir=${process.env.OLESIA_NODE_DATADIR || "/home/faucet/gsmg-frontier/btc_mainnet_node"} decoderawtransaction ${ext.txHex}`,
     { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
   const opret = dec.vout.find((v) => v.scriptPubKey.type === 'nulldata');
   ok('[node] valid tx, our txid', dec.txid === signed.txid);

@@ -1,4 +1,51 @@
-# Olesia — an educational Bitcoin wallet
+# Olesia — Bitcoin mainnet wallet
+
+**In October 2026 Olesia was re-scoped to one product:** a non-custodial Bitcoin **mainnet** hot
+wallet that opens at <https://olesia.io>. The testnet modes, faucet, offline generator, offline
+signer and explorer that this repository also contains are **mothballed** — switched off but kept
+(see [`docs/MOTHBALL_2026-10.md`](docs/MOTHBALL_2026-10.md)). Everything under "Historical" further
+down describes that earlier platform and is **not accurate for the live site**.
+
+## What is live
+
+| | |
+|---|---|
+| Wallet | <https://olesia.io> — one self-contained HTML file |
+| Source | [`packages/bitcoin/mainnet/`](packages/bitcoin/mainnet/) (page) and `packages/bitcoin/src/` (engine) — start with the [mainnet README](packages/bitcoin/mainnet/README.md) |
+| Node API | `https://api.olesia.io` — [`infra/nodeapi/`](infra/nodeapi/), in front of the operator's own Bitcoin Core node |
+| Build hash | [`packages/bitcoin/mainnet/BUILD_HASH.txt`](packages/bitcoin/mainnet/BUILD_HASH.txt) — compare with `curl -s https://olesia.io/ | sha256sum` |
+
+## What it does
+
+- Creates a wallet in the browser: 12 or 24 words, from the operating system's random generator
+  mixed with mouse movement and optional dice; optional BIP-39 passphrase.
+- Saves the wallet to the user's computer as a password-encrypted `.dat` file (Olesia's own
+  format — **not** Bitcoin Core's `wallet.dat`). Nothing secret is kept in browser storage.
+- While a wallet is open the page holds it only in encrypted form plus its public keys. The
+  password is asked for each time a payment is signed or the recovery words are shown.
+- Imports a recovery phrase or a WIF private key (compressed or uncompressed).
+- Receives on SegWit (`bc1…`) or Legacy (`1…`) addresses; sends, with an optional OP_RETURN message.
+- Finds coins, estimates fees and broadcasts through one server only: the operator's own node.
+
+## What you should know before using it
+
+- **It is a hot wallet served by a website.** Whoever can publish to olesia.io could serve altered
+  code. Keep only an amount you could afford to lose. Mainnet seeds are created on the live page —
+  the earlier rule that mainnet seeds could only be made offline no longer applies.
+- **No independent human security audit has been done.** Reviews by AI models have been run
+  (the latest, 2026-10-02, covered the browser code only). That is not a certification.
+- **All chain data comes from one node.** Balances are confirmed coins only; an incoming payment
+  appears after its first confirmation; there is no transaction history; the first lookup for a
+  wallet takes a few minutes. The page cannot cross-check what that node reports.
+- 12 words is 128-bit security; 24 words is 256-bit.
+
+MIT licence.
+
+---
+
+# Historical (before October 2026)
+
+## Olesia — an educational Bitcoin wallet
 
 **Learn Bitcoin, safely.** Practise with real keys, real transactions and every script type on
 test networks where mistakes cost nothing — we believe it's the first wallet to combine a faucet

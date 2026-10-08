@@ -1,3 +1,9 @@
+> **HISTORICAL DOCUMENT — it does not describe the live wallet.**
+> In October 2026 Olesia was re-scoped to a single product: the mainnet hot wallet at <https://olesia.io>.
+> The offline generator, the testnet modes, the watch-only/air-gap flow and the faucet described below are mothballed. In particular, the statement that mainnet seeds can only be generated offline is NO LONGER TRUE: the live wallet creates mainnet seeds on the web page.
+> Current documentation: [`packages/bitcoin/mainnet/README.md`](packages/bitcoin/mainnet/README.md) and the top of the main [`README.md`](README.md).
+> What was switched off, and how to restore it: [`docs/MOTHBALL_2026-10.md`](docs/MOTHBALL_2026-10.md).
+
 # Security Policy & Model
 
 Olesia is a **non-custodial Bitcoin wallet and learning tool**. It has grown well beyond

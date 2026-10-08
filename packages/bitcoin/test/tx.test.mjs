@@ -63,7 +63,7 @@ ok('value conserved (in = out + fee)', 100_000n === outTotal + BigInt(res.fee));
 // --- independent cross-check via the local node (if reachable) ---
 try {
   const dec = JSON.parse(execSync(
-    `sudo -u bitcoin /usr/local/bin/bitcoin-cli -datadir=/var/lib/bitcoind decoderawtransaction ${res.txHex}`,
+    `/usr/local/bin/bitcoin-cli -datadir=${process.env.OLESIA_NODE_DATADIR || "/home/faucet/gsmg-frontier/btc_mainnet_node"} decoderawtransaction ${res.txHex}`,
     { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
   const nodeTxid = dec.txid;
   const vinTxid = dec.vin[0].txid;

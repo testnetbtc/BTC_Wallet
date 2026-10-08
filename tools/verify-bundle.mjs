@@ -18,13 +18,15 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const REPO = {
   wallet: join(ROOT, 'packages/bitcoin/web/index.html'),
   coldgen: join(ROOT, 'packages/bitcoin/web/site/index.html'),
+  mainnet: join(ROOT, 'packages/bitcoin/mainnet/publish/index.html'),   // the olesia.io opening page
 };
 const TARGETS = {
-  preview: { wallet: 'https://preview.olesia-wallet.pages.dev/' },
-  production: { wallet: 'https://app.olesia.io/' },
+  preview: { mainnet: 'https://mainnet-preview.olesia-landing.pages.dev/' },
+  production: { mainnet: 'https://olesia.io/' },
+  legacy: { wallet: 'https://app.olesia.io/' },                          // mothballed multi-network wallet
 };
 
-const env = process.argv[2] === 'production' ? 'production' : 'preview';
+const env = ['production', 'legacy'].includes(process.argv[2]) ? process.argv[2] : 'preview';
 let bad = false;
 for (const [name, url] of Object.entries(TARGETS[env])) {
   const repoPath = REPO[name];

@@ -10,7 +10,7 @@ const NET = 'signet';
 const MN = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(52), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
-const decode = (hex) => { try { return JSON.parse(execSync(`sudo -u bitcoin /usr/local/bin/bitcoin-cli -datadir=/var/lib/bitcoind decoderawtransaction ${hex}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); } catch { return null; } };
+const decode = (hex) => { try { return JSON.parse(execSync(`/usr/local/bin/bitcoin-cli -datadir=${process.env.OLESIA_NODE_DATADIR || "/home/faucet/gsmg-frontier/btc_mainnet_node"} decoderawtransaction ${hex}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); } catch { return null; } };
 
 const src = deriveScript(MN, NET, 'p2wpkh', 0);
 const tgt = deriveScript(MN, NET, 'p2pk', 0);

@@ -15,7 +15,7 @@ import { buildFundP2PK, buildSpendP2PK, p2pkScript, varint } from '../src/p2pk_f
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(58), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
 const throws = (fn, re) => { try { fn(); return false; } catch (e) { return re ? re.test(e.message) : true; } };
-const decode = (hex) => { try { return JSON.parse(execSync(`sudo -u bitcoin /usr/local/bin/bitcoin-cli -datadir=/var/lib/bitcoind decoderawtransaction ${hex}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); } catch { return null; } };
+const decode = (hex) => { try { return JSON.parse(execSync(`/usr/local/bin/bitcoin-cli -datadir=${process.env.OLESIA_NODE_DATADIR || "/home/faucet/gsmg-frontier/btc_mainnet_node"} decoderawtransaction ${hex}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); } catch { return null; } };
 const dsha = (b) => sha256(sha256(b));
 const hash160 = (b) => ripemd160(sha256(b));
 const u32 = (n) => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, n, true); return a; };

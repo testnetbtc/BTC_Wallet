@@ -9,7 +9,7 @@ import { accountDescriptors, descriptorChecksum, withChecksum } from '../src/des
 
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(64), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
-const cli = (args) => { try { return execSync(`sudo -u bitcoin /usr/local/bin/bitcoin-cli -datadir=/var/lib/bitcoind ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return null; } };
+const cli = (args) => { try { return execSync(`/usr/local/bin/bitcoin-cli -datadir=${process.env.OLESIA_NODE_DATADIR || "/home/faucet/gsmg-frontier/btc_mainnet_node"} ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return null; } };
 
 const MN = 'immense rain burden meat one stock cigar dice enhance post jacket aerobic';
 

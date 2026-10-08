@@ -1,3 +1,9 @@
+> **HISTORICAL DOCUMENT — it does not describe the live wallet.**
+> In October 2026 Olesia was re-scoped to a single product: the mainnet hot wallet at <https://olesia.io>.
+> This handover describes the platform as of 2026-08-18. Most of what it lists as live is now mothballed.
+> Current documentation: [`packages/bitcoin/mainnet/README.md`](../packages/bitcoin/mainnet/README.md) and the top of the main [`README.md`](../README.md).
+> What was switched off, and how to restore it: [`docs/MOTHBALL_2026-10.md`](MOTHBALL_2026-10.md).
+
 # Olesia — Full Project Handover for a New Agent
 
 **Last updated:** 2026-08-18 · **Operator:** jon.utxo@pm.me · **You are `faucet` on this VPS.**

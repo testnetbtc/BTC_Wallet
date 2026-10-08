@@ -1,0 +1,24 @@
+[Unit]
+Description=Olesia node API (localhost:8787 -> own bitcoind: UTXO lookup, fees, prev-tx, broadcast)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+ExecStart=/home/faucet/.nvm/versions/node/v22.22.3/bin/node /home/faucet/BTC_Wallet/infra/nodeapi/server.mjs
+Restart=on-failure
+RestartSec=10
+# The service needs no privileges: it talks JSON-RPC to the node on localhost and reads the
+# node's bitcoin.conf for the RPC credentials. It writes nothing to disk.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# DoS containment
+MemoryMax=1G
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
