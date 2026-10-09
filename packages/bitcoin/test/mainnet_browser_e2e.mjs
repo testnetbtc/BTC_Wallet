@@ -92,8 +92,8 @@ const pageHtml = readFileSync(join(HERE, '../mainnet/publish/index.html'));
 const cspHeader = readFileSync(join(HERE, '../mainnet/publish/_headers'), 'utf8').match(/Content-Security-Policy: (.*)/)[1];
 const web = http.createServer((req, res) => {
   if (req.url === '/' || req.url.startsWith('/?')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': cspHeader, 'referrer-policy': 'no-referrer' }); return res.end(pageHtml); }
-  const f = req.url.replace(/\?.*/, '').slice(1), TYPES = { ico: 'image/x-icon', png: 'image/png', webmanifest: 'application/manifest+json' };
-  if (/^[a-z0-9.-]+$/.test(f) && TYPES[f.split('.').pop()] && existsSync(join(HERE, '../mainnet/publish', f))) { res.writeHead(200, { 'content-type': TYPES[f.split('.').pop()], 'content-security-policy': cspHeader }); return res.end(readFileSync(join(HERE, '../mainnet/publish', f))); }
+  const f = req.url.replace(/\?.*/, '').slice(1), TYPES = { ico: 'image/x-icon', png: 'image/png', webmanifest: 'application/manifest+json', json: 'application/json' };
+  if (/^[a-zA-Z0-9.\/-]+$/.test(f) && !f.includes('..') && TYPES[f.split('.').pop()] && existsSync(join(HERE, '../mainnet/publish', f))) { res.writeHead(200, { 'content-type': TYPES[f.split('.').pop()], 'content-security-policy': cspHeader }); return res.end(readFileSync(join(HERE, '../mainnet/publish', f))); }
   res.writeHead(404); res.end('nope');
 });
 
@@ -242,6 +242,24 @@ try {
   ok('site icons: favicon.ico, PNG icons, Apple touch icon and web manifest are linked and served', linked.length === 5 && linked.includes('/favicon.ico') && linked.includes('/apple-touch-icon.png') && linked.includes('/site.webmanifest') && served.every(Boolean));
   const manifest = await (await fetch(ORIGIN + '/site.webmanifest')).json();
   ok('web manifest names the app "Olesia" and lists 192/512 icons', manifest.short_name === 'Olesia' && manifest.icons.some((i) => i.sizes === '192x192') && manifest.icons.some((i) => i.sizes === '512x512'));
+  // languages: the chip lists them; every dictionary shipped loads, translates the whole page (no
+  // English left that the walker or the script can reach), restores English, and is remembered
+  const langs = await page.$$eval('#lang option', (os) => os.map((o) => o.value));
+  const shipped = readdirSync(join(HERE, '../mainnet/publish/i18n')).filter((x) => x.endsWith('.json')).map((x) => x.replace(/\.json$/, '')).sort();
+  ok(`languages: the chip offers ${langs.length} languages and every dictionary shipped (${shipped.length}) is one of them`, langs[0] === 'en' && langs.length >= 2 && shipped.length >= 1 && shipped.every((c) => langs.includes(c)));
+  const h2en = await text(page, '#pane-welcome h2');
+  const langReport = [];
+  for (const code of shipped) {
+    await page.select('#lang', code);
+    await page.waitForFunction((c) => window.OI18N.code === c, { timeout: 15000 }, code);
+    await sleep(150);
+    const r = await page.evaluate((h2) => ({ h2: document.querySelector('#pane-welcome h2').textContent, lang: document.documentElement.lang, missing: window.OI18N.missing.filter((k) => k !== 'BTC'), same: document.querySelector('#pane-welcome h2').textContent === h2, leftover: window.OI18N.untranslated() }), h2en);
+    langReport.push(`${code}: not in the dictionary ${r.missing.length}${r.missing.length ? ' (' + r.missing.slice(0, 3).join(' | ') + ')' : ''} · still English ${r.leftover.length}${r.leftover.length ? ' (' + r.leftover.slice(0, 2).join(' | ') + ')' : ''}`);
+    ok(`language ${code}: loads, sets <html lang>, translates the welcome heading, no reachable string left untranslated`, r.lang === code && !r.same && r.missing.length === 0 && r.leftover.length === 0);
+  }
+  langReport.forEach((l) => console.log('   ' + l));
+  await page.select('#lang', 'en'); await page.waitForFunction(() => window.OI18N.code === 'en'); await sleep(100);
+  ok('language: back to English restores the exact original text; the choice is remembered', (await text(page, '#pane-welcome h2')) === h2en && await page.evaluate(() => localStorage.getItem('olesia:mainnet:lang') === 'en'));
   // the street: the background scene fed by GET /street (the regtest node's last block and mempool)
   await page.waitForFunction(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] + d[i + 1] + d[i + 2] > 450) lit++; return lit > 10; }, { timeout: 15000 });
   ok('street: the scene is drawn on its band (light pixels: the panel, the roof) and GET /street was called', apiCalls.includes('GET /street'));
@@ -469,7 +487,7 @@ try {
   const storedText = JSON.stringify(stored);
   const storedValues = Object.values(stored.local).map(jsonValues).join('\n');
   ok('browser storage holds only address counters, the currency, the "opening seen" and street flags — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
-    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening' || k === 'olesia:mainnet:street')
+    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening' || k === 'olesia:mainnet:street' || k === 'olesia:mainnet:lang')
     && !storedText.includes(curPw));
   // the open page holds no plaintext secret: not in the DOM, not on window.OM, not in any global
   const leak = await page.evaluate((w) => { const hay = document.documentElement.outerHTML; const fields = [...document.querySelectorAll('input,textarea')].map((e) => ' ' + e.value + ' ').join('|'); return w.filter((x) => x.length > 5 && (hay.includes('>' + x + '<') || fields.includes(' ' + x + ' '))).length; }, words24);
@@ -784,6 +802,7 @@ try {
   ok('vanity/phone: a long pattern gets the red "do not run this on a phone" warning', (await page.$eval('#v_device', (e) => e.className)) === 'danger' && /Do not run this search on a phone/.test(await text(page, '#v_device')));
   await tap(page, '#v_pick_browser');
   ok('vanity/phone: Start is disabled until the risk is acknowledged', await visible(page, '#v_ackrow') && await page.$eval('#v_start', (b) => b.disabled && /Too long for a phone/.test(b.textContent)));
+  await page.$eval('#v_ack', (e) => e.scrollIntoView({ block: 'center' }));   // clear of the street ticker along the bottom
   await page.click('#v_ack');
   if (await page.$eval('#v_start', (b) => b.disabled)) await page.screenshot({ path: join(tmpdir(), 'olesia-e2e-phone-ack-fail.png') }).catch(() => {});
   ok('vanity/phone: ticking the box enables Start with the condition in its label', await page.$eval('#v_start', (b) => !b.disabled && /stop it if the phone gets hot/.test(b.textContent)));

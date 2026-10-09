@@ -30,14 +30,14 @@ console.log('   repo  ', sha(repo)); console.log('   served', sha(served));
 ok('served page is byte-identical to this repo build', sha(served) === sha(repo));
 const csp = res.headers.get('content-security-policy') || '';
 ok('CSP header: scripts pinned by hash, no unsafe-inline/eval for scripts', /script-src 'sha256-[^;]+;/.test(csp) && !/script-src[^;]*unsafe/.test(csp));
-ok('CSP header: connect-src is ONLY the Olesia node API', /connect-src https:\/\/api\.olesia\.io;/.test(csp));
+ok("CSP header: connect-src is ONLY the page's own origin (language files) and the Olesia node API", /connect-src 'self' https:\/\/api\.olesia\.io;/.test(csp));
 ok('CSP header: cannot be framed; no forms; default deny', /frame-ancestors 'none'/.test(csp) && /default-src 'none'/.test(csp) && /form-action 'none'/.test(csp));
 ok('HSTS, nosniff, no-referrer headers present', !!res.headers.get('strict-transport-security') && res.headers.get('x-content-type-options') === 'nosniff' && res.headers.get('referrer-policy') === 'no-referrer');
 // the site icons and manifest: served, and byte-identical to the build (BUILD_HASH.txt lists them)
 const buildHashes = Object.fromEntries(readFileSync(join(HERE, '../mainnet/BUILD_HASH.txt'), 'utf8').trim().split('\n').map((l) => l.split(/\s+/)).map(([h, f]) => [f.replace('mainnet/publish/', ''), h]));
-const assets = ['favicon.ico', 'icon-32.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'site.webmanifest'];
+const assets = ['favicon.ico', 'icon-32.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'site.webmanifest', ...Object.keys(buildHashes).filter((f) => f.startsWith('i18n/'))];   // + every language dictionary
 const assetOk = await Promise.all(assets.map(async (f) => { try { const r = await fetch(new URL('/' + f, URL_) + '?cb=' + Date.now(), { cache: 'no-store' }); return r.ok && sha(Buffer.from(await r.arrayBuffer())) === buildHashes[f]; } catch { return false; } }));
-ok('site icons and web manifest are served and byte-identical to the build', assetOk.every(Boolean));
+ok(`site icons, web manifest and ${assets.length - 6} language dictionaries are served and byte-identical to the build`, assetOk.every(Boolean));
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu'] });
 try {

@@ -60,6 +60,21 @@ input alone; `gettxout` without the mempool view gives the coin's age). Public c
 reduced motion gets a still picture; nothing is drawn or fetched while the tab is hidden or the
 opening is showing. The page scrolls above the band, never under it.
 
+**Languages.** The chip in the header (`#lang`) switches the whole page. English is built in;
+every other language is `mainnet/i18n/<code>.json` — a map from the English string to its
+translation — published next to the page as `i18n/<code>.json`, listed in `BUILD_HASH.txt` and
+byte-checked by the live check. `mainnet/i18n.js` is the runtime: static text is found by walking
+the page for "units" (an element whose children are text and simple inline elements; its key is
+the English with the children numbered, `Load your encrypted <1>.dat</1> file`), a translation is
+placed as text nodes plus the unit's *own* child elements moved back in — never as HTML — and
+units the script has since written to are left alone. Script text goes through `tr('…', { n })`.
+`mainnet/i18n/extract.mjs` builds `en.json` (711 strings: the page's markup walked in headless
+Chrome, `tr()` keys, the engine's messages) and checks every dictionary; `validate.mjs` /
+`merge.mjs` are the translators' tools (`TRANSLATING.md` is their brief). The browser test loads
+every shipped dictionary and asserts nothing reachable is left untranslated. The saved choice
+(`localStorage` `olesia:mainnet:lang`) or the browser's language is used on load; the offline copy
+(opened from a file) stays English because it cannot fetch a dictionary.
+
 **Site identity.** `mainnet/icons/` (drawn by a script from the Olesia mark) is published as
 `favicon.ico`, `icon-32/192/512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` and
 `site.webmanifest` (name "Olesia", `display: browser` — switching to `standalone` is the first PWA

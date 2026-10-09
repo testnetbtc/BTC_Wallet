@@ -35,3 +35,4 @@ packages/bitcoin/mainnet/index.html
 packages/bitcoin/mainnet/_headers
 packages/bitcoin/mainnet/publish/
 infra/broadcast/restore.log
+packages/bitcoin/mainnet/i18n/parts/

@@ -6,7 +6,7 @@
 // The vanity search runs in Web Workers created from code bundled into the page (worker-src blob:).
 // olesia-vanity.mjs is the same engine as a stand-alone offline script; its SHA-256 is shown in the page.
 import * as esbuild from 'esbuild';
-import { mkdirSync, readFileSync, writeFileSync, rmSync, copyFileSync, statSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync, rmSync, copyFileSync, statSync, readdirSync } from 'fs';
 import { createHash } from 'crypto';
 import { hardenHtml, headersBlock } from '../../../tools/csp.mjs';
 
@@ -44,8 +44,8 @@ await import('./assemble.mjs');
 
 // the offline script is served with "download" semantics (never executed by a browser)
 const scriptHeaders = headersBlock('/olesia-vanity.mjs', null).replace('\n', '\n  Content-Type: text/javascript; charset=utf-8\n  Content-Disposition: attachment; filename="olesia-vanity.mjs"\n');
-const { scriptHashes, csp } = hardenHtml({ htmlPath: 'mainnet/index.html', headersPath: 'mainnet/_headers', connect: API, img: "'self' data:", worker: 'blob:', manifest: true, extraHeaderBlocks: scriptHeaders });
-console.log('CSP:', scriptHashes, 'script hashes · no script unsafe-inline · connect-src', API, '· worker-src blob:');
+const { scriptHashes, csp } = hardenHtml({ htmlPath: 'mainnet/index.html', headersPath: 'mainnet/_headers', connect: `'self' ${API}`, img: "'self' data:", worker: 'blob:', manifest: true, extraHeaderBlocks: scriptHeaders });
+console.log('CSP:', scriptHashes, 'script hashes · no script unsafe-inline · connect-src self +', API, '· worker-src blob:');
 if (/unsafe-inline/.test(csp.split(';').find((d) => d.trim().startsWith('script-src')))) throw new Error('script-src still allows unsafe-inline');
 
 rmSync('mainnet/publish', { recursive: true, force: true });
@@ -62,9 +62,15 @@ writeFileSync('mainnet/publish/site.webmanifest', JSON.stringify({
   icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }, { src: '/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }],
 }, null, 1) + '\n');
 
+// languages: one JSON dictionary per language next to the page (English is built in)
+mkdirSync('mainnet/publish/i18n', { recursive: true });
+const LANG_FILES = readdirSync('mainnet/i18n').filter((f) => /^[a-z]{2}(-[A-Za-z]+)?\.json$/.test(f) && f !== 'en.json').sort();   // English is built in
+for (const f of LANG_FILES) { JSON.parse(readFileSync('mainnet/i18n/' + f, 'utf8')); copyFileSync('mainnet/i18n/' + f, 'mainnet/publish/i18n/' + f); }
+
 const bytes = readFileSync('mainnet/publish/index.html');
 const hash = sha(bytes);
-const extra = [...Object.keys(ICONS), 'site.webmanifest'].map((f) => `${sha(readFileSync('mainnet/publish/' + f))}  mainnet/publish/${f}`).join('\n');
+const extra = [...Object.keys(ICONS), 'site.webmanifest', ...LANG_FILES.map((f) => 'i18n/' + f)].map((f) => `${sha(readFileSync('mainnet/publish/' + f))}  mainnet/publish/${f}`).join('\n');
 writeFileSync('mainnet/BUILD_HASH.txt', `${hash}  mainnet/publish/index.html\n${cliHash}  mainnet/publish/olesia-vanity.mjs\n${extra}\n`);
 console.log('mainnet wallet sha256:', hash, `(${bytes.length} bytes)`);
 console.log('offline script sha256:', cliHash, `(${cli.length} bytes) -> mainnet/BUILD_HASH.txt`);
+console.log('languages:', LANG_FILES.length, 'dictionaries');

@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 const bundle = readFileSync('mainnet/dist/mainnet.bundle.js', 'utf8');
 const ui = readFileSync('mainnet/ui.js', 'utf8');
+const i18n = readFileSync('mainnet/i18n.js', 'utf8');
 const connect = process.env.OLESIA_API_BASE || 'https://api.olesia.io';
 // IBM Plex (SIL OFL), latin subset, embedded so the page never loads a font from a server.
 const font = (f) => 'data:font/woff2;base64,' + readFileSync('mainnet/fonts/' + f).toString('base64');
@@ -62,6 +63,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:10px;pa
 .chip .sw{width:8px;height:8px;border-radius:50%;background:var(--faint)}
 .chip.ok .sw{background:var(--mint)}.chip.warn .sw{background:var(--accent)}.chip.err .sw{background:var(--bad)}
 button.chip{cursor:pointer}
+select.chip{cursor:pointer;appearance:none;-webkit-appearance:none;padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238f8f8f' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;color:var(--text);max-width:170px;text-overflow:ellipsis}
 .chip.main{color:var(--text)}.chip.main .sw{background:var(--accent)}.chip.main.test .sw{background:var(--violet)}
 button.chip.price{color:var(--text);font-variant-numeric:tabular-nums}
 button.chip.price .up{color:var(--mint)}button.chip.price .down{color:var(--bad)}
@@ -234,8 +236,9 @@ footer a{color:var(--muted)}
   <div class="logo">Olesia<span class="ldot">.</span></div>
   <div class="hbtns">
     <button class="chip main" id="netbtn" type="button" title="The network this wallet is showing. Tap to switch."><span class="sw"></span><span id="netname">Bitcoin mainnet</span></button>
-    <button class="chip price hide" id="chip_price" type="button" title="Bitcoin price and 24-hour change. Tap to change currency."><span id="price_v"></span><span id="price_c"></span></button>
+    <button class="chip price hide" id="chip_price" type="button" title="Bitcoin price and 24-hour change. Tap to change currency." data-noi18n><span id="price_v"></span><span id="price_c"></span></button>
     <span class="chip" id="chip_node" style="min-width:150px"><span class="sw"></span><span id="chip_node_t">node…</span></span>
+    <select class="chip lang" id="lang" aria-label="Language" data-noi18n></select>
     <button class="sec small hide" id="lockbtn" type="button">Lock</button>
   </div>
 </header>
@@ -488,7 +491,7 @@ footer a{color:var(--muted)}
       <div class="stat"><span>Looking for <b id="v_display"></b></span><span>about 1 in <b id="v_diff"></b> keys</span></div>
       <div class="est">
         <div><div class="k">In this browser</div><div class="v" id="v_est_here">measuring…</div><div class="s" id="v_est_here_s"></div></div>
-        <div><div class="k">Offline script</div><div class="v" id="v_est_script"></div><div class="s">on a computer with <select id="v_cores" style="width:auto;padding:2px 6px;font-size:12px;margin:0;display:inline"><option>4</option><option selected>8</option><option>16</option><option>32</option></select> CPU threads</div></div>
+        <div><div class="k">Offline script</div><div class="v" id="v_est_script"></div><div class="s"><span>on a computer with</span> <select id="v_cores" style="width:auto;padding:2px 6px;font-size:12px;margin:0;display:inline"><option>4</option><option selected>8</option><option>16</option><option>32</option></select> <span>CPU threads</span></div></div>
       </div>
       <p class="hint" style="margin-top:8px">Expected times. The search is random: half of all runs finish sooner, 95% within 3× the expected time, and one run in 150 takes longer than 5×.</p>
       <div id="v_device" class="hide"></div>
@@ -530,7 +533,7 @@ footer a{color:var(--muted)}
         <div class="step"><i>3</i><div><b>Run it</b><code class="mono" id="v_cmd"></code><br>It checks itself, shows the expected time, searches on all your CPU threads, and writes the result to <code>olesia-vanity-result.txt</code> (readable only by you).</div></div>
         <div class="step"><i>4</i><div><b>Import</b>Back here: <span style="font-weight:600;color:var(--text)">Import a wallet → Private key (WIF)</span>, choose a password, save the <code>.dat</code> file. Then delete the result file securely.</div></div>
       </div>
-      <a class="btn" id="v_dl" href="/olesia-vanity.mjs" download="olesia-vanity.mjs">${IC.dl} Download olesia-vanity.mjs <span id="v_size" style="font-weight:400;opacity:.8"></span></a>
+      <a class="btn" id="v_dl" href="/olesia-vanity.mjs" download="olesia-vanity.mjs">${IC.dl} <span>Download olesia-vanity.mjs</span> <span id="v_size" style="font-weight:400;opacity:.8"></span></a>
       <p class="hint" style="margin-top:10px">Full guide with screenshots and troubleshooting: <a id="v_guide" href="https://github.com/testnetbtc/BTC_Wallet/blob/main/docs/VANITY_OFFLINE_GUIDE.md" target="_blank" rel="noopener noreferrer">docs/VANITY_OFFLINE_GUIDE.md</a>. The source is open — read it before you run it.</p>
     </div>
   </div>
@@ -675,7 +678,7 @@ footer a{color:var(--muted)}
       <p class="meta" style="margin-top:4px" id="pp_sheet_legend"></p>
     </div>
     <div class="card">
-      <button class="wide" id="pp_print" type="button">${IC.print} Print</button>
+      <button class="wide" id="pp_print" type="button">${IC.print} <span>Print</span></button>
       <p class="hint">After printing: cover the private key, then do the read-back check below with the paper in your hand.</p>
       <h3 style="margin-top:14px">Read-back check</h3>
       <label>Type the private key exactly as printed (or scan its QR code and paste)</label>
@@ -759,7 +762,7 @@ footer a{color:var(--muted)}
   <canvas id="intro_c" aria-hidden="true"></canvas>
   <canvas id="intro_b" aria-hidden="true"></canvas>
   <button class="sec small" id="intro_skip" type="button">Skip ›</button>
-  <div id="intro_cap"><div class="k" id="intro_k"></div><h2 id="intro_t"></h2><p id="intro_p"></p></div>
+  <div id="intro_cap" data-noi18n><div class="k" id="intro_k"></div><h2 id="intro_t"></h2><p id="intro_p"></p></div>
   <div id="intro_foot">
     <div id="intro_bar" aria-hidden="true"></div>
     <button id="intro_enter" class="hide" type="button">Enter</button>
@@ -774,6 +777,7 @@ footer a{color:var(--muted)}
 </footer>
 </div>
 <script>${bundle}</script>
+<script>${i18n}</script>
 <script>${ui}</script>
 </body></html>`;
 writeFileSync('mainnet/index.html', html);

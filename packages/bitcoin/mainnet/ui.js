@@ -14,6 +14,7 @@
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const btc = (sats) => { const s = String(Math.abs(sats)).padStart(9, '0'); return (sats < 0 ? '-' : '') + s.slice(0, -8) + '.' + s.slice(-8); };
   const tick = () => new Promise((r) => setTimeout(r, 30));
+  const tr = window.OI18N.t;   // every string a person reads goes through here (see i18n.js)
 
   // ---------- state ----------
   let wallet = null;      // the open wallet: { networks, session(network) (watch-only), prepare(network, args, password), reveal(password) }
@@ -32,8 +33,25 @@
   // ---------- toast ----------
   let toastT;
   function toast(msg, cls) {
-    const t = $('#toast'); t.textContent = msg; t.className = cls || ''; t.style.display = 'block';
-    clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, cls === 'bad' ? 7000 : 3500);
+    const box = $('#toast'); box.textContent = msg; box.className = cls || ''; box.style.display = 'block';
+    clearTimeout(toastT); toastT = setTimeout(() => { box.style.display = 'none'; }, cls === 'bad' ? 7000 : 3500);
+  }
+
+  // ---------- languages ----------
+  // The chip in the header lists every language the page has a dictionary for (i18n.js). Static
+  // text is re-walked by OI18N.apply(); the lines this script paints are re-worded by rewordAll().
+  const I18N = window.OI18N, langSel = $('#lang');
+  I18N.LANGS.forEach(([c, name]) => { const o = el('option', null, name); o.value = c; langSel.appendChild(o); });
+  langSel.addEventListener('change', async () => {
+    const r = await I18N.set(langSel.value);
+    if (!r.ok) { toast(tr('That language could not be loaded ({error}). Languages need the online page at olesia.io.', { error: r.error }), 'bad'); langSel.value = I18N.code; }
+  });
+  I18N.onChange(() => { langSel.value = I18N.code; rewordAll(); });
+  function rewordAll() {
+    for (const f of [rngRender, nodeRender, priceRender, sessionRender, networkRender, padRender, diceRender, genRender, saveRender, renderFees, noteRender, introReword]) { try { f(); } catch { /* a screen that is not set up yet has nothing to re-word */ } }
+    try { if (session && session.scanned) renderWallet(); } catch { /* same */ }
+    try { if (wallet) { renderNetworks(); renderFaucet(); } } catch { /* same */ }
+    try { if ($('#pane-vanity').classList.contains('on')) vanityRender(); } catch { /* same */ }
   }
 
   // ---------- panes ----------
@@ -63,23 +81,31 @@
     selfOk = sc.ok;
     if (!sc.ok) {
       const box = $('#selfcheck'); show(box);
-      box.textContent = 'This copy of the wallet failed its built-in cryptography self-check (' + sc.results.filter((r) => !r.ok).map((r) => r.name).join(', ') + '). Creating, opening and importing wallets is disabled. Do not use it.';
+      box.textContent = tr('This copy of the wallet failed its built-in cryptography self-check ({names}). Creating, opening and importing wallets is disabled. Do not use it.', { names: sc.results.filter((r) => !r.ok).map((r) => r.name).join(', ') });
       ['#w_create', '#w_open', '#w_import'].forEach((s) => { $(s).disabled = true; });
     }
     const h = OM.rngHealth();
-    $('#rngmsg').textContent = h.ok ? '✓ The system random number generator is responding normally.' : '✗ ' + h.reason + ' — only dice-only mode can be used on this device.';
-    $('#rngmsg').className = 'hint ' + (h.ok ? 'ok' : 'bad');
+    rngRender();
     nodeStatus(); setInterval(nodeStatus, 60000);
     priceTick(); setInterval(priceTick, 60000);
   })();
+  function rngRender() {
+    const h = OM.rngHealth();
+    $('#rngmsg').textContent = h.ok ? tr('✓ The system random number generator is responding normally.') : tr('✗ {reason} — only dice-only mode can be used on this device.', { reason: h.reason });
+    $('#rngmsg').className = 'hint ' + (h.ok ? 'ok' : 'bad');
+  }
+  let nodeSeen = null;   // the last /status answer, so the chip can be re-worded in a new language
   async function nodeStatus() {
-    const c = $('#chip_node'), t = $('#chip_node_t');
-    try {
-      const s = await OM.status();
-      if (s.chain !== 'main') { c.className = 'chip err'; t.textContent = 'node on wrong network'; return; }
-      c.className = 'chip ' + (s.ibd ? 'warn' : 'ok');
-      t.textContent = (s.ibd ? 'node syncing · ' : 'node · block ') + Number(s.blocks).toLocaleString('en-US');
-    } catch { c.className = 'chip warn'; t.textContent = 'node unreachable'; }
+    try { nodeSeen = await OM.status(); } catch { nodeSeen = { unreachable: true }; }
+    nodeRender();
+  }
+  function nodeRender() {
+    const c = $('#chip_node'), txt = $('#chip_node_t'), s = nodeSeen;
+    if (!s) return;
+    if (s.unreachable) { c.className = 'chip warn'; txt.textContent = tr('node unreachable'); return; }
+    if (s.chain !== 'main') { c.className = 'chip err'; txt.textContent = tr('node on wrong network'); return; }
+    c.className = 'chip ' + (s.ibd ? 'warn' : 'ok');
+    txt.textContent = s.ibd ? tr('node syncing · {n}', { n: Number(s.blocks).toLocaleString('en-US') }) : tr('node · block {n}', { n: Number(s.blocks).toLocaleString('en-US') });
   }
 
   // ---------- market price (display only; fetched by the Olesia node, never by this page) ----------
@@ -125,13 +151,13 @@
       const submit = async () => {
         if (busy) return;
         const pw = inp.value;
-        if (!pw) { msg.textContent = 'Enter your wallet password.'; return; }
-        busy = true; go.disabled = true; msg.textContent = 'Unlocking…'; show($('#p_progbar')); $('#p_prog').style.width = '0%';
+        if (!pw) { msg.textContent = tr('Enter your wallet password.'); return; }
+        busy = true; go.disabled = true; msg.textContent = tr('Unlocking…'); show($('#p_progbar')); $('#p_prog').style.width = '0%';
         await tick();
         try { const value = await fn(pw, (p) => { $('#p_prog').style.width = Math.round(p * 100) + '%'; }); busy = false; finish({ ok: true, value }); }
         catch (e) {
           busy = false; go.disabled = false; show($('#p_progbar'), false);
-          if (/wrong password/i.test(e.message)) { msg.textContent = '✗ Wrong password — try again.'; inp.value = ''; inp.focus(); }
+          if (/wrong password/i.test(e.message)) { msg.textContent = tr('✗ Wrong password — try again.'); inp.value = ''; inp.focus(); }
           else finish({ ok: false, error: e });
         }
       };
@@ -162,7 +188,7 @@
     $$('#c_type button').forEach((b) => b.classList.toggle('on', b.dataset.type === 'p2wpkh'));
     $('#dice').value = ''; $('#diceonly').checked = false; $('#padskip').checked = false;
     $('#c_words').textContent = ''; $('#c_wrote').checked = false; $('#c_next2').disabled = true;
-    $('#pad').classList.remove('done'); $('#padhint').textContent = 'move your mouse in here';
+    $('#pad').classList.remove('done'); $('#padhint').textContent = tr('move your mouse in here');
     padRender(); diceRender();
   }
   $$('#c_len button').forEach((b) => b.addEventListener('click', () => {
@@ -186,8 +212,8 @@
   function padRender() {
     const pct = Math.min(100, Math.round(samples / SAMPLE_TARGET * 100));
     $('#padbar').style.width = pct + '%';
-    $('#padmsg').textContent = pct >= 100 ? '100% collected — plenty (more is fine, it all gets mixed in)' : pct + '% collected';
-    if (pct >= 100) { $('#pad').classList.add('done'); $('#padhint').textContent = '✓ thank you — keep going if you like'; }
+    $('#padmsg').textContent = pct >= 100 ? tr('100% collected — plenty (more is fine, it all gets mixed in)') : tr('{pct}% collected', { pct });
+    if (pct >= 100) { $('#pad').classList.add('done'); $('#padhint').textContent = tr('✓ thank you — keep going if you like'); }
     genRender();
   }
   let dragging = false;
@@ -202,17 +228,17 @@
     const need = d.need[words === 24 ? 256 : 128];
     $('#diceneed').textContent = need;
     const m = $('#dicemsg');
-    if (!d.ok) { m.textContent = '✗ ' + d.error; m.className = 'hint bad'; }
-    else if (!d.rolls) { m.textContent = 'no rolls entered'; m.className = 'hint'; }
-    else { m.textContent = `${d.rolls} roll${d.rolls === 1 ? '' : 's'} ≈ ${d.bits.toFixed(0)} bits of dice randomness` + ($('#diceonly').checked ? ` (${Math.max(0, need - d.rolls)} more needed)` : ' — mixed in on top of the system randomness'); m.className = 'hint'; }
+    if (!d.ok) { m.textContent = '✗ ' + tr(d.error); m.className = 'hint bad'; }
+    else if (!d.rolls) { m.textContent = tr('no rolls entered'); m.className = 'hint'; }
+    else { m.textContent = (d.rolls === 1 ? tr('1 roll ≈ {bits} bits of dice randomness', { bits: d.bits.toFixed(0) }) : tr('{n} rolls ≈ {bits} bits of dice randomness', { n: d.rolls, bits: d.bits.toFixed(0) })) + ($('#diceonly').checked ? ' ' + tr('({n} more needed)', { n: Math.max(0, need - d.rolls) }) : ' ' + tr('— mixed in on top of the system randomness')); m.className = 'hint'; }
     genRender();
   }
   function genRender() {
     const b = $('#c_gen'), d = OM.dice($('#dice').value), need = d.need[words === 24 ? 256 : 128];
-    let label = `Generate ${words}-word wallet`, ok = selfOk;
-    if (!d.ok) { ok = false; label = 'Fix the dice rolls first'; }
-    else if ($('#diceonly').checked) { if (d.rolls < need) { ok = false; label = `Dice-only needs ${need - d.rolls} more roll${need - d.rolls === 1 ? '' : 's'}`; } }
-    else if (samples < SAMPLE_TARGET && !$('#padskip').checked) { ok = false; label = 'Move your mouse to continue'; }
+    let label = tr('Generate {n}-word wallet', { n: words }), ok = selfOk;
+    if (!d.ok) { ok = false; label = tr('Fix the dice rolls first'); }
+    else if ($('#diceonly').checked) { if (d.rolls < need) { ok = false; label = need - d.rolls === 1 ? tr('Dice-only needs 1 more roll') : tr('Dice-only needs {n} more rolls', { n: need - d.rolls }); } }
+    else if (samples < SAMPLE_TARGET && !$('#padskip').checked) { ok = false; label = tr('Move your mouse to continue'); }
     b.disabled = !ok; b.textContent = label;
   }
   $('#c_gen').addEventListener('click', () => {
@@ -224,8 +250,8 @@
       renderWords($('#c_words'), draft.mnemonic);
       const s = r.sources;
       $('#c_sources').textContent = diceOnly
-        ? `Made from your ${s.diceRolls} dice rolls only: the words are SHA-256 of the roll string. No computer randomness was used.`
-        : `${r.bits}-bit entropy. Sources hashed together: system generator ✓ · mouse movement ${s.mouseBytes ? '✓' : '–'} · dice ${s.diceRolls ? '✓ (' + s.diceRolls + ' rolls)' : '–'}.`;
+        ? tr('Made from your {n} dice rolls only: the words are SHA-256 of the roll string. No computer randomness was used.', { n: s.diceRolls })
+        : tr('{bits}-bit entropy. Sources hashed together: system generator ✓ · mouse movement {mouse} · dice {dice}.', { bits: r.bits, mouse: s.mouseBytes ? '✓' : '–', dice: s.diceRolls ? '✓ (' + tr('{n} rolls', { n: s.diceRolls }) + ')' : '–' });
       $('#c_wrote').checked = false; $('#c_next2').disabled = true;
       armIdle(); pane('create2');
     } catch (e) { toast('✗ ' + e.message, 'bad'); }
@@ -242,7 +268,7 @@
     quiz = OM.randomIndices(4, list.length).map((idx) => ({ idx, answer: list[idx] }));
     const box = $('#q_box'); box.textContent = '';
     quiz.forEach((q, i) => {
-      const row = el('div', 'qrow'); row.appendChild(el('span', null, 'Word #' + (q.idx + 1)));
+      const row = el('div', 'qrow'); row.appendChild(el('span', null, tr('Word #{n}', { n: q.idx + 1 })));
       const inp = el('input'); inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false; inp.setAttribute('autocapitalize', 'none'); inp.id = 'q_in' + i;
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = $('#q_in' + (i + 1)); if (n) n.focus(); else $('#q_check').click(); } });
       row.appendChild(inp); box.appendChild(row);
@@ -252,7 +278,7 @@
   $('#c_back3').addEventListener('click', () => pane('create2'));
   $('#q_check').addEventListener('click', () => {
     const wrong = quiz.filter((q, i) => $('#q_in' + i).value.trim().toLowerCase() !== q.answer);
-    if (wrong.length) return toast(`Word #${wrong[0].idx + 1} does not match. Check your paper and try again.`, 'bad');
+    if (wrong.length) return toast(tr('Word #{n} does not match. Check your paper and try again.', { n: wrong[0].idx + 1 }), 'bad');
     openSave('create');
   });
 
@@ -265,17 +291,17 @@
   function openSave(mode) {
     saveMode = mode; lastFile = null; ready = null; lastGenerated = '';
     const creating = mode === 'create';
-    $('#s_title').textContent = creating ? 'Save your wallet file' : mode === 'convert' ? 'Save as a new wallet file' : 'Protect this wallet';
+    $('#s_title').textContent = creating ? tr('Save your wallet file') : mode === 'convert' ? tr('Save as a new wallet file') : tr('Protect this wallet');
     $('#s_sub').textContent = creating
-      ? 'Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.'
+      ? tr('Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.')
       : mode === 'convert'
-        ? 'This older backup format is being replaced. Choose a password and save the wallet as a new .dat file — from now on, open that file instead.'
-        : 'Before this wallet can be used it needs a password. It is encrypted and saved to this computer as a .dat file; you will type the password each time you send.';
+        ? tr('This older backup format is being replaced. Choose a password and save the wallet as a new .dat file — from now on, open that file instead.')
+        : tr('Before this wallet can be used it needs a password. It is encrypted and saved to this computer as a .dat file; you will type the password each time you send.');
     show($('#s_passbox'), creating);
     show($('#s_storebox'), !creating && pending && pending.kind === 'seed' && !!pending.passphrase);
     $('#s_usepass').checked = false; show($('#s_passfields'), false); $('#s_storepass').checked = false;
     ['#s_pass', '#s_pass2', '#s_pw', '#s_pw2'].forEach((s) => { $(s).value = ''; $(s).type = 'password'; });
-    $('#s_show').textContent = 'Show'; $('#s_policy').textContent = '';
+    $('#s_show').textContent = tr('Show'); $('#s_policy').textContent = '';
     show($('#s_done'), false); show($('#s_open'), false); show($('#s_again'), false); show($('#s_progbar'), false); show($('#s_go'), true); show($('#s_back'), true);
     armIdle(); saveRender(); pane('save');
   }
@@ -283,38 +309,38 @@
   $('#s_back').addEventListener('click', () => {
     const fromVanity = pending && pending.kind === 'wif' && vanityResult && pending.wif === vanityResult.wif;
     draft = null; pending = null; ready = null;
-    if (fromVanity) { pane('vanity'); $('#v_result').scrollIntoView({ block: 'start' }); toast('The vanity address is still here, unsaved.'); } else pane('welcome');
+    if (fromVanity) { pane('vanity'); $('#v_result').scrollIntoView({ block: 'start' }); toast(tr('The vanity address is still here, unsaved.')); } else pane('welcome');
   });
   $('#s_usepass').addEventListener('change', () => { show($('#s_passfields'), $('#s_usepass').checked); show($('#s_storebox'), $('#s_usepass').checked); saveRender(); });
   $('#s_show').addEventListener('click', () => {
     const t = $('#s_pw').type === 'password' ? 'text' : 'password';
     ['#s_pw', '#s_pw2', '#s_pass', '#s_pass2'].forEach((s) => { $(s).type = t; });
-    $('#s_show').textContent = t === 'password' ? 'Show' : 'Hide';
+    $('#s_show').textContent = t === 'password' ? tr('Show') : tr('Hide');
   });
   $('#s_gen').addEventListener('click', () => {
-    let g; try { g = OM.generatePassword(); } catch (e) { return toast('✗ ' + e.message, 'bad'); }
+    let g; try { g = OM.generatePassword(); } catch (e) { return toast('✗ ' + tr(e.message), 'bad'); }
     lastGenerated = g.password;
     ['#s_pw', '#s_pw2'].forEach((s) => { $(s).type = 'text'; $(s).value = g.password; });
-    $('#s_show').textContent = 'Hide'; saveRender();
-    toast('Write this password down now. Without it the wallet file can never be opened.', 'bad');
+    $('#s_show').textContent = tr('Hide'); saveRender();
+    toast(tr('Write this password down now. Without it the wallet file can never be opened.'), 'bad');
   });
   ['#s_pw', '#s_pw2', '#s_pass', '#s_pass2'].forEach((s) => $(s).addEventListener('input', saveRender));
   function saveRender() {
     const pw = $('#s_pw').value, p = OM.passwordPolicy(pw), m = $('#s_policy');
     let ok = p.ok && pw === $('#s_pw2').value;
     if (!pw) { m.textContent = ''; }
-    else if (!p.ok) { m.textContent = '✗ ' + p.issues.join('; '); m.className = 'hint bad'; }
-    else if (pw !== $('#s_pw2').value) { m.textContent = '✗ the two passwords do not match'; m.className = 'hint bad'; }
+    else if (!p.ok) { m.textContent = '✗ ' + p.issues.map(tr).join('; '); m.className = 'hint bad'; }
+    else if (pw !== $('#s_pw2').value) { m.textContent = tr('✗ the two passwords do not match'); m.className = 'hint bad'; }
     else {
       // only a GENERATED password has a known strength; typed words are as strong as they were random
-      m.textContent = pw === lastGenerated ? `✓ generated ${p.words}-word password · ${p.bits} bits`
-        : p.kind === 'words' ? `✓ ${p.words} words — strong only if you picked them at random (the generator does that for you)`
-        : '✓ meets the length and variety requirements (its real strength cannot be measured — a generated password is safer)';
+      m.textContent = pw === lastGenerated ? tr('✓ generated {n}-word password · {bits} bits', { n: p.words, bits: p.bits })
+        : p.kind === 'words' ? tr('✓ {n} words — strong only if you picked them at random (the generator does that for you)', { n: p.words })
+        : tr('✓ meets the length and variety requirements (its real strength cannot be measured — a generated password is safer)');
       m.className = 'hint ok';
     }
     if (saveMode === 'create' && $('#s_usepass').checked) {
       if (!$('#s_pass').value) ok = false;
-      else if ($('#s_pass').value !== $('#s_pass2').value) { ok = false; m.textContent = '✗ the two passphrases do not match'; m.className = 'hint bad'; }
+      else if ($('#s_pass').value !== $('#s_pass2').value) { ok = false; m.textContent = tr('✗ the two passphrases do not match'); m.className = 'hint bad'; }
     }
     $('#s_go').disabled = !ok;
   }
@@ -342,7 +368,7 @@
       // Never hand out a file that cannot be opened: decrypt what we just made and compare.
       const back = await OM.openFile(text, password, bar(40, 80));
       const same = sec.kind === 'seed' ? back.payload.mnemonic === sec.mnemonic : back.payload.wif === sec.wif;
-      if (!same) throw new Error('the encrypted file failed its own verification — nothing was saved, please try again');
+      if (!same) throw new Error(tr('the encrypted file failed its own verification — nothing was saved, please try again'));
       // the form this wallet is held in while open: encrypted, under the same password
       const lk = await OM.lock({ secret: sec, password, fileText: text, filePayload: payload, scriptType }, bar(80, 100));
       ready = { pubs: lk.pubs, vaultText: lk.vaultText, scriptType };
@@ -356,17 +382,17 @@
       ['#s_pw', '#s_pw2', '#s_pass', '#s_pass2'].forEach((s) => { $(s).value = ''; $(s).type = 'password'; });
       $('#c_words').textContent = ''; $('#s_policy').textContent = '';
       const done = $('#s_done'); done.textContent = '';
-      done.append(el('b', null, '✓ Wallet file created and verified: '), name);
-      done.appendChild(el('p', 'hint', 'It was decrypted again with your password to prove it opens. Find it in your Downloads folder and keep a second copy somewhere safe (a USB stick). The file plus its password is everything needed to spend the funds.'));
-      done.appendChild(el('p', 'hint', 'You will be asked for this password each time you send a payment or show your recovery words.'));
-      if (sec.kind === 'seed' && sec.passphrase && !storePass) done.appendChild(el('p', 'hint', 'Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.'));
+      done.append(el('b', null, tr('✓ Wallet file created and verified: ')), name);
+      done.appendChild(el('p', 'hint', tr('It was decrypted again with your password to prove it opens. Find it in your Downloads folder and keep a second copy somewhere safe (a USB stick). The file plus its password is everything needed to spend the funds.')));
+      done.appendChild(el('p', 'hint', tr('You will be asked for this password each time you send a payment or show your recovery words.')));
+      if (sec.kind === 'seed' && sec.passphrase && !storePass) done.appendChild(el('p', 'hint', tr('Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.')));
       show(done); show($('#s_go'), false); show($('#s_progbar'), false); show($('#s_again')); show($('#s_open')); show($('#s_back'), false);
-    } catch (e) { toast('✗ ' + e.message, 'bad'); $('#s_go').disabled = false; show($('#s_progbar'), false); }
+    } catch (e) { toast('✗ ' + tr(e.message), 'bad'); $('#s_go').disabled = false; show($('#s_progbar'), false); }
   });
   $('#s_again').addEventListener('click', () => { if (lastFile) download(lastFile.name, lastFile.text); });
   $('#s_open').addEventListener('click', () => {
     try { const r = ready; ready = null; startSession(OM.open(r)); }
-    catch (e) { toast('✗ ' + e.message, 'bad'); }
+    catch (e) { toast('✗ ' + tr(e.message), 'bad'); }
   });
 
   // =====================================================================================
@@ -377,7 +403,7 @@
   $('#w_open').addEventListener('click', () => {
     resetOpen(); $('#o_file').value = ''; $('#o_info').textContent = ''; $('#o_msg').textContent = ''; pane('open');
   });
-  const readFile = (f) => new Promise((res, rej) => { if (f.size > 70000) return rej(new Error('that file is too large to be an Olesia wallet file')); const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error('could not read that file')); r.readAsText(f); });
+  const readFile = (f) => new Promise((res, rej) => { if (f.size > 70000) return rej(new Error(tr('that file is too large to be an Olesia wallet file'))); const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error(tr('could not read that file'))); r.readAsText(f); });
   $('#o_file').addEventListener('change', async () => {
     resetOpen(); $('#o_msg').textContent = '';
     const f = $('#o_file').files && $('#o_file').files[0], info = $('#o_info');
@@ -386,9 +412,9 @@
       const d = OM.describeFile(await readFile(f));
       info.className = 'hint ' + (d.network === 'mainnet' ? 'ok' : 'bad');
       info.textContent = d.kind === 'legacy-backup'
-        ? `Olesia backup file (${d.network})${d.network === 'mainnet' ? '' : ' — it was made for a test network; opening it here uses the same words on mainnet'}`
-        : `Olesia wallet file · ${d.network} · created ${d.createdAt.slice(0, 10)}`;
-    } catch (e) { info.className = 'hint bad'; info.textContent = '✗ ' + e.message; }
+        ? tr('Olesia backup file ({network})', { network: d.network }) + (d.network === 'mainnet' ? '' : ' ' + tr('— it was made for a test network; opening it here uses the same words on mainnet'))
+        : tr('Olesia wallet file · {network} · created {date}', { network: d.network, date: d.createdAt.slice(0, 10) });
+    } catch (e) { info.className = 'hint bad'; info.textContent = '✗ ' + tr(e.message); }
   });
   [$('#o_pw'), $('#o_pass')].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#o_go').click(); }));
   $('#o_go').addEventListener('click', async () => {
@@ -398,9 +424,9 @@
       $('#o_go').disabled = true;
       if (!opened) {
         const f = $('#o_file').files && $('#o_file').files[0];
-        if (!f) throw new Error('choose your wallet file first');
+        if (!f) throw new Error(tr('choose your wallet file first'));
         const text = await readFile(f), pw = $('#o_pw').value;
-        show($('#o_progbar')); prog(0); msg.textContent = 'Decrypting…';
+        show($('#o_progbar')); prog(0); msg.textContent = tr('Decrypting…');
         await tick();
         opened = { res: await OM.openFile(text, pw, prog), text, name: f.name, pw };
         $('#o_pw').value = '';
@@ -411,16 +437,16 @@
       else {
         let pp = typeof p.passphrase === 'string' ? p.passphrase : '';
         if (p.passphraseUsed && typeof p.passphrase !== 'string') {
-          if ($('#o_passrow').classList.contains('hide')) { show($('#o_passrow')); show($('#o_progbar'), false); msg.textContent = 'File decrypted. Now enter the passphrase for this wallet.'; $('#o_pass').focus(); return; }
+          if ($('#o_passrow').classList.contains('hide')) { show($('#o_passrow')); show($('#o_progbar'), false); msg.textContent = tr('File decrypted. Now enter the passphrase for this wallet.'); $('#o_pass').focus(); return; }
           pp = $('#o_pass').value;
-          if (!pp) throw new Error('enter the wallet passphrase');
+          if (!pp) throw new Error(tr('enter the wallet passphrase'));
           const cand = { kind: 'seed', mnemonic: p.mnemonic, passphrase: pp };
           if (res.legacy) {
             // old backups carry no fingerprint, but they do record the wallet's first address
             const chk = OM.legacyPassphraseCheck({ mnemonic: p.mnemonic, passphrase: pp, legacy: res.legacy });
-            if (chk === 'mismatch') throw new Error('that passphrase does not match this wallet');
-            if (chk === 'unknown') toast(`This older backup cannot check your passphrase. Wallet fingerprint: ${OM.describe(cand).fingerprint} — if that is not the code you expect, the passphrase is wrong.`, 'bad');
-          } else if (p.fingerprint && OM.describe(cand).fingerprint !== p.fingerprint) throw new Error('that passphrase does not match this wallet');
+            if (chk === 'mismatch') throw new Error(tr('that passphrase does not match this wallet'));
+            if (chk === 'unknown') toast(tr('This older backup cannot check your passphrase. Wallet fingerprint: {fp} — if that is not the code you expect, the passphrase is wrong.', { fp: OM.describe(cand).fingerprint }), 'bad');
+          } else if (p.fingerprint && OM.describe(cand).fingerprint !== p.fingerprint) throw new Error(tr('that passphrase does not match this wallet'));
         }
         secret = { kind: 'seed', mnemonic: p.mnemonic, passphrase: pp };
       }
@@ -429,12 +455,12 @@
         return openSave('convert');
       }
       // hold the wallet ENCRYPTED from here on (re-encrypted with the passphrase only if the file lacks it)
-      show($('#o_progbar')); prog(0); msg.textContent = 'Opening…'; await tick();
+      show($('#o_progbar')); prog(0); msg.textContent = tr('Opening…'); await tick();
       const r = await OM.lock({ secret, password: pw, fileText: text, filePayload: p, scriptType: p.scriptType }, prog);
       lastFile = { name, text };
       resetOpen();
       startSession(OM.open({ pubs: r.pubs, vaultText: r.vaultText, scriptType: p.scriptType }));
-    } catch (e) { msg.className = 'hint bad'; msg.textContent = '✗ ' + e.message; }
+    } catch (e) { msg.className = 'hint bad'; msg.textContent = '✗ ' + tr(e.message); }
     finally { $('#o_go').disabled = false; show($('#o_progbar'), false); }
   });
 
@@ -458,14 +484,14 @@
         const d = OM.describe(sec);
         pending = sec; $('#i_phrase').value = ''; $('#i_pass').value = '';
         openSave('import');
-        if (sec.passphrase) toast(`Wallet fingerprint ${d.fingerprint}. The same words and passphrase always give this code — a different code means a different passphrase.`, 'ok');
+        if (sec.passphrase) toast(tr('Wallet fingerprint {fp}. The same words and passphrase always give this code — a different code means a different passphrase.', { fp: d.fingerprint }), 'ok');
       } else {
         const wif = $('#i_wif').value.trim();
         OM.wifInfo(wif);
         pending = { kind: 'wif', wif }; $('#i_wif').value = '';
         openSave('import');
       }
-    } catch (e) { msg.textContent = '✗ ' + e.message; }
+    } catch (e) { msg.textContent = '✗ ' + tr(e.message); }
   });
 
   // =====================================================================================
@@ -477,50 +503,59 @@
     wallet = w; picked.clear(); draft = null; pending = null;
     show($('#lockbtn'));
     const i = w.session('mainnet').info;
-    $('#w_kind').textContent = i.kind === 'seed' ? `${i.words}-word recovery phrase${i.hasPassphrase ? ' + passphrase' : ''}` : `Single private key (${i.compressed ? 'compressed' : 'uncompressed'})`;
-    $('#w_fp').textContent = i.fingerprint;
-    show($('#a_savefile'), !!lastFile);
-    $('#a_reveal').textContent = i.kind === 'seed' ? 'Show recovery phrase' : 'Show private key';
+    sessionRender();
     armIdle(); setNetwork('mainnet');
     clearInterval(autoT); autoT = setInterval(() => { if (!document.hidden && session && !busy.has(session)) refresh(false, true); }, 120000);
+  }
+  function sessionRender() {   // the wallet's own lines in Settings (re-worded when the language changes)
+    if (!wallet) return;
+    const i = wallet.session('mainnet').info;
+    $('#w_kind').textContent = i.kind === 'seed' ? (i.hasPassphrase ? tr('{n}-word recovery phrase + passphrase', { n: i.words }) : tr('{n}-word recovery phrase', { n: i.words })) : (i.compressed ? tr('Single private key (compressed)') : tr('Single private key (uncompressed)'));
+    $('#w_fp').textContent = i.fingerprint;
+    show($('#a_savefile'), !!lastFile);
+    $('#a_reveal').textContent = i.kind === 'seed' ? tr('Show recovery phrase') : tr('Show private key');
   }
   // Show one of this wallet's networks. Mainnet is real bitcoin on the Olesia node; the others
   // are practice networks (same words, separate keys, worthless coins, public relayed data).
   function setNetwork(n) {
     net = n; session = wallet.session(n); picked.clear();
-    const inf = info();
-    $('#netname').textContent = inf.long; $('#netbtn').classList.toggle('test', inf.test);
-    $('#hero').classList.toggle('test', inf.test); show($('#testtag'), inf.test);
-    $('#bal_unit').textContent = inf.unit; $('#t_unit_coin').textContent = inf.unit; $('#t_to').placeholder = inf.hint;
-    $('#w_hint').textContent = inf.test
-      ? `${inf.long} is a practice network: these coins have no value. Balances are looked up through a public data service relayed by the Olesia server.`
-      : 'Balances, confirmations and fee estimates all come from one source: the Olesia Bitcoin node. This page cannot check them against a second source, so before treating a large incoming payment as final, confirm it independently. An incoming payment appears here after its first confirmation (about 10 minutes). The price shown is for information only.';
-    $('#t_feehint').textContent = inf.test ? 'Fee estimates come from the public data service. On practice networks almost any fee confirms.' : 'Fee estimates come from the Olesia node. A higher rate confirms sooner.';
-    $('#c_note').textContent = inf.test ? `Shown from the signed transaction itself. This is ${inf.long}: practice coins, no value.` : 'Shown from the signed transaction itself. Bitcoin payments cannot be reversed.';
-    $('#w_source').firstChild.textContent = inf.test ? 'Public data service · block ' : 'Olesia node · block ';
+    networkRender();
     show($('#deeper_row'), session.info.kind === 'seed');
-    $('#bal').textContent = '—'; $('#bal_sub').textContent = ''; $('#bal_fiat').textContent = ''; $('#coins').textContent = ''; $('#coins').appendChild(el('p', 'hint', 'Loading…'));
+    $('#bal').textContent = '—'; $('#bal_sub').textContent = ''; $('#bal_fiat').textContent = ''; $('#coins').textContent = ''; $('#coins').appendChild(el('p', 'hint', tr('Loading…')));
     show($('#scanbox'), false);
     pane('wallet');
     if (session.scanned) renderWallet(); 
     if (!busy.has(session)) refresh(false, session.scanned);
+  }
+  function networkRender() {   // the words that depend on which network is shown
+    if (!session) return;
+    const inf = info();
+    $('#netname').textContent = tr(inf.long); $('#netbtn').classList.toggle('test', inf.test);
+    $('#hero').classList.toggle('test', inf.test); show($('#testtag'), inf.test);
+    $('#bal_unit').textContent = inf.unit; $('#t_unit_coin').textContent = inf.unit; $('#t_to').placeholder = tr(inf.hint);
+    $('#w_hint').textContent = inf.test
+      ? tr('{network} is a practice network: these coins have no value. Balances are looked up through a public data service relayed by the Olesia server.', { network: tr(inf.long) })
+      : tr('Balances, confirmations and fee estimates all come from one source: the Olesia Bitcoin node. This page cannot check them against a second source, so before treating a large incoming payment as final, confirm it independently. An incoming payment appears here after its first confirmation (about 10 minutes). The price shown is for information only.');
+    $('#t_feehint').textContent = inf.test ? tr('Fee estimates come from the public data service. On practice networks almost any fee confirms.') : tr('Fee estimates come from the Olesia node. A higher rate confirms sooner.');
+    $('#c_note').textContent = inf.test ? tr('Shown from the signed transaction itself. This is {network}: practice coins, no value.', { network: tr(inf.long) }) : tr('Shown from the signed transaction itself. Bitcoin payments cannot be reversed.');
+    $('#w_source').firstChild.textContent = inf.test ? tr('Public data service · block ') : tr('Olesia node · block ');
   }
   async function refresh(force, quiet) {
     const s = session;
     if (!s || busy.has(s)) return;
     busy.add(s); $('#a_refresh').disabled = true;
     const first = !s.scanned, test = OM.netInfo[s.info.network].test, shown = () => s === session;
-    if ((!quiet || first) && shown()) { show($('#scanbox')); $('#scanbar').style.width = '2%'; $('#scanmsg').textContent = test ? 'Looking up your practice coins…' : 'Contacting the Olesia node…'; }
+    if ((!quiet || first) && shown()) { show($('#scanbox')); $('#scanbar').style.width = '2%'; $('#scanmsg').textContent = test ? tr('Looking up your practice coins…') : tr('Contacting the Olesia node…'); }
     try {
       await s.refresh({ force, onProgress: (v) => {
         if (!shown()) return;
         show($('#scanbox'));
-        if (v.state === 'queued') { $('#scanmsg').textContent = `Waiting for the node (position ${v.position} in the queue)…`; $('#scanbar').style.width = '3%'; }
-        else { const p = Math.max(3, Math.min(99, Math.round(v.progress || 0))); $('#scanbar').style.width = p + '%'; $('#scanmsg').textContent = test ? `Looking up your practice coins… ${p}%` : `Searching the Bitcoin UTXO set for your coins… ${p}% (the first lookup takes a few minutes)`; }
+        if (v.state === 'queued') { $('#scanmsg').textContent = tr('Waiting for the node (position {n} in the queue)…', { n: v.position }); $('#scanbar').style.width = '3%'; }
+        else { const p = Math.max(3, Math.min(99, Math.round(v.progress || 0))); $('#scanbar').style.width = p + '%'; $('#scanmsg').textContent = test ? tr('Looking up your practice coins… {p}%', { p }) : tr('Searching the Bitcoin UTXO set for your coins… {p}% (the first lookup takes a few minutes)', { p }); }
       } });
       if (shown()) { show($('#scanbox'), false); renderWallet(); }
     } catch (e) {
-      if (shown()) { $('#scanmsg').textContent = '✗ ' + e.message; $('#scanbar').style.width = '0%'; show($('#scanbox')); if (!quiet) toast('✗ ' + e.message, 'bad'); }
+      if (shown()) { $('#scanmsg').textContent = '✗ ' + tr(e.message); $('#scanbar').style.width = '0%'; show($('#scanbox')); if (!quiet) toast('✗ ' + tr(e.message), 'bad'); }
     } finally { busy.delete(s); if (shown()) $('#a_refresh').disabled = false; }
   }
   $('#a_refresh').addEventListener('click', () => refresh(false));
@@ -529,17 +564,17 @@
     $('#bal').textContent = btc(s.confirmed + s.pendingChange);
     $('#bal_fiat').textContent = inf.test ? '' : fiat(s.confirmed + s.pendingChange);
     const dp = session.depth;
-    if (dp) { $('#depth').textContent = `Searched the first ${dp.range} addresses of this ${inf.label} wallet.`; $('#a_deeper').disabled = dp.range >= dp.max; }
+    if (dp) { $('#depth').textContent = tr('Searched the first {n} addresses of this {network} wallet.', { n: dp.range, network: tr(inf.label) }); $('#a_deeper').disabled = dp.range >= dp.max; }
     const parts = [];
-    if (s.outgoing) parts.push(`${btc(s.outgoing)} being spent by an unconfirmed transaction`);
-    if (s.pendingChange) parts.push(`${btc(s.pendingChange)} change returning (unconfirmed)`);
-    if (s.immature) parts.push(`${btc(s.immature)} immature`);
+    if (s.outgoing) parts.push(tr('{amount} being spent by an unconfirmed transaction', { amount: btc(s.outgoing) }));
+    if (s.pendingChange) parts.push(tr('{amount} change returning (unconfirmed)', { amount: btc(s.pendingChange) }));
+    if (s.immature) parts.push(tr('{amount} immature', { amount: btc(s.immature) }));
     const waiting = s.confirmed - s.spendable - s.immature;
-    if (waiting > 0 && !s.outgoing) parts.push(`${btc(waiting)} waiting for a first confirmation`);
-    $('#bal_sub').textContent = parts.length ? parts.join(' · ') : `${Number(s.spendable).toLocaleString('en-US')} sats spendable`;
+    if (waiting > 0 && !s.outgoing) parts.push(tr('{amount} waiting for a first confirmation', { amount: btc(waiting) }));
+    $('#bal_sub').textContent = parts.length ? parts.join(' · ') : tr('{n} sats spendable', { n: Number(s.spendable).toLocaleString('en-US') });
     $('#w_height').textContent = s.height == null ? '—' : Number(s.height).toLocaleString('en-US');
     const of = $('#oldfmt');
-    if (s.oldFormat && session.coinList().some((c) => c.spendable && c.group === 'std')) { show(of); of.textContent = `${btc(s.oldFormat)} ${inf.unit} is held in very old formats (P2PK / uncompressed key). These coins are spent separately: tick them below, then Send.`; }
+    if (s.oldFormat && session.coinList().some((c) => c.spendable && c.group === 'std')) { show(of); of.textContent = tr('{amount} {unit} is held in very old formats (P2PK / uncompressed key). These coins are spent separately: tick them below, then Send.', { amount: btc(s.oldFormat), unit: inf.unit }); }
     else show(of, false);
     renderCoins(); renderActivity();
   }
@@ -547,23 +582,23 @@
     const list = session.coinList(), box = $('#coins'), unit = info().unit; box.textContent = '';
     $('#coins_n').textContent = list.length ? `· ${list.length}` : '';
     for (const id of [...picked]) if (!list.some((c) => c.id === id && c.spendable)) picked.delete(id);
-    if (!list.length) { box.appendChild(el('p', 'hint', info().test ? 'No practice coins yet. Use the Faucet tab to get some.' : 'No coins yet. Use Receive to get your first address.')); return; }
+    if (!list.length) { box.appendChild(el('p', 'hint', info().test ? tr('No practice coins yet. Use the Faucet tab to get some.') : tr('No coins yet. Use Receive to get your first address.'))); return; }
     list.forEach((c) => {
       const row = el('div', 'coin');
       const cb = el('input'); cb.type = 'checkbox'; cb.disabled = !c.spendable; cb.checked = picked.has(c.id);
-      cb.setAttribute('aria-label', 'Spend this coin');
+      cb.setAttribute('aria-label', tr('Spend this coin'));
       cb.addEventListener('change', () => { if (cb.checked) picked.add(c.id); else picked.delete(c.id); });
       const m = el('div', 'm');
       const a = el('div', 'a', btc(c.value) + ' ' + unit);
-      a.appendChild(el('span', 'tag', c.typeLabel));
-      if (c.spentInMempool) a.appendChild(el('span', 'tag bad', 'being spent'));
-      else if (c.immature) a.appendChild(el('span', 'tag bad', 'immature'));
-      else if (!c.confirmations) a.appendChild(el('span', 'tag', 'unconfirmed'));
-      else a.appendChild(el('span', 'tag okk', c.confirmations >= 6 ? '6+ conf' : c.confirmations + ' conf'));
+      a.appendChild(el('span', 'tag', tr(c.typeLabel)));
+      if (c.spentInMempool) a.appendChild(el('span', 'tag bad', tr('being spent')));
+      else if (c.immature) a.appendChild(el('span', 'tag bad', tr('immature')));
+      else if (!c.confirmations) a.appendChild(el('span', 'tag', tr('unconfirmed')));
+      else a.appendChild(el('span', 'tag okk', c.confirmations >= 6 ? tr('6+ conf') : tr('{n} conf', { n: c.confirmations })));
       m.appendChild(a);
-      m.appendChild(el('div', 'd', (c.address || 'bare public key (no address)') + ' · ' + c.path));
-      const d2 = el('div', 'd', `${c.height == null ? 'not yet in a block' : 'block ' + c.height} · ${c.txid}:${c.vout} `);
-      const link = el('a', null, 'view ↗'); link.href = session.explorer + encodeURIComponent(c.txid); link.target = '_blank'; link.rel = 'noopener noreferrer';
+      m.appendChild(el('div', 'd', (c.address || tr('bare public key (no address)')) + ' · ' + c.path));
+      const d2 = el('div', 'd', `${c.height == null ? tr('not yet in a block') : tr('block {n}', { n: c.height })} · ${c.txid}:${c.vout} `);
+      const link = el('a', null, tr('view ↗')); link.href = session.explorer + encodeURIComponent(c.txid); link.target = '_blank'; link.rel = 'noopener noreferrer';
       d2.appendChild(link); m.appendChild(d2);
       row.append(cb, m); box.appendChild(row);
     });
@@ -574,11 +609,11 @@
     session.sent.forEach((s) => {
       const row = el('div', 'coin'), m = el('div', 'm');
       const a = el('div', 'a', '−' + btc(s.sent + s.fee) + ' ' + unit);
-      a.appendChild(el('span', 'tag ' + (s.status === 'confirmed' ? 'okk' : s.status === 'dropped' ? 'bad' : ''), s.status === 'dropped' ? 'not in mempool' : s.status));
-      m.appendChild(a); m.appendChild(el('div', 'd', 'to ' + s.to));
-      if (s.message != null) m.appendChild(el('div', 'd', 'message: “' + s.message + '”'));
+      a.appendChild(el('span', 'tag ' + (s.status === 'confirmed' ? 'okk' : s.status === 'dropped' ? 'bad' : ''), s.status === 'dropped' ? tr('not in mempool') : tr(s.status)));
+      m.appendChild(a); m.appendChild(el('div', 'd', tr('to {address}', { address: s.to })));
+      if (s.message != null) m.appendChild(el('div', 'd', tr('message: “{text}”', { text: s.message })));
       const d2 = el('div', 'd', s.txid + ' ');
-      const link = el('a', null, 'view ↗'); link.href = s.explorer; link.target = '_blank'; link.rel = 'noopener noreferrer'; d2.appendChild(link);
+      const link = el('a', null, tr('view ↗')); link.href = s.explorer; link.target = '_blank'; link.rel = 'noopener noreferrer'; d2.appendChild(link);
       m.appendChild(d2); row.appendChild(m); box.appendChild(row);
     });
   }
@@ -587,18 +622,18 @@
   function renderNetworks() {
     const box = $('#netlist'); box.textContent = '';
     const single = wallet.networks.length === 1;
-    $('#net_sub').textContent = single ? 'This wallet is a single private key: it exists on Bitcoin mainnet only.' : 'One recovery phrase, four networks.';
-    const SUB = { mainnet: 'Real bitcoin · Olesia node', testnet4: 'Practice network', signet: 'Practice network · steady blocks', testnet3: 'Practice network · older' };
+    $('#net_sub').textContent = single ? tr('This wallet is a single private key: it exists on Bitcoin mainnet only.') : tr('One recovery phrase, four networks.');
+    const SUB = { mainnet: tr('Real bitcoin · Olesia node'), testnet4: tr('Practice network'), signet: tr('Practice network · steady blocks'), testnet3: tr('Practice network · older') };
     wallet.networks.forEach((n) => {
       const inf = OM.netInfo[n];
       const row = el('button', 'netrow' + (n === net ? ' on' : '')); row.type = 'button'; row.dataset.net = n;
       row.appendChild(el('span', 'dot' + (inf.test ? '' : ' main')));
-      const m = el('span', 'm'), nm = el('span', 'n', inf.label);
-      nm.appendChild(el('span', 'tag ' + (inf.test ? '' : 'real'), inf.test ? 'no value' : 'real bitcoin'));
+      const m = el('span', 'm'), nm = el('span', 'n', tr(inf.label));
+      nm.appendChild(el('span', 'tag ' + (inf.test ? '' : 'real'), inf.test ? tr('no value') : tr('real bitcoin')));
       m.append(nm, el('span', 's', SUB[n] || ''));
       const v = el('span', 'v');
       if (wallet.opened(n) && wallet.session(n).scanned) { const sm = wallet.session(n).summary(); v.textContent = btc(sm.confirmed + sm.pendingChange); v.appendChild(el('small', null, inf.unit)); }
-      else { v.textContent = '—'; v.appendChild(el('small', null, wallet.opened(n) && n === net ? 'loading…' : 'tap to open')); }
+      else { v.textContent = '—'; v.appendChild(el('small', null, wallet.opened(n) && n === net ? tr('loading…') : tr('tap to open'))); }
       row.append(m, v);
       row.addEventListener('click', () => setNetwork(n));
       box.appendChild(row);
@@ -615,34 +650,34 @@
     if (!nets.includes(faucetNet)) faucetNet = nets[0];
     const seg = $('#f_nets'); seg.textContent = '';
     nets.forEach((n) => {
-      const b = el('button', n === faucetNet ? 'on' : '', OM.netInfo[n].label); b.type = 'button'; b.dataset.net = n;
+      const b = el('button', n === faucetNet ? 'on' : '', tr(OM.netInfo[n].label)); b.type = 'button'; b.dataset.net = n;
       b.addEventListener('click', () => { faucetNet = n; renderFaucet(); });
       seg.appendChild(b);
     });
     const addr = wallet.session(faucetNet).receive('p2wpkh').address;   // derived locally; no lookup needed
-    $('#f_netname').textContent = OM.netInfo[faucetNet].long;
+    $('#f_netname').textContent = tr(OM.netInfo[faucetNet].long);
     $('#f_addr').textContent = addr;
     $('#f_go').href = OM.faucetUrl + '?network=' + encodeURIComponent(faucetNet) + '&address=' + encodeURIComponent(addr);
-    $('#f_open').textContent = `Open my ${OM.netInfo[faucetNet].label} wallet`;
+    $('#f_open').textContent = tr('Open my {network} wallet', { network: tr(OM.netInfo[faucetNet].label) });
   }
   $('#f_open').addEventListener('click', () => setNetwork(faucetNet));
 
   // the encrypted file can be downloaded again at any time — it is only ciphertext
-  $('#a_savefile').addEventListener('click', () => { if (lastFile) { download(lastFile.name, lastFile.text); toast('Wallet file downloaded again.', 'ok'); } });
+  $('#a_savefile').addEventListener('click', () => { if (lastFile) { download(lastFile.name, lastFile.text); toast(tr('Wallet file downloaded again.'), 'ok'); } });
   // a restored, heavily used wallet may hold coins on addresses beyond the default search window
-  $('#a_deeper').addEventListener('click', () => { session.scanDeeper(); toast('Searching more addresses…'); refresh(false); });
+  $('#a_deeper').addEventListener('click', () => { session.scanDeeper(); toast(tr('Searching more addresses…')); refresh(false); });
 
   // ---- reveal the secret: needs the wallet password; auto-hides after 60 s ----
   let hideT;
   function hideReveal() { clearTimeout(hideT); show($('#reveal_box'), false); $('#reveal_words').textContent = ''; $('#reveal_wif').textContent = ''; }
   $('#a_reveal').addEventListener('click', async () => {
     if (!$('#reveal_box').classList.contains('hide')) return hideReveal();
-    const r = await withPassword('Enter your wallet password', 'Needed to decrypt and show your ' + (session.info.kind === 'seed' ? 'recovery phrase' : 'private key') + '. Make sure nobody can see your screen.',
+    const r = await withPassword(tr('Enter your wallet password'), session.info.kind === 'seed' ? tr('Needed to decrypt and show your recovery phrase. Make sure nobody can see your screen.') : tr('Needed to decrypt and show your private key. Make sure nobody can see your screen.'),
       (pw, prog) => wallet.reveal(pw, prog));
-    if (!r.ok) { if (r.error) toast('✗ ' + r.error.message, 'bad'); return; }
+    if (!r.ok) { if (r.error) toast('✗ ' + tr(r.error.message), 'bad'); return; }
     const sec = r.value;
-    if (sec.kind === 'seed') { renderWords($('#reveal_words'), sec.mnemonic); show($('#reveal_wif'), false); $('#reveal_note').textContent = (sec.hasPassphrase ? 'This wallet also needs its passphrase (not shown). ' : '') + 'Hides automatically in 60 seconds.'; }
-    else { $('#reveal_words').textContent = ''; $('#reveal_wif').textContent = sec.wif; show($('#reveal_wif')); $('#reveal_note').textContent = 'Hides automatically in 60 seconds.'; }
+    if (sec.kind === 'seed') { renderWords($('#reveal_words'), sec.mnemonic); show($('#reveal_wif'), false); $('#reveal_note').textContent = (sec.hasPassphrase ? tr('This wallet also needs its passphrase (not shown).') + ' ' : '') + tr('Hides automatically in 60 seconds.'); }
+    else { $('#reveal_words').textContent = ''; $('#reveal_wif').textContent = sec.wif; show($('#reveal_wif')); $('#reveal_note').textContent = tr('Hides automatically in 60 seconds.'); }
     show($('#reveal_box')); clearTimeout(hideT); hideT = setTimeout(hideReveal, 60000);
   });
 
@@ -651,7 +686,7 @@
   // =====================================================================================
   $('#a_recv').addEventListener('click', () => {
     const sel = $('#r_type'); sel.textContent = '';
-    const NAMES = info().test ? { p2wpkh: 'SegWit (tb1…) — recommended', p2pkh: 'Legacy (m… / n…)' } : { p2wpkh: 'SegWit (bc1…) — recommended', p2pkh: 'Legacy (1…)' };
+    const NAMES = info().test ? { p2wpkh: tr('SegWit (tb1…) — recommended'), p2pkh: tr('Legacy (m… / n…)') } : { p2wpkh: tr('SegWit (bc1…) — recommended'), p2pkh: tr('Legacy (1…)') };
     session.receiveTypes().forEach((t) => { const o = el('option', null, NAMES[t] || t); o.value = t; sel.appendChild(o); });
     sel.value = session.info.scriptType;
     show($('#r_typebox'), sel.options.length > 1);
@@ -661,13 +696,13 @@
   $('#r_type').addEventListener('change', () => { session.setPref($('#r_type').value); renderReceive(session.receive($('#r_type').value)); });
   async function renderReceive(r) {
     $('#r_addr').textContent = r.address;
-    $('#r_path').textContent = r.single ? 'This private key has one address of each type; it is reused for every payment.' : `${r.path} · address #${r.index}`;
+    $('#r_path').textContent = r.single ? tr('This private key has one address of each type; it is reused for every payment.') : tr('{path} · address #{n}', { path: r.path, n: r.index });
     show($('#r_next'), !r.single);
     try { $('#r_qr').src = await OM.qr(r.address); } catch { $('#r_qr').removeAttribute('src'); }
   }
   $('#r_next').addEventListener('click', () => renderReceive(session.nextReceive($('#r_type').value)));
   $('#r_copy').addEventListener('click', () => {
-    navigator.clipboard.writeText($('#r_addr').textContent).then(() => toast('Address copied', 'ok')).catch(() => toast('Could not copy — select the address and copy it manually', 'bad'));
+    navigator.clipboard.writeText($('#r_addr').textContent).then(() => toast(tr('Address copied'), 'ok')).catch(() => toast(tr('Could not copy — select the address and copy it manually'), 'bad'));
   });
 
   // =====================================================================================
@@ -675,12 +710,12 @@
   // =====================================================================================
   let fees = null, feeChoice = 'normal';
   $('#a_send').addEventListener('click', async () => {
-    if (!session.scanned) return toast('Your coins are still loading — please wait for the lookup to finish.', 'bad');
+    if (!session.scanned) return toast(tr('Your coins are still loading — please wait for the lookup to finish.'), 'bad');
     ['#t_to', '#t_amt', '#t_fee', '#t_note'].forEach((s) => { $(s).value = ''; }); $('#t_all').checked = false; $('#t_amt').disabled = false;
     $('#t_msg').textContent = ''; show($('#t_result'), false); noteRender();
     const list = session.coinList().filter((c) => c.spendable);
     const use = picked.size ? list.filter((c) => picked.has(c.id)) : (list.some((c) => c.group === 'std') ? list.filter((c) => c.group === 'std') : list);
-    $('#t_avail').textContent = `${picked.size ? 'Spending only the ' + use.length + ' ticked coin' + (use.length === 1 ? '' : 's') : 'Available'}: ${btc(use.reduce((a, c) => a + c.value, 0))} ${info().unit}`;
+    $('#t_avail').textContent = (picked.size ? (use.length === 1 ? tr('Spending only the 1 ticked coin') : tr('Spending only the {n} ticked coins', { n: use.length })) : tr('Available')) + `: ${btc(use.reduce((a, c) => a + c.value, 0))} ${info().unit}`;
     pane('send'); fees = undefined; renderFees();
     const forNet = net;
     try { fees = await OM.fees(forNet); } catch { fees = null; }
@@ -689,8 +724,8 @@
   });
   function renderFees() {
     const box = $('#t_fees'); box.textContent = '';
-    const opts = fees ? [['slow', 'Slow', fees.slow], ['normal', 'Normal', fees.normal], ['fast', 'Fast', fees.fast]].filter((o) => o[2]) : [];
-    if (!opts.length) { box.appendChild(el('span', 'hint', fees === null ? 'Fee estimates unavailable — enter a rate below.' : fees === undefined ? 'Loading fee estimates…' : '')); return; }
+    const opts = fees ? [['slow', tr('Slow'), fees.slow], ['normal', tr('Normal'), fees.normal], ['fast', tr('Fast'), fees.fast]].filter((o) => o[2]) : [];
+    if (!opts.length) { box.appendChild(el('span', 'hint', fees === null ? tr('Fee estimates unavailable — enter a rate below.') : fees === undefined ? tr('Loading fee estimates…') : '')); return; }
     if (!opts.some((o) => o[0] === feeChoice)) feeChoice = opts[0][0];
     opts.forEach(([id, name, rate]) => {
       const b = el('button', id === feeChoice && !$('#t_fee').value ? 'on' : '', `${name} · ${rate} sat/vB`); b.type = 'button';
@@ -702,29 +737,29 @@
   // optional OP_RETURN message: live byte count (UTF-8 bytes, not characters)
   function noteRender() {
     const n = OM.messageBytes($('#t_note').value), c = $('#t_notecount');
-    c.textContent = `${n} / ${OM.messageMax} bytes`; c.className = n > OM.messageMax ? 'bad' : '';
+    c.textContent = tr('{n} / {max} bytes', { n, max: OM.messageMax }); c.className = n > OM.messageMax ? 'bad' : '';
   }
   $('#t_note').addEventListener('input', noteRender);
   // "message only": pay yourself, so no coins leave the wallet except the network fee
   $('#t_self').addEventListener('click', () => {
     $('#t_to').value = session.receive().address;
     if (!$('#t_all').checked) { $('#t_all').checked = true; $('#t_amt').disabled = true; $('#t_amt').value = ''; }
-    toast('Destination set to your own address. Everything comes back to you, minus the network fee.');
+    toast(tr('Destination set to your own address. Everything comes back to you, minus the network fee.'));
   });
   $('#t_all').addEventListener('change', () => { $('#t_amt').disabled = $('#t_all').checked; if ($('#t_all').checked) $('#t_amt').value = ''; });
   // exact decimal -> satoshi conversion (no floating point)
   function parseAmount(text, unit) {
     const s = String(text || '').trim().replace(/,/g, '');
-    if (unit === 'sat') { if (!/^\d{1,16}$/.test(s)) throw new Error('enter the amount as a whole number of sats'); return Number(s); }
+    if (unit === 'sat') { if (!/^\d{1,16}$/.test(s)) throw new Error(tr('enter the amount as a whole number of sats')); return Number(s); }
     const m = s.match(/^(\d{0,8})(?:\.(\d{1,8}))?$/);
-    if (!m || (!m[1] && !m[2])) throw new Error(`enter the amount in ${info().unit}, for example 0.0005 (at most 8 decimal places)`);
+    if (!m || (!m[1] && !m[2])) throw new Error(tr('enter the amount in {unit}, for example 0.0005 (at most 8 decimal places)', { unit: info().unit }));
     return Number(m[1] || '0') * 100000000 + Number((m[2] || '').padEnd(8, '0'));
   }
   function currentFeeRate() {
     const custom = $('#t_fee').value.trim();
-    if (custom) { if (!/^\d{1,4}$/.test(custom) || Number(custom) < 1) throw new Error('fee rate must be a whole number of sat/vB, 1 or more'); return Number(custom); }
+    if (custom) { if (!/^\d{1,4}$/.test(custom) || Number(custom) < 1) throw new Error(tr('fee rate must be a whole number of sat/vB, 1 or more')); return Number(custom); }
     if (fees && fees[feeChoice]) return fees[feeChoice];
-    throw new Error('enter a fee rate (sat/vB) — the node gave no estimate');
+    throw new Error(tr('enter a fee rate (sat/vB) — the node gave no estimate'));
   }
   let confirmResolve = null;
   function closeConfirm(v) { $('#confirm').classList.remove('on'); if (confirmResolve) { const r = confirmResolve; confirmResolve = null; r(v); } }
@@ -735,17 +770,17 @@
     const rows = $('#c_rows'); rows.textContent = '';
     const add = (k, v, sub) => { const r = el('div', 'crow'); r.appendChild(el('span', 'k', k)); const vv = el('span', 'v', v); if (sub) vv.appendChild(el('small', null, sub)); r.appendChild(vv); rows.appendChild(r); };
     const unit = info().unit;
-    add('Network', info().long, info().test ? 'practice coins · no value' : 'real bitcoin');
-    add('To', b.to, `${btc(b.sent)} ${unit} · ${b.sent.toLocaleString('en-US')} sats`);
-    if (b.change) add('Change back to you', b.changeAddress, `${btc(b.change)} ${unit}${b.changePath ? ' · ' + b.changePath : ''}`);
-    if (b.message != null) add('Message (OP_RETURN)', '“' + b.message + '”', `${b.messageBytes} bytes · public and permanent`);
-    add('Network fee', `${b.fee.toLocaleString('en-US')} sats`, `${b.effectiveFeeRate.toFixed(1)} sat/vB · ${b.vsize} vB`);
-    add('Total leaving the wallet', `${btc(b.sent + b.fee)} ${unit}`);
-    add('Coins spent', String(b.inputs.length));
-    add('Transaction id', b.txid.slice(0, 20) + '…', 'exactly these signed bytes will be sent');
+    add(tr('Network'), tr(info().long), info().test ? tr('practice coins · no value') : tr('real bitcoin'));
+    add(tr('To'), b.to, `${btc(b.sent)} ${unit} · ` + tr('{n} sats', { n: b.sent.toLocaleString('en-US') }));
+    if (b.change) add(tr('Change back to you'), b.changeAddress, `${btc(b.change)} ${unit}${b.changePath ? ' · ' + b.changePath : ''}`);
+    if (b.message != null) add(tr('Message (OP_RETURN)'), '“' + b.message + '”', tr('{n} bytes · public and permanent', { n: b.messageBytes }));
+    add(tr('Network fee'), tr('{n} sats', { n: b.fee.toLocaleString('en-US') }), `${b.effectiveFeeRate.toFixed(1)} sat/vB · ${b.vsize} vB`);
+    add(tr('Total leaving the wallet'), `${btc(b.sent + b.fee)} ${unit}`);
+    add(tr('Coins spent'), String(b.inputs.length));
+    add(tr('Transaction id'), b.txid.slice(0, 20) + '…', tr('exactly these signed bytes will be sent'));
     const warns = [];
-    if (b.fee > b.sent * 0.1) warns.push(`The fee is ${(b.fee / b.sent * 100).toFixed(1)}% of the amount being sent.`);
-    if (b.effectiveFeeRate > 200) warns.push(`The fee rate (${b.effectiveFeeRate.toFixed(0)} sat/vB) is unusually high.`);
+    if (b.fee > b.sent * 0.1) warns.push(tr('The fee is {pct}% of the amount being sent.', { pct: (b.fee / b.sent * 100).toFixed(1) }));
+    if (b.effectiveFeeRate > 200) warns.push(tr('The fee rate ({rate} sat/vB) is unusually high.', { rate: b.effectiveFeeRate.toFixed(0) }));
     const w = $('#c_warn'); show(w, warns.length > 0); w.textContent = warns.join(' ');
     show($('#c_ackrow'), warns.length > 0); $('#c_ack').checked = false; $('#c_go').disabled = warns.length > 0;
     $('#confirm').classList.add('on');
@@ -756,38 +791,38 @@
     const btn = $('#t_review');
     try {
       const to = $('#t_to').value.trim();
-      if (!to) throw new Error('enter the address to send to');
-      if (!OM.checkAddress(to, net)) throw new Error(`that is not a valid ${info().long} address`);
+      if (!to) throw new Error(tr('enter the address to send to'));
+      if (!OM.checkAddress(to, net)) throw new Error(tr('that is not a valid {network} address', { network: tr(info().long) }));
       const sweep = $('#t_all').checked;
       const amount = sweep ? null : parseAmount($('#t_amt').value, $('#t_unit').value);
       const feeRate = currentFeeRate();
       const message = $('#t_note').value.trim() || null;
-      if (message && OM.messageBytes(message) > OM.messageMax) throw new Error(`the message is ${OM.messageBytes(message)} bytes — the limit is ${OM.messageMax}`);
+      if (message && OM.messageBytes(message) > OM.messageMax) throw new Error(tr('the message is {n} bytes — the limit is {max}', { n: OM.messageBytes(message), max: OM.messageMax }));
       btn.disabled = true;
       // The wallet is held encrypted: the password decrypts it for THIS signature only.
       // SECURITY INVARIANT: build + sign ONCE, show what the signed bytes say, then broadcast
       // those exact bytes. Nothing is re-fetched, re-selected or re-signed after confirmation.
       const args = { to, amount, sweep, feeRate, coinIds: picked.size ? [...picked] : null, message };
       const sendNet = net, sendSession = session;   // a payment belongs to the network it was started on
-      const r = await withPassword('Enter your wallet password', 'Needed to sign this payment. You will see every detail before anything is sent.', (pw, prog) => wallet.prepare(sendNet, args, pw, prog));
-      if (!r.ok) { if (r.error) throw r.error; msg.textContent = 'Cancelled — nothing was sent.'; return; }
-      if (sendNet !== net) throw new Error('the network was switched while signing — nothing was sent');
+      const r = await withPassword(tr('Enter your wallet password'), tr('Needed to sign this payment. You will see every detail before anything is sent.'), (pw, prog) => wallet.prepare(sendNet, args, pw, prog));
+      if (!r.ok) { if (r.error) throw r.error; msg.textContent = tr('Cancelled — nothing was sent.'); return; }
+      if (sendNet !== net) throw new Error(tr('the network was switched while signing — nothing was sent'));
       const built = r.value;
       msg.textContent = '';
-      if (!(await confirmSheet(built))) { msg.textContent = 'Cancelled — nothing was sent.'; return; }
-      msg.textContent = info().test ? 'Broadcasting…' : 'Broadcasting through the Olesia node…';
+      if (!(await confirmSheet(built))) { msg.textContent = tr('Cancelled — nothing was sent.'); return; }
+      msg.textContent = info().test ? tr('Broadcasting…') : tr('Broadcasting through the Olesia node…');
       const res = await sendSession.broadcast(built);
       picked.clear(); msg.textContent = '';
       const box = $('#t_result'); box.textContent = '';
-      box.appendChild(el('b', 'ok', '✓ Sent'));
+      box.appendChild(el('b', 'ok', tr('✓ Sent')));
       box.appendChild(el('p', 'mono', res.txid));
-      const link = el('a', null, 'View on a block explorer ↗'); link.href = res.explorer; link.target = '_blank'; link.rel = 'noopener noreferrer'; box.appendChild(link);
-      box.appendChild(el('p', 'hint', 'It will confirm in the next blocks. Your change returns to this wallet once it confirms.'));
+      const link = el('a', null, tr('View on a block explorer ↗')); link.href = res.explorer; link.target = '_blank'; link.rel = 'noopener noreferrer'; box.appendChild(link);
+      box.appendChild(el('p', 'hint', tr('It will confirm in the next blocks. Your change returns to this wallet once it confirms.')));
       show(box); ['#t_to', '#t_amt', '#t_note'].forEach((s) => { $(s).value = ''; }); noteRender(); $('#t_all').checked = false; $('#t_amt').disabled = false;
       renderWallet();
     } catch (e) {
-      let m = e.message;
-      if (/coin selection failed|insufficient/i.test(m)) m = 'Not enough spendable coins for that amount plus the network fee.';
+      let m = tr(e.message);
+      if (/coin selection failed|insufficient/i.test(e.message)) m = tr('Not enough spendable coins for that amount plus the network fee.');
       msg.className = 'hint bad'; msg.textContent = '✗ ' + m;
     } finally { btn.disabled = false; }
   });
@@ -822,8 +857,8 @@
   // so a previous key can never linger under a new result.
   function vanityForget() {
     vanityResult = null; vDiscardArmed = 0;
-    $('#v_wif').textContent = ''; show($('#v_wif'), false); show($('#v_wifwarn'), false); $('#v_showkey').textContent = 'Show private key';
-    $('#v_addr').textContent = ''; $('#v_found_stats').textContent = ''; $('#v_discard').textContent = 'Discard and start over';
+    $('#v_wif').textContent = ''; show($('#v_wif'), false); show($('#v_wifwarn'), false); $('#v_showkey').textContent = tr('Show private key');
+    $('#v_addr').textContent = ''; $('#v_found_stats').textContent = ''; $('#v_discard').textContent = tr('Discard and start over');
     show($('#v_result'), false); show($('#v_unsaved'), false);
     vanityLockForm(false);
   }
@@ -841,11 +876,11 @@
     $('#v_fixed').textContent = V.types[t].hrp;
     $('#v_text').placeholder = t === 'p2wpkh' ? 'jon' : 'Jon';
     $('#v_typehint').textContent = t === 'p2wpkh'
-      ? 'SegWit is the modern standard: lower fees, and each character is only 32× harder than the last (Legacy: 58×). Always lower-case.'
-      : 'Legacy "1…" addresses: older style, higher fees. Upper and lower case are different characters — tick "any capitalisation" to make it easier.';
+      ? tr('SegWit is the modern standard: lower fees, and each character is only 32× harder than the last (Legacy: 58×). Always lower-case.')
+      : tr('Legacy "1…" addresses: older style, higher fees. Upper and lower case are different characters — tick "any capitalisation" to make it easier.');
     $('#v_alpha').textContent = t === 'p2wpkh'
-      ? 'Allowed: q p z r y 9 x 8 g f 2 t v d w 0 s 3 j n 5 4 k h c e 6 m u a 7 l — no b, i, o or 1.'
-      : 'Allowed: digits 1–9 and letters except 0, O, I and l. The second character is usually 2–Q (others are ~60× rarer).';
+      ? tr('Allowed: q p z r y 9 x 8 g f 2 t v d w 0 s 3 j n 5 4 k h c e 6 m u a 7 l — no b, i, o or 1.')
+      : tr('Allowed: digits 1–9 and letters except 0, O, I and l. The second character is usually 2–Q (others are ~60× rarer).');
     show($('#v_icrow'), t === 'p2pkh');
     vanityRender();
   }
@@ -855,13 +890,13 @@
     const errs = $('#v_errors'), notes = $('#v_notes'), sugg = $('#v_sugg');
     errs.textContent = ''; notes.textContent = ''; sugg.textContent = '';
     show($('#v_choose'), false); show($('#v_okwrap'), false); show($('#v_suggwrap'), false); show(errs, false);
-    if (!vAnalysis) { notes.appendChild(el('p', 'hint', 'Type the characters you want. Short is fast; every extra character multiplies the work.')); notes.lastChild.style.margin = '0'; return; }
-    for (const n of vAnalysis.notes) { const p = el('p', 'hint', n); p.style.margin = '0 0 6px'; notes.appendChild(p); }
+    if (!vAnalysis) { notes.appendChild(el('p', 'hint', tr('Type the characters you want. Short is fast; every extra character multiplies the work.'))); notes.lastChild.style.margin = '0'; return; }
+    for (const n of vAnalysis.notes) { const p = el('p', 'hint', tr(n)); p.style.margin = '0 0 6px'; notes.appendChild(p); }
     if (vAnalysis.suggestions.length) {
       show($('#v_suggwrap'), true);
       for (const sg of vAnalysis.suggestions) {
         const b = el('button', null, sg.text); b.type = 'button';
-        b.appendChild(el('small', null, sg.why + ' · 1 in ' + fmtInt(sg.difficulty)));
+        b.appendChild(el('small', null, tr(sg.why) + ' · ' + tr('1 in {n}', { n: fmtInt(sg.difficulty) })));
         b.addEventListener('click', () => {
           $('#v_text').value = sg.text.replace(/^bc1q/, '').replace(/^1/, '');
           if (sg.ignoreCase) $('#v_ic').checked = true;
@@ -870,22 +905,22 @@
         sugg.appendChild(b);
       }
     }
-    if (!vAnalysis.ok) { errs.textContent = vAnalysis.errors.join(' · '); show(errs, true); return; }
+    if (!vAnalysis.ok) { errs.textContent = vAnalysis.errors.map(tr).join(' · '); show(errs, true); return; }
     show($('#v_okwrap'), true); show($('#v_choose'), true);
-    $('#v_display').textContent = vAnalysis.display + (vAnalysis.ignoreCase ? ' (any capitalisation)' : '');
+    $('#v_display').textContent = vAnalysis.display + (vAnalysis.ignoreCase ? ' ' + tr('(any capitalisation)') : '');
     $('#v_diff').textContent = vAnalysis.difficultyHuman;
     const here = $('#v_est_here'), hereS = $('#v_est_here_s');
     let hereSecs = null;
-    if (vRate == null) { here.textContent = 'measuring…'; hereS.textContent = ''; }
-    else if (!vRate) { here.textContent = 'unavailable'; hereS.textContent = 'this browser cannot run the search — use the script'; }
+    if (vRate == null) { here.textContent = tr('measuring…'); hereS.textContent = ''; }
+    else if (!vRate) { here.textContent = tr('unavailable'); hereS.textContent = tr('this browser cannot run the search — use the script'); }
     else {
       const e = V.estimate(vAnalysis.difficulty, vRate * V.threads); hereSecs = e.expectedSeconds;
-      here.textContent = e.expected; hereS.textContent = fmtInt(vRate * V.threads) + ' keys/s on ' + V.threads + ' threads' + (isMobile ? ' (this phone/tablet)' : '');
+      here.textContent = tr(e.expected); hereS.textContent = tr('{rate} keys/s on {threads} threads', { rate: fmtInt(vRate * V.threads), threads: V.threads }) + (isMobile ? ' ' + tr('(this phone/tablet)') : '');
     }
     const cores = parseInt($('#v_cores').value, 10) || 8;
     const perThread = vRate || 50000;   // until measured, assume a typical desktop thread
     const es = V.estimate(vAnalysis.difficulty, perThread * cores);
-    $('#v_est_script').textContent = es.expected;
+    $('#v_est_script').textContent = tr(es.expected);
     $('#v_cmd').textContent = 'node olesia-vanity.mjs ' + vAnalysis.display + (vAnalysis.ignoreCase ? ' --ignore-case' : '');
     vanityDeviceAdvice(hereSecs);
   }
@@ -895,23 +930,23 @@
     box.textContent = ''; box.className = 'hide';
     if (isMobile) {
       box.className = long ? 'danger' : 'warn';
-      box.appendChild(el('b', null, long ? 'Do not run this search on a phone. ' : 'You are on a phone or tablet. '));
+      box.appendChild(el('b', null, (long ? tr('Do not run this search on a phone.') : tr('You are on a phone or tablet.')) + ' '));
       box.appendChild(document.createTextNode(long
-        ? `It is expected to take ${hereSecs >= 3600 ? V.humanTime(hereSecs) : 'more than 10 minutes'} here, with every core flat out: the phone gets hot, the battery drains in minutes, and hours of it can damage the battery — and the moment the screen locks or you switch apps, the search pauses anyway. Use a desktop or laptop with the offline script, or let the Olesia server do it.`
-        : 'Searching uses every core flat out: the phone gets hot and the battery drains fast, and it pauses whenever the screen locks or you switch apps. Short patterns (a few minutes) are fine; anything longer belongs on a desktop or laptop with the offline script, or on the Olesia server.'));
+        ? tr('It is expected to take {time} here, with every core flat out: the phone gets hot, the battery drains in minutes, and hours of it can damage the battery — and the moment the screen locks or you switch apps, the search pauses anyway. Use a desktop or laptop with the offline script, or let the Olesia server do it.', { time: hereSecs >= 3600 ? tr(V.humanTime(hereSecs)) : tr('more than 10 minutes') })
+        : tr('Searching uses every core flat out: the phone gets hot and the battery drains fast, and it pauses whenever the screen locks or you switch apps. Short patterns (a few minutes) are fine; anything longer belongs on a desktop or laptop with the offline script, or on the Olesia server.')));
     } else if (long) {
       box.className = 'note';
-      box.appendChild(el('b', null, 'This is a long search for a browser tab. '));
-      box.appendChild(document.createTextNode(`Expected ${V.humanTime(hereSecs)} here; the offline script uses all your CPU and does not need a tab kept open — it is the better tool past ten minutes.`));
+      box.appendChild(el('b', null, tr('This is a long search for a browser tab.') + ' '));
+      box.appendChild(document.createTextNode(tr('Expected {time} here; the offline script uses all your CPU and does not need a tab kept open — it is the better tool past ten minutes.', { time: tr(V.humanTime(hereSecs)) })));
     }
     // the in-browser Start button: on a phone past the limit it needs an explicit acknowledgement
     const gate = isMobile && long;
     show($('#v_ackrow'), gate);
     if (!gate) $('#v_ack').checked = false;
     $('#v_start').disabled = gate && !$('#v_ack').checked;
-    $('#v_start').textContent = gate && !$('#v_ack').checked ? 'Too long for a phone — tick the box to run anyway' : 'Start searching';
+    $('#v_start').textContent = gate && !$('#v_ack').checked ? tr('Too long for a phone — tick the box to run anyway') : tr('Start searching');
   }
-  $('#v_ack').addEventListener('change', () => { $('#v_start').disabled = !$('#v_ack').checked; $('#v_start').textContent = $('#v_ack').checked ? 'Start searching (I will stop it if the phone gets hot)' : 'Too long for a phone — tick the box to run anyway'; });
+  $('#v_ack').addEventListener('change', () => { $('#v_start').disabled = !$('#v_ack').checked; $('#v_start').textContent = $('#v_ack').checked ? tr('Start searching (I will stop it if the phone gets hot)') : tr('Too long for a phone — tick the box to run anyway'); });
   $('#w_vanity').addEventListener('click', vanityOpen);
   $('#set_vanity').addEventListener('click', vanityOpen);
   $('#v_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
@@ -925,13 +960,13 @@
     show($('#v_server'), true); show($('#v_script'), false); show($('#v_browser'), false); $('#v_server').scrollIntoView({ behavior: 'smooth', block: 'start' });
     try {
       const i = await V.serverInfo();
-      $('#v_srv_limit').textContent = 'about ' + Math.round(i.maxExpectedSeconds / 60) + ' minutes of expected work at ' + fmtInt(i.keysPerSecond) + ' keys/s';
+      $('#v_srv_limit').textContent = tr('about {n} minutes of expected work at {rate} keys/s', { n: Math.round(i.maxExpectedSeconds / 60), rate: fmtInt(i.keysPerSecond) });
       const es = vAnalysis && vAnalysis.ok ? V.estimate(vAnalysis.difficulty, i.keysPerSecond) : null;
       const okHere = es && es.expectedSeconds <= i.maxExpectedSeconds;
-      $('#v_srv_status').textContent = (i.queued + i.running ? `${i.queued + i.running} job(s) ahead of you. ` : 'The server is idle. ')
-        + (es ? (okHere ? `Expected ${es.expected} for your text once it starts.` : `Your text would take about ${es.expected} on the server — over its limit. Use the offline script.`) : '');
+      $('#v_srv_status').textContent = (i.queued + i.running ? tr('{n} job(s) ahead of you.', { n: i.queued + i.running }) : tr('The server is idle.')) + ' '
+        + (es ? (okHere ? tr('Expected {time} for your text once it starts.', { time: tr(es.expected) }) : tr('Your text would take about {time} on the server — over its limit. Use the offline script.', { time: tr(es.expected) })) : '');
       $('#v_srv_start').disabled = !okHere;
-    } catch (e) { $('#v_srv_status').textContent = 'The server-assisted search is not available right now (' + e.message + ').'; $('#v_srv_start').disabled = true; }
+    } catch (e) { $('#v_srv_status').textContent = tr('The server-assisted search is not available right now ({error}).', { error: tr(e.message) }); $('#v_srv_start').disabled = true; }
   });
   $('#v_srv_start').addEventListener('click', async () => {
     if (!vAnalysis || !vAnalysis.ok || vRun || vanityResult) return;
@@ -941,9 +976,9 @@
     vanityLockForm(true);
     const paint = (v) => {
       const p = 1 - Math.exp(-(v.tried || 0) / a.difficulty);
-      $('#v_srv_state').textContent = v.state === 'queued' ? `Queued · position ${v.position}` : v.state === 'running' ? 'Searching on the server' : v.state;
+      $('#v_srv_state').textContent = v.state === 'queued' ? tr('Queued · position {n}', { n: v.position }) : v.state === 'running' ? tr('Searching on the server') : tr(v.state);
       $('#v_srv_tried').textContent = fmtInt(v.tried || 0); $('#v_srv_rate').textContent = fmtInt(v.keysPerSecond || 0);
-      $('#v_srv_elapsed').textContent = V.humanTime((Date.now() - t0) / 1000); $('#v_srv_chance').textContent = (100 * p).toFixed(1) + '%';
+      $('#v_srv_elapsed').textContent = tr(V.humanTime((Date.now() - t0) / 1000)); $('#v_srv_chance').textContent = (100 * p).toFixed(1) + '%';
       $('#v_srv_bar').style.width = Math.min(100, 100 * p).toFixed(1) + '%';
     };
     try {
@@ -951,20 +986,20 @@
       const r = await vRun.promise;
       vanityShowResult(r, t0, a);
       show($('#v_server'), false);
-      toast('Vanity address found and verified. Save it as a wallet file to keep it.', 'ok');
+      toast(tr('Vanity address found and verified. Save it as a wallet file to keep it.'), 'ok');
     } catch (e) {
-      if (vRun) toast('Server search: ' + e.message, 'bad');
+      if (vRun) toast(tr('Server search: {error}', { error: tr(e.message) }), 'bad');
     } finally {
       vRun = null; show($('#v_srv_start'), true); show($('#v_srv_running'), false);
       vanityLockForm(!!vanityResult);   // the form stays locked while a found key is unsaved
     }
   });
-  $('#v_srv_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Job cancelled.'); } });
+  $('#v_srv_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast(tr('Job cancelled.')); } });
   function vanityShowResult(r, t0, a) {
     vanityResult = { wif: r.wif, address: r.address };
     $('#v_addr').textContent = '';
     const lead = r.address.slice(0, a.display.length); const b = el('b', null, lead); $('#v_addr').appendChild(b); $('#v_addr').appendChild(document.createTextNode(r.address.slice(lead.length)));
-    $('#v_found_stats').textContent = 'Found after ' + fmtInt(r.tried) + ' keys in ' + V.humanTime((Date.now() - t0) / 1000) + '.';
+    $('#v_found_stats').textContent = tr('Found after {n} keys in {time}.', { n: fmtInt(r.tried), time: tr(V.humanTime((Date.now() - t0) / 1000)) });
     show($('#v_result'), true); show($('#v_choose'), false); show($('#v_unsaved'), true);
     vanityLockForm(true);
     $('#v_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -980,8 +1015,8 @@
       const secs = (Date.now() - t0) / 1000, rate = tried / Math.max(secs, 0.5);
       const p = 1 - Math.exp(-tried / a.difficulty);
       $('#v_tried').textContent = fmtInt(tried); $('#v_rate').textContent = fmtInt(rate);
-      $('#v_elapsed').textContent = V.humanTime(secs); $('#v_chance').textContent = (100 * p).toFixed(1) + '%';
-      $('#v_remaining').textContent = rate > 0 ? V.humanTime(a.difficulty / rate) : '…';
+      $('#v_elapsed').textContent = tr(V.humanTime(secs)); $('#v_chance').textContent = (100 * p).toFixed(1) + '%';
+      $('#v_remaining').textContent = rate > 0 ? tr(V.humanTime(a.difficulty / rate)) : '…';
       $('#v_bar').style.width = Math.min(100, 100 * p).toFixed(1) + '%';
     };
     const ticker = setInterval(() => { if (vRun) paint(vRun.tried); }, 500);
@@ -990,16 +1025,16 @@
       const r = await vRun.promise;
       vanityShowResult(r, t0, a);
       show($('#v_browser'), false);
-      toast('Vanity address found. Save it as a wallet file to keep it.', 'ok');
+      toast(tr('Vanity address found. Save it as a wallet file to keep it.'), 'ok');
     } catch (e) {
-      if (vRun) toast('Search failed: ' + e.message, 'bad');
+      if (vRun) toast(tr('Search failed: {error}', { error: tr(e.message) }), 'bad');
     } finally {
       clearInterval(ticker); vRun = null;
       show($('#v_start'), true); show($('#v_running'), false);
       vanityLockForm(!!vanityResult);   // the form stays locked while a found key is unsaved
     }
   });
-  $('#v_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Search stopped.'); } });
+  $('#v_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast(tr('Search stopped.')); } });
   // Save: the key becomes `pending` for the normal save step. `vanityResult` is kept until the file
   // is actually written, so "‹ Back" from the save screen returns here with the key still present
   // instead of silently losing a search that may have taken hours.
@@ -1012,7 +1047,7 @@
     if (!vanityResult) return;
     const on = $('#v_wif').classList.contains('hide');
     $('#v_wif').textContent = on ? vanityResult.wif : ''; show($('#v_wif'), on); show($('#v_wifwarn'), on);
-    $('#v_showkey').textContent = on ? 'Hide private key' : 'Show private key';
+    $('#v_showkey').textContent = on ? tr('Hide private key') : tr('Show private key');
   });
   $('#v_paper').addEventListener('click', () => {
     if (!vanityResult) return;
@@ -1023,12 +1058,12 @@
   $('#v_discard').addEventListener('click', () => {
     if (!vanityResult) { vanityForget(); show($('#v_choose'), true); return; }
     if (Date.now() - vDiscardArmed > 5000) {
-      vDiscardArmed = Date.now(); $('#v_discard').textContent = 'Really discard? Click again';
-      setTimeout(() => { if (vanityResult) $('#v_discard').textContent = 'Discard and start over'; }, 5000);
+      vDiscardArmed = Date.now(); $('#v_discard').textContent = tr('Really discard? Click again');
+      setTimeout(() => { if (vanityResult) $('#v_discard').textContent = tr('Discard and start over'); }, 5000);
       return;
     }
     vanityForget(); $('#v_text').value = ''; vanityRender(); $('#v_text').focus();
-    toast('Discarded — nothing was saved.');
+    toast(tr('Discarded — nothing was saved.'));
   });
 
   // =====================================================================================
@@ -1041,7 +1076,7 @@
     $('#vf_result').textContent = ''; show($('#vf_result'), false);
     const sel = $('#sg_addr'); sel.textContent = '';
     show($('#sg_nowallet'), !session); show($('#sg_form'), !!session);
-    if (session) for (const a of session.signableAddresses()) { const o = el('option', null, `${a.address}  —  ${a.typeLabel}, ${a.note}`); o.value = a.address; sel.appendChild(o); }
+    if (session) for (const a of session.signableAddresses()) { const o = el('option', null, `${a.address}  —  ${tr(a.typeLabel)}, ${tr(a.note)}`); o.value = a.address; sel.appendChild(o); }
     signMode(mode || (session ? 'sign' : 'verify'));
     pane('sign');
   }
@@ -1053,24 +1088,24 @@
   $('#w_verify').addEventListener('click', () => signOpen('verify'));
   $('#sg_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
   $$('#sg_mode button').forEach((b) => b.addEventListener('click', () => signMode(b.dataset.mode)));
-  $('#sg_msg').addEventListener('input', () => { const n = OM.messageBytes($('#sg_msg').value); $('#sg_count').textContent = n ? `${n} / ${OM.message.max} bytes` : ''; });
+  $('#sg_msg').addEventListener('input', () => { const n = OM.messageBytes($('#sg_msg').value); $('#sg_count').textContent = n ? tr('{n} / {max} bytes', { n, max: OM.message.max }) : ''; });
   $('#sg_go').addEventListener('click', async () => {
     if (!session) return;
     const address = $('#sg_addr').value, message = $('#sg_msg').value;
-    if (!message.trim()) { toast('Write the message first.', 'bad'); return; }
-    if (OM.messageBytes(message) > OM.message.max) { toast('The message is too long.', 'bad'); return; }
-    const r = await withPassword('Enter your wallet password', 'Needed to sign the message with this address\'s key. Nothing is sent anywhere.', (pw, prog) => wallet.signMessage(net, { address, message }, pw, prog));
-    if (!r.ok) { if (r.error) toast('✗ ' + r.error.message, 'bad'); return; }
+    if (!message.trim()) { toast(tr('Write the message first.'), 'bad'); return; }
+    if (OM.messageBytes(message) > OM.message.max) { toast(tr('The message is too long.'), 'bad'); return; }
+    const r = await withPassword(tr('Enter your wallet password'), tr("Needed to sign the message with this address's key. Nothing is sent anywhere."), (pw, prog) => wallet.signMessage(net, { address, message }, pw, prog));
+    if (!r.ok) { if (r.error) toast('✗ ' + tr(r.error.message), 'bad'); return; }
     sgLast = r.value;
     $('#sg_fmt').textContent = sgLast.format === 'legacy'
-      ? 'Format: the classic "Bitcoin Signed Message" — verifiable in Bitcoin Core, Electrum, Sparrow and most tools.'
-      : 'Format: BIP-322 (the standard for bc1q addresses) — verifiable in Sparrow, BlueWallet, Ledger Live and bip322 libraries. Bitcoin Core cannot verify BIP-322 yet; for a Core-verifiable proof sign with a Legacy (1…) address instead.';
+      ? tr('Format: the classic "Bitcoin Signed Message" — verifiable in Bitcoin Core, Electrum, Sparrow and most tools.')
+      : tr('Format: BIP-322 (the standard for bc1q addresses) — verifiable in Sparrow, BlueWallet, Ledger Live and bip322 libraries. Bitcoin Core cannot verify BIP-322 yet; for a Core-verifiable proof sign with a Legacy (1…) address instead.');
     $('#sg_proof').textContent = ARMOUR(sgLast.address, sgLast.message, sgLast.signature);
-    $('#sg_core').textContent = sgLast.coreCommand ? 'A sceptic with a Bitcoin Core node can check it with: ' + sgLast.coreCommand : '';
+    $('#sg_core').textContent = sgLast.coreCommand ? tr('A sceptic with a Bitcoin Core node can check it with: {command}', { command: sgLast.coreCommand }) : '';
     show($('#sg_out'), true); $('#sg_out').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    toast('Signed.', 'ok');
+    toast(tr('Signed.'), 'ok');
   });
-  $('#sg_copy').addEventListener('click', () => { if (sgLast) navigator.clipboard.writeText($('#sg_proof').textContent).then(() => toast('Proof copied', 'ok')).catch(() => toast('Could not copy — select the text and copy it manually', 'bad')); });
+  $('#sg_copy').addEventListener('click', () => { if (sgLast) navigator.clipboard.writeText($('#sg_proof').textContent).then(() => toast(tr('Proof copied'), 'ok')).catch(() => toast(tr('Could not copy — select the text and copy it manually'), 'bad')); });
   $('#sg_selfcheck').addEventListener('click', () => {
     if (!sgLast) return;
     $('#vf_addr').value = sgLast.address; $('#vf_msg').value = sgLast.message; $('#vf_sig').value = sgLast.signature;
@@ -1081,12 +1116,12 @@
     const m = /-----BEGIN BITCOIN SIGNED MESSAGE-----\r?\n([\s\S]*?)\r?\n-----BEGIN BITCOIN SIGNATURE-----\r?\n(\S+)\r?\n([\s\S]*?)\r?\n-----END BITCOIN SIGNATURE-----/.exec(text);
     return m ? { message: m[1], address: m[2], signature: m[3].replace(/\s+/g, '') } : null;
   }
-  $('#vf_msg').addEventListener('input', () => { const u = unarmour($('#vf_msg').value); if (u) { $('#vf_addr').value = u.address; $('#vf_msg').value = u.message; $('#vf_sig').value = u.signature; toast('Signed-message block recognised and split into the fields.'); } });
+  $('#vf_msg').addEventListener('input', () => { const u = unarmour($('#vf_msg').value); if (u) { $('#vf_addr').value = u.address; $('#vf_msg').value = u.message; $('#vf_sig').value = u.signature; toast(tr('Signed-message block recognised and split into the fields.')); } });
   $('#vf_go').addEventListener('click', () => {
     const out = $('#vf_result'); out.textContent = ''; out.className = '';
     const r = OM.message.verify({ address: $('#vf_addr').value.trim(), message: $('#vf_msg').value, signature: $('#vf_sig').value });
     out.className = r.ok ? 'hint ok' : 'danger';
-    out.textContent = r.ok ? `✓ Valid. The owner of ${$('#vf_addr').value.trim()} signed exactly this message (${r.format}).` : '✗ Not valid: ' + r.reason + '. A single changed character in the message, address or signature makes it fail — check for stray spaces or line breaks.';
+    out.textContent = r.ok ? tr('✓ Valid. The owner of {address} signed exactly this message ({format}).', { address: $('#vf_addr').value.trim(), format: r.format }) : tr('✗ Not valid: {reason}. A single changed character in the message, address or signature makes it fail — check for stray spaces or line breaks.', { reason: tr(r.reason) });
     show(out, true);
   });
 
@@ -1097,22 +1132,22 @@
   $('#pr_back').addEventListener('click', () => pane('settings'));
   $('#pr_go').addEventListener('click', async () => {
     if (!session) return;
-    const go = $('#pr_go'); go.disabled = true; $('#pr_status').textContent = 'Looking at your coins…';
+    const go = $('#pr_go'); go.disabled = true; $('#pr_status').textContent = tr('Looking at your coins…');
     try {
       let feeRate = 10; try { const f = await OM.fees(net); feeRate = Math.max(1, Math.round(f.normal || f.fast || f.slow || 10)); } catch { /* default */ }
-      const r = await session.privacy({ feeRate, onProgress: (d, n) => { $('#pr_status').textContent = `Reading the transactions that created your coins… ${d} / ${n}`; } });
-      $('#pr_status').textContent = `${r.coins} coin${r.coins === 1 ? '' : 's'} looked at` + (r.wanted ? `, ${r.fetched} of ${r.wanted} creating transactions read` : '') + `, fees judged at ${feeRate} sat/vB.`;
-      $('#pr_summary').textContent = r.summary;
+      const r = await session.privacy({ feeRate, onProgress: (d, n) => { $('#pr_status').textContent = tr('Reading the transactions that created your coins… {d} / {n}', { d, n }); } });
+      $('#pr_status').textContent = (r.coins === 1 ? tr('1 coin looked at') : tr('{n} coins looked at', { n: r.coins })) + (r.wanted ? ', ' + tr('{d} of {n} creating transactions read', { d: r.fetched, n: r.wanted }) : '') + ', ' + tr('fees judged at {rate} sat/vB.', { rate: feeRate });
+      $('#pr_summary').textContent = tr(r.summary);
       const box = $('#pr_findings'); box.textContent = '';
       for (const f of r.findings) {
         const d = el('div', 'find ' + f.level);
-        d.appendChild(el('span', 'lv', { high: 'important', medium: 'worth fixing', low: 'minor', info: 'good to know', good: 'good' }[f.level]));
-        d.appendChild(el('b', 't', f.title)); d.appendChild(el('p', null, f.detail));
-        if (f.advice) d.appendChild(el('p', 'adv', '→ ' + f.advice));
+        d.appendChild(el('span', 'lv', { high: tr('important'), medium: tr('worth fixing'), low: tr('minor'), info: tr('good to know'), good: tr('good') }[f.level]));
+        d.appendChild(el('b', 't', tr(f.title))); d.appendChild(el('p', null, tr(f.detail)));
+        if (f.advice) d.appendChild(el('p', 'adv', '→ ' + tr(f.advice)));
         box.appendChild(d);
       }
       show($('#pr_out'), true);
-    } catch (e) { toast('✗ ' + e.message, 'bad'); $('#pr_status').textContent = ''; }
+    } catch (e) { toast('✗ ' + tr(e.message), 'bad'); $('#pr_status').textContent = ''; }
     finally { go.disabled = false; }
   });
 
@@ -1121,7 +1156,7 @@
   // =====================================================================================
   // The key lives in `paperKey` only until "Done", a save, or leaving the screen.
   let paperKey = null, ppType = 'p2wpkh';
-  const paperOpen = () => { paperLeave(); show($('#pp_intro'), true); show($('#pp_sheetwrap'), false); $('#pp_offline').checked = false; $('#pp_legend2').textContent = OM.paper.lookalikes; pane('paper'); };
+  const paperOpen = () => { paperLeave(); show($('#pp_intro'), true); show($('#pp_sheetwrap'), false); $('#pp_offline').checked = false; $('#pp_legend2').textContent = tr(OM.paper.lookalikes); pane('paper'); };
   function paperLeave() {
     paperKey = null;
     ['#pp_sheet_addr', '#pp_sheet_wif', '#pp_checkout'].forEach((q) => { $(q).textContent = ''; });
@@ -1131,10 +1166,10 @@
   async function paperShow({ wif, address, type, source }) {
     paperLeave();
     paperKey = { wif, address, type };
-    $('#pp_sheet_type').textContent = (type === 'p2wpkh' ? 'SegWit (bc1q)' : 'Legacy (1…)') + (source === 'vanity' ? ' · vanity' : '');
+    $('#pp_sheet_type').textContent = (type === 'p2wpkh' ? tr('SegWit (bc1q)') : tr('Legacy (1…)')) + (source === 'vanity' ? ' · ' + tr('vanity') : '');
     $('#pp_sheet_addr').textContent = address; $('#pp_sheet_wif').textContent = wif;
     $('#pp_sheet_date').textContent = new Date().toISOString().slice(0, 10);
-    $('#pp_sheet_legend').textContent = OM.paper.lookalikes; $('#pp_legend2').textContent = OM.paper.lookalikes;
+    $('#pp_sheet_legend').textContent = tr(OM.paper.lookalikes); $('#pp_legend2').textContent = tr(OM.paper.lookalikes);
     try { $('#pp_qr_addr').src = await OM.qr(address); $('#pp_qr_wif').src = await OM.qr(wif); } catch { /* text is on the sheet regardless */ }
     show($('#pp_intro'), false); show($('#pp_sheetwrap'), true);
     pane('paper'); $('#pp_sheetwrap').scrollIntoView({ block: 'start' });
@@ -1145,19 +1180,19 @@
   $$('#pp_type button').forEach((b) => b.addEventListener('click', () => { ppType = b.dataset.type; $$('#pp_type button').forEach((x) => x.classList.toggle('on', x === b)); }));
   $('#pp_make').addEventListener('click', () => {
     try { const w = OM.paper.create(ppType); paperShow({ wif: w.wif, address: w.address, type: w.type, source: 'fresh' }); }
-    catch (e) { toast('✗ ' + e.message, 'bad'); }
+    catch (e) { toast('✗ ' + tr(e.message), 'bad'); }
   });
-  $('#pp_print').addEventListener('click', () => { try { window.print(); } catch { toast('Printing is not available here — use your browser\'s Print menu.', 'bad'); } });
+  $('#pp_print').addEventListener('click', () => { try { window.print(); } catch { toast(tr("Printing is not available here — use your browser's Print menu."), 'bad'); } });
   $('#pp_verify').addEventListener('click', () => {
     if (!paperKey) return;
     const r = OM.paper.check({ wif: $('#pp_check').value, expectAddress: paperKey.address, type: paperKey.type });
     const out = $('#pp_checkout'); out.className = r.ok ? 'hint ok' : 'danger';
-    out.textContent = r.ok ? '✓ The key you typed gives exactly the printed address. Tick the "read-back check" box on the sheet.' : '✗ ' + r.reason + (r.address ? ` (that key would control ${r.address})` : '') + '. Compare character by character; ' + OM.paper.lookalikes;
+    out.textContent = r.ok ? tr('✓ The key you typed gives exactly the printed address. Tick the "read-back check" box on the sheet.') : '✗ ' + tr(r.reason) + (r.address ? ' ' + tr('(that key would control {address})', { address: r.address }) : '') + '. ' + tr('Compare character by character;') + ' ' + tr(OM.paper.lookalikes);
     show(out, true);
     if (r.ok) $('#pp_check').value = '';
   });
   $('#pp_save').addEventListener('click', () => { if (!paperKey) return; pending = { kind: 'wif', wif: paperKey.wif }; openSave('import'); });
-  $('#pp_done').addEventListener('click', () => { paperLeave(); show($('#pp_sheetwrap'), false); show($('#pp_intro'), true); toast('Wiped from the screen. The paper is now the only copy.', 'ok'); });
+  $('#pp_done').addEventListener('click', () => { paperLeave(); show($('#pp_sheetwrap'), false); show($('#pp_intro'), true); toast(tr('Wiped from the screen. The paper is now the only copy.'), 'ok'); });
 
   // ================= THE OPENING =================
   // A half-minute animated sequence shown the first time a browser opens the page: randomness,
@@ -1201,8 +1236,8 @@
     cap.style.opacity = '0';
     setTimeout(() => {
       if (introCh !== i) return;
-      $('#intro_k').textContent = c.k; $('#intro_p').textContent = c.p; cap.classList.toggle('logo-cap', !!c.logo);
-      const h = $('#intro_t'); h.textContent = c.logo ? c.t.replace(/\.$/, '') : c.t; if (c.logo) h.appendChild(el('span', 'ldot', '.'));
+      $('#intro_k').textContent = tr(c.k); $('#intro_p').textContent = tr(c.p); cap.classList.toggle('logo-cap', !!c.logo);
+      const h = $('#intro_t'); h.textContent = c.logo ? c.t.replace(/\.$/, '') : tr(c.t); if (c.logo) h.appendChild(el('span', 'ldot', '.'));
       cap.style.opacity = '1';
       then();
     }, first ? 0 : 450);
@@ -1244,7 +1279,7 @@
         g.stroke();
         g.textBaseline = 'bottom'; g.font = `600 13px ${SANS}`;
         const mark = (yr, label, when) => { if (q * 50 + 1960 < yr) return; const a = easeOut((q * 50 + 1960 - yr) / 3); g.fillStyle = `rgba(255,106,0,${a})`; g.beginPath(); g.arc(X(yr), st.y, 5 + (1 - a) * 8, 0, Math.PI * 2); g.fill(); g.fillStyle = `rgba(244,244,244,${a})`; g.fillText(label, X(yr), st.y - 14 - when); };
-        mark(1971, 'gold window closed', 0); mark(2008, 'bailouts', 36);
+        mark(1971, tr('gold window closed'), 0); mark(2008, tr('bailouts'), 36);
       } },
     // III — the chain grows block by block from the genesis block, which carries the headline
     //       (wide screens: one row; phones: a big genesis block with the chain underneath)
@@ -1296,7 +1331,7 @@
         g.strokeStyle = ORANGE; g.lineWidth = 2.5; g.beginPath();
         for (let i = 0; i <= 240; i++) { const yr = 2009 + 36 * i / 240; if (yr > until) break; const era = (yr - 2009) / 4, k = Math.floor(era), f = era - k; const sup = (1 - Math.pow(0.5, k)) * 21 + Math.pow(0.5, k) * 10.5 * f; const y = st.y0 - sup / 21 * (st.y0 - st.y1); i ? g.lineTo(X(yr), y) : g.moveTo(X(yr), y); }
         g.stroke();
-        g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = `600 ${W < 520 ? 11 : 13}px ${SANS}`; g.fillStyle = '#8f8f8f'; g.fillText('new coins per block: 50 → 25 → 12.5 → 6.25 → …', st.x1, st.y0 - (st.y0 - st.y1) * 0.14);
+        g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = `600 ${W < 520 ? 11 : 13}px ${SANS}`; g.fillStyle = '#8f8f8f'; g.fillText(tr('new coins per block: 50 → 25 → 12.5 → 6.25 → …'), st.x1, st.y0 - (st.y0 - st.y1) * 0.14);
         if (p > 0.55) { const a = easeOut((p - 0.55) / 0.3); g.fillStyle = `rgba(244,244,244,${a})`; g.font = `500 ${Math.min(22, W / 24)}px ${MONO}`; g.textAlign = 'right'; g.fillText('21,000,000', st.x1, st.y1 - 8); }
       } },
     // V — scattered bits gather into the outline of a key
@@ -1405,6 +1440,11 @@
     $$('#intro_bar b').forEach((b, k) => { b.style.width = (k < i ? 100 : k === i ? p * 100 : 0) + '%'; });
     introRaf = requestAnimationFrame(introFrame);
   }
+  function introReword() {
+    if (!introOn || introCh < 0) return;
+    const c = CHAPTERS[introCh]; $('#intro_k').textContent = tr(c.k); $('#intro_p').textContent = tr(c.p);
+    const h = $('#intro_t'); h.textContent = c.logo ? c.t.replace(/\.$/, '') : tr(c.t); if (c.logo) h.appendChild(el('span', 'ldot', '.'));
+  }
   function introStart() {
     introOn = true; introCh = -1; introT = 0; introLast = 0; bx = null; bdist = 0; bground = null; show(intro, true); intro.classList.remove('out');
     const bar = $('#intro_bar'); bar.textContent = ''; CHAPTERS.forEach(() => { const i = el('i'); i.appendChild(el('b')); bar.appendChild(i); });
@@ -1426,6 +1466,7 @@
   $('#w_intro').addEventListener('click', introStart);
   $('#set_intro').addEventListener('click', introStart);
   if (!introSeen()) introStart();
+  I18N.set(I18N.initial(), { save: false });   // the saved or the browser's language; English until a dictionary arrives
 
   // ================= THE STREET =================
   // A band along the bottom of the wallet page (after txstreet): the Olesia node watching the next
@@ -1504,7 +1545,7 @@
     p2pkh: { tag: '1… legacy', tops: ['#4a3728', '#3b3a2f', '#2f2a26', '#44382c'], hats: ['fedora', 'fedora', 'flatcap'], items: ['none', 'briefcase', 'cane'], coat: true, beard: 0.7 },
     p2tr: { tag: 'bc1p taproot', tops: ['#2a1f44', '#1f3344', '#3a1f3f'], hats: ['visor', 'visor', 'mohawk'], items: ['phone', 'none', 'skate'], neon: ['#b388ff', '#4fd1c5', '#ff6a00'] },
     p2pk: { tag: 'P2PK · Satoshi', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
-    satoshi: { tag: 'Satoshi era', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
+    satoshi: { tag: 'Satoshi era', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },   // tags are translated when a figure is made
     other: { tag: '', tops: ['#333', '#3a3a3a'], hats: ['cap', 'none'], items: ['none', 'phone'] },
   };
   const FAM_ORDER = ['satoshi', 'p2pk', 'p2tr', 'p2wsh', 'p2sh-p2wsh', 'p2sh-p2wpkh', 'p2sh', 'p2pkh', 'p2wpkh', 'other'];
@@ -1521,7 +1562,7 @@
     const s = { fam: famName, top: pick(f.tops), bottom: pick(['#1a1a1a', '#23262b', '#2a2622']), hat: pick(f.hats), item: pick(f.items), hair: pick(['#111', '#2b1d12', '#5a4632', '#777']),
       glasses: f.gold ? 'none' : r() < 0.4 ? 'shades' : r() < 0.3 ? 'round' : 'none', mask: !f.gold && !f.suit && !f.coat && r() < 0.3, beard: r() < (f.beard || 0.15), tie: f.suit ? pick(['#ff6a00', '#8a2b2b', '#777', '#2f5d8a']) : null,
       coat: !!f.coat, suit: !!f.suit, gold: !!f.gold, neon: f.neon ? pick(f.neon) : null };
-    const tag = famName === 'satoshi' ? `block ${fmtN(a.era)} coin` : f.tag;
+    const tag = famName === 'satoshi' ? tr('block {n} coin', { n: fmtN(a.era) }) : tr(f.tag);
     return { x: W + 30 + i * L * 0.42, h: L * (0.46 + r() * 0.06), v: L * (0.52 + r() * 0.06), ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag };
   }
   // one figure, facing left, in local units (1 = its height), (0, 0) between its feet
@@ -1638,9 +1679,9 @@
     if (phone) {   // a phone: one line (the scene, when opened, sits under it)
       g.font = `10.5px ${MONO}`; g.textBaseline = 'middle'; g.textAlign = 'left';
       let a, b;
-      if (streetErr) { a = 'the street'; b = 'waiting for the node…'; } else if (!d) { a = 'the street'; b = 'loading…'; }
-      else if (mined) { a = `block ${fmtN(car.label.height)} mined`; b = `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} ₿${fx(car.label.sats)}`; }
-      else { a = `#${fmtN(d.tip.height + 1)}`; b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿${fx(d.next.sats)} · ${fmtN(d.mempool.txs)} waiting`; if (g.measureText(a + '  ' + b).width > W - 44) b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿ · ${fmtN(d.mempool.txs)} waiting`; }
+      if (streetErr) { a = tr('the street'); b = tr('waiting for the node…'); } else if (!d) { a = tr('the street'); b = tr('loading…'); }
+      else if (mined) { a = tr('block {n} mined', { n: fmtN(car.label.height) }); b = `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} ₿${fx(car.label.sats)}`; }
+      else { a = `#${fmtN(d.tip.height + 1)}`; b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿${fx(d.next.sats)} · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); if (g.measureText(a + '  ' + b).width > W - 44) b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿ · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); }
       const yy = ticker ? (H - tab) / 2 : 15;
       g.fillStyle = '#ff8a33'; g.fillText(a, 14, yy); g.fillStyle = '#b3b3b3'; g.fillText(b, 14 + g.measureText(a).width + 9, yy);
       g.fillStyle = '#6f6f6f'; g.textAlign = 'right'; g.fillText(ticker ? '▲' : '▼', W - 12, yy);
@@ -1686,16 +1727,16 @@
     // the panel on the left: block, transactions, value, the queue
     g.textAlign = 'left'; g.textBaseline = 'top';
     const line = (str, yy, font, color) => { g.font = font; g.fillStyle = color; g.fillText(str, 18, yy); return g.measureText(str).width; };
-    if (streetErr) { line('THE STREET', 16, `600 11px ${MONO}`, '#ff8a33'); line('waiting for the Olesia node…', 34, `13px ${SANS}`, '#8f8f8f'); }
-    else if (!d) { line('THE STREET', 16, `600 11px ${MONO}`, '#ff8a33'); line('loading…', 34, `13px ${SANS}`, '#8f8f8f'); }
+    if (streetErr) { line(tr('THE STREET'), 16, `600 11px ${MONO}`, '#ff8a33'); line(tr('waiting for the Olesia node…'), 34, `13px ${SANS}`, '#8f8f8f'); }
+    else if (!d) { line(tr('THE STREET'), 16, `600 11px ${MONO}`, '#ff8a33'); line(tr('loading…'), 34, `13px ${SANS}`, '#8f8f8f'); }
     else {
       const L1 = mined ? car.label : { height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats };
-      line(`BLOCK ${fmtN(L1.height)} · ${mined ? 'MINED' : 'LOADING'}`, 16, `600 11px ${MONO}`, '#ff8a33');
-      line(`${fmtN(L1.txs)} transactions`, 34, `600 20px ${SANS}`, '#f4f4f4');
+      line(mined ? tr('BLOCK {n} · MINED', { n: fmtN(L1.height) }) : tr('BLOCK {n} · LOADING', { n: fmtN(L1.height) }), 16, `600 11px ${MONO}`, '#ff8a33');
+      line(tr('{n} transactions', { n: fmtN(L1.txs) }), 34, `600 20px ${SANS}`, '#f4f4f4');
       const w1 = line(`${fmtBtc(L1.sats)} BTC`, 60, `600 20px ${SANS}`, '#f4f4f4');
       const f = fiatShort(L1.sats); if (f) { g.font = `500 14px ${MONO}`; g.fillStyle = '#8f8f8f'; g.fillText(`≈ ${f}`, 18 + w1 + 10, 65); }
-      line(mined ? `block ${fmtN(d.tip.height + 1)} loading next` : `${fmtN(d.mempool.txs)} waiting in the mempool${d.next.valued < d.next.txs ? ' · value so far' : ''}`, 92, `11px ${MONO}`, '#8f8f8f');
-      if (H - tab >= 200) line('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era', Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
+      line(mined ? tr('block {n} loading next', { n: fmtN(d.tip.height + 1) }) : tr('{n} waiting in the mempool', { n: fmtN(d.mempool.txs) }) + (d.next.valued < d.next.txs ? ' · ' + tr('value so far') : ''), 92, `11px ${MONO}`, '#8f8f8f');
+      if (H - tab >= 200) line(tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era'), Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
     }
   }
   function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }
