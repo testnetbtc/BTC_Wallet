@@ -133,7 +133,7 @@ try {
   const st = await (await fetch('https://api.olesia.io/street')).json();
   const chipHeight = Number(((await text('#chip_node_t')).match(/[\d,]+$/) || [''])[0].replace(/,/g, ''));
   ok('street feed: the last block\'s height, tx count and value, and the next block being loaded', Number.isInteger(st.tip?.height) && Math.abs(st.tip.height - chipHeight) <= 1 && st.tip.txs > 0 && st.tip.sats > 0 && st.next.txs > 0 && st.mempool.txs >= st.next.txs);
-  ok('street: drawn on its band along the bottom of the live page', await page.evaluate(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] > 150 && d[i + 1] > 90 && d[i + 2] < 60) lit++; return lit > 10; }));
+  ok('street: drawn on its band along the bottom of the live page', await page.evaluate(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] + d[i + 1] + d[i + 2] > 450) lit++; return lit > 10; }));
   ok('page contacted only its own origin and api.olesia.io', [...hosts].every((h) => h === new URL(URL_).host || h === 'api.olesia.io'));
   ok('no console errors / CSP violations', errors.length === 0);
   if (errors.length) console.log(errors.slice(0, 5));

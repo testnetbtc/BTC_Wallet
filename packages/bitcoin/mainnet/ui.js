@@ -1323,40 +1323,55 @@
       } },
   ];
   // The honey badger — "bitcoin is the honey badger of money": it does not care. It walks along
-  // the bottom through the chapters, right to left, and stops under the name at the end. Drawn
-  // after the operator's print of it: flat angular shapes, orange, a yellow saddle along the back
-  // ending in a jagged edge, black edges. Local units (1 = its height), facing left, (0, 0) at the
-  // ground under its nose, the rump at x = 2.7, the tail tip at 3.05.
-  const BADGER_BODY = [[0, -0.78], [0.2, -0.6], [0.5, -0.47], [0.62, -0.42], [2.4, -0.42], [2.58, -0.5], [2.7, -0.66], [2.66, -0.82], [2.4, -0.86], [1.55, -1], [0.95, -0.93], [0.55, -0.86], [0.1, -0.84]];
-  const BADGER_SADDLE = [[0.3, -0.85], [0.55, -0.86], [0.95, -0.93], [1.55, -1], [2.4, -0.86], [2.45, -0.78], [2.3, -0.62], [1.98, -0.48], [1.8, -0.45], [1.7, -0.44], [1.66, -0.5], [1.56, -0.45], [1.5, -0.49], [1.2, -0.6], [0.85, -0.74], [0.5, -0.83]];
-  const BADGER_LEGS = [[0.72, Math.PI, 0], [2.1, 0, 0], [0.92, 0, 1], [2.3, Math.PI, 1]];   // hip x, gait phase, near side (drawn last) — a diagonal walk
-  const BADGER_YELLOW = '#ffd21f', BADGER_FAR = '#d95a00', BADGER_EDGE = '#0c0c0c';
-  function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); }
+  // the bottom through the chapters, right to left, and stops under the name at the end. Drawn as
+  // the animal is: low and long, a broad flat head with a small ear, a wide pale mantle from the
+  // forehead over the back to the tail, short thick legs with claws — in Olesia orange. Local
+  // units (1 = its height), facing left, (0, 0) at the ground under its nose; about 2.85 long.
   function badger(g, x, y, h, phase, moving, t) {
-    g.save(); g.translate(x, y + (moving ? Math.sin(phase * 2) * 0.02 * h : Math.sin(t * 2) * 0.006 * h)); g.scale(h, h);
-    g.lineJoin = 'miter'; g.miterLimit = 3; g.strokeStyle = BADGER_EDGE; g.lineWidth = 0.05;
-    for (const [hx, ph, near] of BADGER_LEGS) {
-      const sw = moving ? Math.sin(phase + ph) * 0.17 : 0, lift = moving ? Math.max(0, -Math.cos(phase + ph)) * 0.1 : 0;   // the foot lifts as it swings forward
-      const ky = -0.26 + lift * 0.5;
-      poly(g, [[hx - 0.13, -0.55], [hx + 0.13, -0.55], [hx + sw + 0.12, ky], [hx + sw + 0.14, -lift], [hx + sw - 0.17, -lift], [hx + sw - 0.1, ky]]);
-      g.fillStyle = near ? ORANGE : BADGER_FAR; g.fill(); g.stroke();
-    }
-    poly(g, BADGER_BODY); g.fillStyle = ORANGE; g.fill();
-    poly(g, BADGER_SADDLE); g.fillStyle = BADGER_YELLOW; g.fill(); g.stroke();
-    poly(g, BADGER_BODY); g.stroke();
-    g.save(); g.translate(2.68, -0.74); g.rotate(moving ? Math.sin(phase) * 0.08 : Math.sin(t * 5) * 0.22);   // the tail wags when it stands still
-    poly(g, [[-0.02, -0.08], [0.37, 0.02], [0.02, 0.08]]); g.fillStyle = ORANGE; g.fill(); g.stroke(); g.restore();
-    g.fillStyle = BADGER_EDGE; g.beginPath(); g.arc(0.32, -0.71, 0.035, 0, Math.PI * 2); g.fill();   // eye
+    g.save(); g.translate(x, y + (moving ? Math.sin(phase * 2) * 0.015 * h : Math.sin(t * 2) * 0.005 * h)); g.scale(h, h);
+    const body = ORANGE, far = '#c8520a', mantle = '#efe6d6', dark = '#241305';
+    const leg = (hx, ph, near) => {   // swings from the hip; three claws at the front of the foot
+      const a = moving ? Math.sin(phase + ph) * 0.38 : 0;
+      g.save(); g.translate(hx, -0.5); g.rotate(a);
+      g.fillStyle = near ? body : far; g.beginPath(); g.moveTo(-0.1, 0); g.lineTo(0.1, 0); g.lineTo(0.1, 0.42); g.quadraticCurveTo(0.1, 0.5, 0.0, 0.5); g.lineTo(-0.16, 0.5); g.quadraticCurveTo(-0.16, 0.44, -0.1, 0.42); g.closePath(); g.fill();
+      g.strokeStyle = near ? dark : '#3a1a05'; g.lineWidth = 0.02; g.lineCap = 'round'; g.beginPath(); for (const c of [-0.15, -0.1, -0.05]) { g.moveTo(c, 0.49); g.lineTo(c - 0.035, 0.52); } g.stroke();
+      g.restore();
+    };
+    leg(0.7, Math.PI, false); leg(2.0, 0, false);
+    g.fillStyle = body; g.beginPath();                                   // nose → forehead → back → rump → tail → belly → chest → chin
+    g.moveTo(0, -0.6);
+    g.quadraticCurveTo(0.06, -0.76, 0.28, -0.85);
+    g.quadraticCurveTo(0.5, -0.95, 0.78, -0.92);
+    g.quadraticCurveTo(1.35, -1.06, 1.95, -0.95);
+    g.quadraticCurveTo(2.35, -0.88, 2.48, -0.72);
+    g.quadraticCurveTo(2.8, -0.72, 2.86, -0.5);
+    g.quadraticCurveTo(2.68, -0.42, 2.5, -0.5);
+    g.quadraticCurveTo(2.25, -0.38, 1.7, -0.4);
+    g.quadraticCurveTo(1.0, -0.38, 0.6, -0.46);
+    g.quadraticCurveTo(0.28, -0.48, 0.1, -0.54);
+    g.closePath(); g.fill();
+    g.fillStyle = mantle; g.beginPath();                                 // the pale mantle: forehead to tail, soft lower edge along the flank
+    g.moveTo(0.2, -0.82);
+    g.quadraticCurveTo(0.5, -0.95, 0.78, -0.92); g.quadraticCurveTo(1.35, -1.06, 1.95, -0.95); g.quadraticCurveTo(2.35, -0.88, 2.48, -0.72); g.quadraticCurveTo(2.8, -0.72, 2.86, -0.5);
+    g.quadraticCurveTo(2.72, -0.56, 2.56, -0.62);
+    g.quadraticCurveTo(2.25, -0.7, 1.95, -0.74);
+    g.quadraticCurveTo(1.35, -0.82, 0.8, -0.76);
+    g.quadraticCurveTo(0.45, -0.74, 0.2, -0.82);
+    g.closePath(); g.fill();
+    leg(0.9, 0, true); leg(2.2, Math.PI, true);
+    g.fillStyle = body; g.beginPath(); g.arc(0.55, -0.83, 0.05, 0, Math.PI * 2); g.fill();            // the small round ear
+    g.fillStyle = dark; g.beginPath(); g.arc(0.24, -0.7, 0.032, 0, Math.PI * 2); g.fill();            // eye
+    g.beginPath(); g.ellipse(0.02, -0.61, 0.045, 0.035, 0, 0, Math.PI * 2); g.fill();                  // nose
     g.restore();
   }
-  const badgerH = (W) => Math.max(26, Math.min(46, W / 30));
+  const badgerH = (W) => Math.max(28, Math.min(52, W / 26));
   // Its own layer and its own clock: the scene below can fade, swap and re-prepare without the
   // badger ever blinking. It walks at a steady pace so as to arrive under the name as the last
   // chapter begins; if a tap jumps the story ahead it hurries to catch up rather than teleporting.
   let bx = null, bdist = 0, bground = null;
   function introBadger(gb, W, H, dt) {
     const last = CHAPTERS.length - 1, tSit = CHAPTERS.slice(0, last).reduce((a, c) => a + c.dur, 0);
-    const h = badgerH(W), len = 3.05 * h, from = W + 6, to = W / 2 - len / 2;
+    const h = badgerH(W), len = 2.86 * h, from = W + 6, to = W / 2 - len / 2;
     const target = lerp(from, to, Math.min(1, introT / tSit)), v = (from - to) / tSit;   // where the story says it should be, and its walking pace
     if (bx === null) bx = target;
     const gap = target - bx, want = Math.abs(gap), step = Math.min(want, (want > v * 0.3 ? v * 2.6 : v) * dt);
@@ -1413,40 +1428,45 @@
   if (!introSeen()) introStart();
 
   // ================= THE STREET =================
-  // The wallet's background: the Olesia node watching the next block being loaded (after
-  // txstreet). An old Land Rover Defender waits on a road along the bottom of the page. Every
-  // transaction that reaches the node's mempool is a hooded figure who walks up and climbs in the
-  // back; the Defender carries the count and value of what is loaded for the next block; when the
-  // block is mined it drives off into the sunset with the block's exact numbers on its side, and
-  // the next one pulls in. Data: GET /street on the node API every 6 s — public chain data, nothing
-  // about this wallet. Off switch on Welcome and in Settings; reduced motion gets a still picture;
-  // nothing is drawn or fetched while the tab is hidden or the opening is showing.
+  // A band along the bottom of the wallet page (after txstreet): the Olesia node watching the next
+  // block being loaded. An old Land Rover Defender waits on the road; every transaction that
+  // reaches the node's mempool is a figure who walks up and climbs in the back — dressed for the
+  // kind of coin it spends (hoodie = bc1q, long coat and hat = 1…, suit = 3…, visor = bc1p
+  // Taproot, gold = P2PK or a Satoshi-era coin); the Defender carries the next block's number on
+  // its roof board and the count and value of what is loaded on its bonnet; the panel on the left
+  // says the same in words with the fiat value and the mempool queue. When the block is mined the
+  // Defender drives off with the block's exact numbers and the next one pulls in. On a phone the
+  // band is a one-line ticker (tap to see the scene). Data: GET /street on the node API every 6 s —
+  // public chain data, nothing about this wallet. Off switch on Welcome and in Settings; reduced
+  // motion gets a still picture; nothing is drawn or fetched while the tab is hidden or the
+  // opening is showing.
   const STREET_KEY = 'olesia:mainnet:street';
   const street = $('#street');
   const streetWanted = () => { try { return localStorage.getItem(STREET_KEY) !== 'off'; } catch { return true; } };
-  let streetOn = streetWanted(), streetRaf = 0, streetLast = 0, streetTimer = 0, streetData = null, streetErr = null, streetSeenT = 0, streetHeight = 0;
-  const SAND = '#c7b88c', ROOF = '#e9e4d3', GLASS = '#182026', TYRE = '#101010', RIM = '#6d6d6d', ROAD = '#1c1c1c', LAND = '#121212';
-  const HOODIES = ['#262626', '#2c2c2c', '#1f2a22', '#241f33', '#2a2420', '#1d2630'];
-  // one vehicle: where it is, what it says on its side, what it is doing
-  const car = { x: 0, mode: 'parked', t: 0, dist: 0, bump: 9, label: null, fill: 0 };
-  let punks = [];   // the figures walking up: { x, h, v, s (style), ph, st ('walk' | 'wait' | 'board'), bt, sats, more }
-  const fmtBtc = (sats) => { const b = sats / 1e8; return b.toLocaleString('en-US', { minimumFractionDigits: b >= 100 ? 1 : b >= 1 ? 2 : 4, maximumFractionDigits: b >= 100 ? 1 : b >= 1 ? 2 : 4 }); };
+  let streetOn = streetWanted(), streetFull = false, streetRaf = 0, streetLast = 0, streetTimer = 0, streetData = null, streetErr = null, streetSeenT = 0, streetHeight = 0;
+  const SAND = '#c7b88c', ROOF = '#e9e4d3', GLASS = '#182026', TYRE = '#101010', RIM = '#6d6d6d', ROAD = '#1c1c1c';
+  const car = { x: 0, mode: 'parked', t: 0, dist: 0, bump: 9, label: null, fill: 0 };   // one vehicle: where it is, what it says, what it is doing
+  let punks = [];   // the figures walking up: { x, h, v, s (style), ph, st ('walk' | 'wait' | 'board'), bt, sats, more, tag }
+  const fmtBtc = (sats) => { const b = (sats || 0) / 1e8; const d = b >= 100 ? 1 : b >= 1 ? 2 : 4; return b.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); };
   const fmtN = (x) => Number(x || 0).toLocaleString('en-US');
+  const fiatShort = (sats) => { const q = quotes && quotes[cur]; if (!q) return ''; const v = (sats || 0) / 1e8 * q.price, c = CUR[cur]; return v >= 1e9 ? c + (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? c + (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? c + Math.round(v / 1e3) + 'k' : c + v.toLocaleString('en-US', { maximumFractionDigits: 0 }); };
+  const isPhone = () => window.innerWidth < 700;
 
   function streetLayout() {
     const dpr = Math.min(2, window.devicePixelRatio || 1), W = street.clientWidth, H = street.clientHeight;
     if (street.width !== Math.round(W * dpr) || street.height !== Math.round(H * dpr)) { street.width = Math.round(W * dpr); street.height = Math.round(H * dpr); }
     const g = street.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const bar = $('#tabbar'), tab = bar.classList.contains('hide') ? 0 : bar.offsetHeight;
-    const base = Math.max(150, Math.min(230, window.innerHeight * 0.22)) + tab;              // the tab bar, when shown, must not eat the road
+    const bar = $('#tabbar'), tab = bar.classList.contains('hide') ? 0 : bar.offsetHeight, ticker = isPhone() && !streetFull;
+    const phone = isPhone(), top = phone && !ticker ? 30 : 0;                                   // a phone's open scene keeps the ticker line above it
+    const base = (ticker ? 30 : phone ? 30 + 150 : Math.max(170, Math.min(250, window.innerHeight * 0.26))) + tab;   // the tab bar, when shown, must not eat the road
     if (Math.abs(H - base) > 1) { street.style.height = base + 'px'; document.body.style.setProperty('--street-h', base + 'px'); return streetLayout(); }   // the page scrolls above the band, never over it
-    const Y = H - tab - 8, L = Math.max(150, Math.min(170, W * 0.14));                       // the ground, and the Defender's length
-    return { g, W, H, Y, L, park: W * 0.5 - L / 2 + (W < 700 ? L * 0.22 : 0), horizon: Y - 0.5 * L, sun: { x: W * 0.14, y: Y - 0.5 * L + 0.04 * L, r: 0.22 * L } };
+    const Y = H - tab - 8, L = Math.max(120, Math.min(230, W * 0.17, (Y - top - 10) / 0.97));   // the ground, and the Defender's length (it must fit the band)
+    return { g, W, H, Y, L, tab, ticker, top, phone, park: phone ? W * 0.5 - L / 2 : Math.max(340, W * 0.42) };
   }
   function streetSet(on) {
     streetOn = on; try { localStorage.setItem(STREET_KEY, on ? 'on' : 'off'); } catch { /* fine */ }
     show(street, on); document.body.classList.toggle('street', on); $('#set_street').checked = on; $('#w_street').textContent = on ? 'Hide the street' : 'Show the street';
-    if (on) { streetPoll(); streetTick(); } else { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); }
+    if (on) { streetPoll(); streetTick(); } else { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); document.body.style.removeProperty('--street-h'); }
   }
   // ---- data ----
   async function streetPoll() {
@@ -1474,74 +1494,135 @@
     streetTimer = setTimeout(streetPoll, wait);
   }
   const nextLabel = (d) => ({ height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats, mined: false });
+  // ---- the figures: seven families, one per kind of coin spent, each with its own wardrobe ----
+  const FAMILIES = {
+    p2wpkh: { tag: 'bc1q', tops: ['#262626', '#1f2a22', '#241f33', '#1d2630', '#2a2420'], hats: ['hood', 'hood', 'beanie', 'cap'], items: ['laptop', 'laptop', 'phone', 'backpack', 'none'] },
+    p2wsh: { tag: 'bc1q script', tops: ['#1b3a3a', '#19332c', '#223'], hats: ['headphones', 'beanie', 'none'], items: ['backpack', 'laptop'] },
+    p2sh: { tag: '3…', tops: ['#1c2233', '#222', '#2b2b33', '#1a1a1a'], hats: ['none', 'slick'], items: ['briefcase', 'briefcase', 'phone', 'none'], suit: true },
+    'p2sh-p2wpkh': { tag: '3… wrapped', tops: ['#1c2233', '#2b2b33'], hats: ['none', 'slick'], items: ['laptop', 'briefcase'], suit: true },
+    'p2sh-p2wsh': { tag: '3… wrapped', tops: ['#1c2233', '#222'], hats: ['none'], items: ['briefcase'], suit: true },
+    p2pkh: { tag: '1… legacy', tops: ['#4a3728', '#3b3a2f', '#2f2a26', '#44382c'], hats: ['fedora', 'fedora', 'flatcap'], items: ['none', 'briefcase', 'cane'], coat: true, beard: 0.7 },
+    p2tr: { tag: 'bc1p taproot', tops: ['#2a1f44', '#1f3344', '#3a1f3f'], hats: ['visor', 'visor', 'mohawk'], items: ['phone', 'none', 'skate'], neon: ['#b388ff', '#4fd1c5', '#ff6a00'] },
+    p2pk: { tag: 'P2PK · Satoshi', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
+    satoshi: { tag: 'Satoshi era', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
+    other: { tag: '', tops: ['#333', '#3a3a3a'], hats: ['cap', 'none'], items: ['none', 'phone'] },
+  };
+  const FAM_ORDER = ['satoshi', 'p2pk', 'p2tr', 'p2wsh', 'p2sh-p2wsh', 'p2sh-p2wpkh', 'p2sh', 'p2pkh', 'p2wpkh', 'other'];
+  function familyOf(a) {
+    if (a.era !== null && a.era !== undefined && a.era < 100000) return 'satoshi';   // a coin created in 2009–2010
+    const kinds = a.kinds || [];
+    for (const f of FAM_ORDER) if (kinds.includes(f)) return f;
+    return kinds.length ? 'other' : 'p2wpkh';
+  }
   function newPunk(a, i, more) {
     const { W, L } = streetLayout();
-    return { x: W + 30 + i * L * 0.45, h: L * 0.62, v: L * (0.58 + Math.random() * 0.08), ph: Math.random() * 6, st: 'walk', bt: 0, sats: a.sats, more,
-      s: { hoodie: HOODIES[Math.floor(Math.random() * HOODIES.length)], trousers: Math.random() < 0.5 ? '#1a1a1a' : '#23262b', laptop: Math.random() < 0.45, glasses: Math.random() < 0.5, mask: Math.random() < 0.35 } };
+    let seed = ((a.t | 0) ^ (a.vsize * 2654435761)) >>> 0; const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, pick = (arr) => arr[Math.floor(r() * arr.length)];
+    const famName = familyOf(a), f = FAMILIES[famName];
+    const s = { fam: famName, top: pick(f.tops), bottom: pick(['#1a1a1a', '#23262b', '#2a2622']), hat: pick(f.hats), item: pick(f.items), hair: pick(['#111', '#2b1d12', '#5a4632', '#777']),
+      glasses: f.gold ? 'none' : r() < 0.4 ? 'shades' : r() < 0.3 ? 'round' : 'none', mask: !f.gold && !f.suit && !f.coat && r() < 0.3, beard: r() < (f.beard || 0.15), tie: f.suit ? pick(['#ff6a00', '#8a2b2b', '#777', '#2f5d8a']) : null,
+      coat: !!f.coat, suit: !!f.suit, gold: !!f.gold, neon: f.neon ? pick(f.neon) : null };
+    const tag = famName === 'satoshi' ? `block ${fmtN(a.era)} coin` : f.tag;
+    return { x: W + 30 + i * L * 0.42, h: L * (0.46 + r() * 0.06), v: L * (0.52 + r() * 0.06), ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag };
   }
-  // ---- drawing ----
-  // the Defender, in local units (1 = its length), facing left, (0, 0) on the ground under the front bumper
+  // one figure, facing left, in local units (1 = its height), (0, 0) between its feet
+  function punk(g, x, y, h, ph, s, walking, alpha = 1) {
+    g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(h, h);
+    const sw = walking ? Math.sin(ph) : 0, bob = walking ? Math.abs(Math.cos(ph)) * 0.02 : 0, skin = s.gold ? '#e2b84a' : '#c99a6b';
+    const top = s.gold ? '#c9961a' : s.top, dark = s.gold ? '#8a6410' : '#0d0d0d';
+    g.lineCap = 'round';
+    // legs and shoes
+    g.strokeStyle = s.gold ? '#a87c14' : s.bottom; g.lineWidth = 0.085;
+    g.beginPath(); g.moveTo(0.03, -0.42); g.lineTo(0.03 - sw * 0.15, -0.03); g.moveTo(-0.03, -0.42); g.lineTo(-0.03 + sw * 0.15, -0.03); g.stroke();
+    g.fillStyle = s.gold ? '#8a6410' : '#111'; g.fillRect(0.03 - sw * 0.15 - 0.08, -0.04, 0.12, 0.04); g.fillRect(-0.03 + sw * 0.15 - 0.08, -0.04, 0.12, 0.04);
+    g.translate(0, -bob);
+    // backpack sits behind the torso
+    if (s.item === 'backpack') { g.fillStyle = '#3a3a3a'; g.fillRect(0.1, -0.74, 0.14, 0.28); g.fillStyle = s.neon || ORANGE; g.fillRect(0.12, -0.7, 0.1, 0.02); }
+    // torso: hoodie / jacket, a long coat, or a suit with shirt and tie
+    g.fillStyle = top; g.beginPath();
+    if (s.coat) { g.moveTo(-0.17, -0.22); g.lineTo(0.17, -0.22); g.lineTo(0.13, -0.76); g.lineTo(-0.13, -0.76); } else { g.moveTo(-0.15, -0.4); g.lineTo(0.15, -0.4); g.lineTo(0.13, -0.76); g.lineTo(-0.13, -0.76); }
+    g.closePath(); g.fill();
+    if (s.suit) { g.fillStyle = '#eee'; g.beginPath(); g.moveTo(-0.05, -0.76); g.lineTo(0.05, -0.76); g.lineTo(0, -0.58); g.closePath(); g.fill(); g.fillStyle = s.tie; g.fillRect(-0.015, -0.72, 0.03, 0.17); }
+    else if (s.coat) { g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 0.015; g.beginPath(); g.moveTo(0, -0.74); g.lineTo(0, -0.24); g.moveTo(-0.08, -0.76); g.lineTo(-0.02, -0.62); g.moveTo(0.08, -0.76); g.lineTo(0.02, -0.62); g.stroke(); }
+    else { g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.02; g.beginPath(); g.moveTo(-0.1, -0.5); g.lineTo(0.1, -0.5); g.stroke(); }   // the pocket
+    if (s.neon && s.fam === 'p2tr') { g.strokeStyle = s.neon; g.lineWidth = 0.018; g.beginPath(); g.moveTo(-0.13, -0.74); g.lineTo(-0.15, -0.42); g.moveTo(0.13, -0.74); g.lineTo(0.15, -0.42); g.stroke(); }
+    // the front arm, swinging against the legs, holding whatever it carries
+    const ax = -0.13, ay = -0.72, hx = ax - 0.02 + sw * 0.1, hy = -0.46;
+    g.strokeStyle = top; g.lineWidth = 0.075; g.beginPath(); g.moveTo(ax, ay); g.lineTo(hx, hy); g.stroke();
+    g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, 0.035, 0, Math.PI * 2); g.fill();
+    if (s.item === 'laptop') { g.fillStyle = '#2a2a2a'; g.fillRect(hx - 0.1, hy - 0.2, 0.16, 0.11); g.fillStyle = ORANGE; g.fillRect(hx + 0.02, hy - 0.17, 0.025, 0.025); }
+    if (s.item === 'briefcase') { g.fillStyle = '#3b2a1a'; g.fillRect(hx - 0.1, hy + 0.02, 0.17, 0.13); g.fillStyle = '#9a7b4f'; g.fillRect(hx - 0.03, hy + 0.0, 0.04, 0.02); }
+    if (s.item === 'phone') { g.fillStyle = '#111'; g.fillRect(hx - 0.06, hy - 0.08, 0.05, 0.09); g.fillStyle = s.neon || '#7fd4ff'; g.fillRect(hx - 0.055, hy - 0.075, 0.04, 0.075); }
+    if (s.item === 'cane') { g.strokeStyle = '#6b4a2b'; g.lineWidth = 0.02; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx - 0.02, -0.02); g.stroke(); }
+    if (s.item === 'skate') { g.fillStyle = '#333'; g.fillRect(hx - 0.14, hy - 0.26, 0.07, 0.42); }
+    // head
+    g.fillStyle = skin; g.beginPath(); g.arc(0, -0.87, 0.11, 0, Math.PI * 2); g.fill();
+    if (s.gold) { const m = g.createLinearGradient(-0.1, -0.95, 0.06, -0.8); m.addColorStop(0, '#fff3c4'); m.addColorStop(0.5, '#e2b84a'); m.addColorStop(1, '#8a6410'); g.fillStyle = m; g.beginPath(); g.arc(0, -0.87, 0.1, 0, Math.PI * 2); g.fill(); }   // the mirrored face of the statue
+    else { g.fillStyle = '#0d0d0d'; g.beginPath(); g.ellipse(-0.045, -0.865, 0.06, 0.08, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = skin; g.beginPath(); g.ellipse(-0.06, -0.87, 0.045, 0.06, 0, 0, Math.PI * 2); g.fill(); }   // the face, a little in shadow
+    if (s.beard && !s.gold) { g.fillStyle = s.hair; g.beginPath(); g.arc(-0.02, -0.82, 0.095, 0.1, Math.PI - 0.1); g.closePath(); g.fill(); }
+    if (s.mask) { g.fillStyle = '#3a3a3a'; g.fillRect(-0.12, -0.86, 0.11, 0.06); }
+    if (s.glasses === 'shades') { g.fillStyle = '#000'; g.fillRect(-0.13, -0.91, 0.11, 0.035); g.fillStyle = 'rgba(255,106,0,.7)'; g.fillRect(-0.12, -0.905, 0.03, 0.02); }
+    if (s.glasses === 'round') { g.strokeStyle = '#ddd'; g.lineWidth = 0.012; g.beginPath(); g.arc(-0.09, -0.89, 0.028, 0, Math.PI * 2); g.moveTo(-0.0, -0.89); g.arc(-0.03, -0.89, 0.028, 0, Math.PI * 2); g.stroke(); }
+    // hats and hair
+    const hat = s.hat;
+    if (hat === 'hood') { g.fillStyle = top; g.beginPath(); g.arc(0.01, -0.88, 0.145, Math.PI * 0.62, Math.PI * 2.38); g.lineTo(0.12, -0.74); g.lineTo(-0.1, -0.74); g.closePath(); g.fill(); g.beginPath(); g.moveTo(0.08, -1.0); g.lineTo(0.15, -1.03); g.lineTo(0.13, -0.92); g.closePath(); g.fill(); }
+    else if (hat === 'beanie') { g.fillStyle = s.neon || '#444'; g.beginPath(); g.arc(0, -0.9, 0.12, Math.PI, 0); g.closePath(); g.fill(); g.fillRect(-0.12, -0.92, 0.24, 0.04); }
+    else if (hat === 'cap') { g.fillStyle = '#333'; g.beginPath(); g.arc(0, -0.9, 0.115, Math.PI, 0); g.closePath(); g.fill(); g.fillRect(-0.22, -0.91, 0.22, 0.025); }
+    else if (hat === 'fedora') { g.fillStyle = '#1e1a16'; g.fillRect(-0.2, -0.96, 0.4, 0.03); g.fillRect(-0.12, -1.08, 0.24, 0.13); g.fillStyle = '#5a3c20'; g.fillRect(-0.12, -0.99, 0.24, 0.025); }
+    else if (hat === 'flatcap') { g.fillStyle = '#3b3328'; g.beginPath(); g.arc(0.01, -0.92, 0.12, Math.PI, 0); g.closePath(); g.fill(); g.fillRect(-0.18, -0.93, 0.2, 0.02); }
+    else if (hat === 'visor') { g.fillStyle = '#111'; g.fillRect(-0.14, -0.93, 0.2, 0.05); g.fillStyle = s.neon; g.fillRect(-0.13, -0.92, 0.18, 0.03); g.fillStyle = s.hair; g.beginPath(); g.arc(0, -0.9, 0.11, Math.PI, 0); g.closePath(); g.fill(); }
+    else if (hat === 'mohawk') { g.fillStyle = s.neon; for (let i = 0; i < 4; i++) g.fillRect(-0.06 + i * 0.04, -1.08 + i * 0.01, 0.025, 0.14); }
+    else if (hat === 'headphones') { g.fillStyle = s.hair; g.beginPath(); g.arc(0, -0.9, 0.11, Math.PI, 0); g.closePath(); g.fill(); g.strokeStyle = '#ddd'; g.lineWidth = 0.02; g.beginPath(); g.arc(0, -0.88, 0.13, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); g.fillStyle = '#ddd'; g.fillRect(-0.15, -0.9, 0.04, 0.06); g.fillRect(0.11, -0.9, 0.04, 0.06); }
+    else if (hat === 'slick') { g.fillStyle = s.hair; g.beginPath(); g.arc(0.01, -0.9, 0.11, Math.PI * 1.05, Math.PI * 1.95); g.closePath(); g.fill(); }
+    else { g.fillStyle = s.hair; g.beginPath(); g.arc(0, -0.9, 0.11, Math.PI, 0); g.closePath(); g.fill(); }
+    g.restore();
+  }
+  // ---- the Defender, in local units (1 = its length), facing left, (0, 0) on the ground under the front bumper ----
   function defender(g, x, y, L, { fill, label, wheel, alpha = 1, scale = 1 }) {
     g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(L * scale, L * scale);
     g.lineJoin = 'round';
-    // wheels behind the body
-    for (const wx of [0.2, 0.78]) {
-      g.fillStyle = TYRE; g.beginPath(); g.arc(wx, -0.13, 0.13, 0, Math.PI * 2); g.fill();
-      g.fillStyle = RIM; g.beginPath(); g.arc(wx, -0.13, 0.07, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#3a3a3a'; g.lineWidth = 0.014; g.beginPath();
-      for (let k = 0; k < 5; k++) { const a = wheel + k * Math.PI * 2 / 5; g.moveTo(wx, -0.13); g.lineTo(wx + Math.cos(a) * 0.065, -0.13 + Math.sin(a) * 0.065); }
-      g.stroke(); g.fillStyle = '#222'; g.beginPath(); g.arc(wx, -0.13, 0.02, 0, Math.PI * 2); g.fill();
+    for (const wx of [0.19, 0.8]) {                                                                   // wheels behind the body
+      g.fillStyle = TYRE; g.beginPath(); g.arc(wx, -0.12, 0.12, 0, Math.PI * 2); g.fill();
+      g.fillStyle = RIM; g.beginPath(); g.arc(wx, -0.12, 0.065, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#3a3a3a'; g.lineWidth = 0.013; g.beginPath();
+      for (let k = 0; k < 5; k++) { const a = wheel + k * Math.PI * 2 / 5; g.moveTo(wx, -0.12); g.lineTo(wx + Math.cos(a) * 0.06, -0.12 + Math.sin(a) * 0.06); }
+      g.stroke(); g.fillStyle = '#222'; g.beginPath(); g.arc(wx, -0.12, 0.018, 0, Math.PI * 2); g.fill();
     }
-    // body: the bonnet is low and flat, the cab and the back are tall and square
+    // body: the long flat bonnet, the tall square cab and back
     g.fillStyle = SAND; g.beginPath();
-    g.moveTo(0.01, -0.2); g.lineTo(0.01, -0.44); g.lineTo(0.3, -0.44); g.lineTo(0.3, -0.47); g.lineTo(0.33, -0.76); g.lineTo(0.97, -0.76); g.lineTo(0.98, -0.2); g.closePath(); g.fill();
-    g.fillStyle = ROOF; g.fillRect(0.33, -0.79, 0.65, 0.04);                                             // the white roof
-    g.strokeStyle = '#8f8468'; g.lineWidth = 0.012; g.beginPath(); g.moveTo(0.01, -0.47); g.lineTo(0.3, -0.47); g.moveTo(0.3, -0.47); g.lineTo(0.98, -0.47); g.stroke();   // the belt line
-    g.beginPath(); for (const sx of [0.42, 0.6]) { g.moveTo(sx, -0.74); g.lineTo(sx, -0.47); g.moveTo(sx, -0.37); g.lineTo(sx, -0.22); } g.stroke();   // door seams, leaving the band for the numbers
+    g.moveTo(0.01, -0.19); g.lineTo(0.01, -0.5); g.lineTo(0.42, -0.5); g.lineTo(0.45, -0.52); g.lineTo(0.48, -0.78); g.lineTo(0.98, -0.78); g.lineTo(0.985, -0.19); g.closePath(); g.fill();
+    g.fillStyle = ROOF; g.fillRect(0.47, -0.81, 0.515, 0.04);                                         // the white roof
+    g.strokeStyle = '#8f8468'; g.lineWidth = 0.011; g.beginPath(); g.moveTo(0.42, -0.5); g.lineTo(0.42, -0.21); g.moveTo(0.46, -0.52); g.lineTo(0.985, -0.52);   // the bonnet's edge, the belt line
+    for (const sx of [0.6, 0.78]) { g.moveTo(sx, -0.76); g.lineTo(sx, -0.21); } g.stroke();        // door seams
+    g.fillStyle = '#8f8468'; g.fillRect(0.62, -0.47, 0.04, 0.012);                                     // handle
     // windows: dark glass that lights up, from the back forward, as the block fills
-    const wins = [[0.34, 0.41, true], [0.43, 0.59, false], [0.61, 0.78, false], [0.8, 0.96, false]];
+    const wins = [[0.485, 0.58, true], [0.605, 0.765, false], [0.785, 0.965, false]];
     wins.forEach(([a, b, screen], i) => {
-      const lit = Math.max(0, Math.min(1, fill * 4 - (3 - i)));
+      const lit = Math.max(0, Math.min(1, fill * 3 - (2 - i)));
       g.fillStyle = GLASS; g.beginPath();
-      if (screen) { g.moveTo(a + 0.02, -0.72); g.lineTo(b, -0.72); g.lineTo(b, -0.5); g.lineTo(a, -0.5); } else g.rect(a, -0.72, b - a, 0.22);
+      if (screen) { g.moveTo(a + 0.025, -0.74); g.lineTo(b, -0.74); g.lineTo(b, -0.55); g.lineTo(a, -0.55); } else g.rect(a, -0.74, b - a, 0.19);
       g.closePath(); g.fill();
       if (lit > 0) { g.fillStyle = `rgba(255,140,40,${0.2 + 0.55 * lit})`; g.fill(); }
     });
-    // wheel arches, front, bumpers, headlight, spare wheel on the back door
-    g.fillStyle = TYRE; for (const wx of [0.2, 0.78]) { g.beginPath(); g.arc(wx, -0.2, 0.17, Math.PI, 0); g.lineTo(wx + 0.17, -0.2); g.closePath(); g.fill(); }
-    g.fillStyle = SAND; g.fillRect(0.01, -0.44, 0.07, 0.22); g.fillStyle = '#1a1a1a'; g.fillRect(0.0, -0.4, 0.045, 0.14);   // the grille
-    g.fillStyle = '#9a9a9a'; g.fillRect(-0.03, -0.23, 0.33, 0.035); g.fillRect(0.9, -0.23, 0.1, 0.035);                  // bumpers
-    g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(0.055, -0.33, 0.028, 0, Math.PI * 2); g.fill();                         // headlight
-    g.fillStyle = TYRE; g.beginPath(); g.ellipse(0.995, -0.52, 0.03, 0.11, 0, 0, Math.PI * 2); g.fill();                 // the spare
-    g.fillStyle = RIM; g.beginPath(); g.ellipse(0.995, -0.52, 0.012, 0.05, 0, 0, Math.PI * 2); g.fill();
+    // wheel arches, grille, bumpers, headlight, the spare on the back door
+    g.fillStyle = TYRE; for (const wx of [0.19, 0.8]) { g.beginPath(); g.arc(wx, -0.17, 0.15, Math.PI, 0); g.lineTo(wx + 0.15, -0.17); g.closePath(); g.fill(); }
+    g.fillStyle = SAND; g.fillRect(0.01, -0.5, 0.05, 0.2); g.fillStyle = '#1a1a1a'; g.fillRect(0.0, -0.46, 0.04, 0.14);
+    g.fillStyle = '#9a9a9a'; g.fillRect(-0.03, -0.22, 0.3, 0.035); g.fillRect(0.92, -0.22, 0.1, 0.035);
+    g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(0.055, -0.4, 0.028, 0, Math.PI * 2); g.fill();
+    g.fillStyle = TYRE; g.beginPath(); g.ellipse(1.0, -0.56, 0.028, 0.1, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = RIM; g.beginPath(); g.ellipse(1.0, -0.56, 0.011, 0.045, 0, 0, Math.PI * 2); g.fill();
     // roof rack: the block-number board at the front, then the load — one crate per fifth of a block
-    g.strokeStyle = '#555'; g.lineWidth = 0.014; g.beginPath(); g.moveTo(0.36, -0.86); g.lineTo(0.96, -0.86);
-    for (const rx of [0.38, 0.66, 0.94]) { g.moveTo(rx, -0.86); g.lineTo(rx, -0.79); } g.stroke();
+    g.strokeStyle = '#555'; g.lineWidth = 0.013; g.beginPath(); g.moveTo(0.5, -0.88); g.lineTo(0.97, -0.88);
+    for (const rx of [0.52, 0.74, 0.95]) { g.moveTo(rx, -0.88); g.lineTo(rx, -0.81); } g.stroke();
     const crates = Math.min(5, Math.floor(fill * 5 + 1e-9));
-    for (let i = 0; i < crates; i++) { g.fillStyle = i % 2 ? '#d9661a' : ORANGE; g.fillRect(0.64 + i * 0.06, -0.92, 0.056, 0.055); }
+    for (let i = 0; i < crates; i++) { g.fillStyle = i % 2 ? '#d9661a' : ORANGE; g.fillRect(0.735 + i * 0.047, -0.935, 0.043, 0.05); }
     if (label) {
-      const k = L * scale, txt = (str, ux, uy, size, color, align) => { g.save(); g.scale(1 / k, 1 / k); g.fillStyle = color; g.font = `600 ${Math.max(6, Math.round(size * k))}px ${MONO}`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, ux * k, uy * k); g.restore(); };   // text in real pixels
-      g.fillStyle = '#1a1a1a'; g.fillRect(0.37, -0.95, 0.25, 0.085); g.strokeStyle = '#6a6a6a'; g.lineWidth = 0.008; g.strokeRect(0.37, -0.95, 0.25, 0.085);
-      txt('#' + fmtN(label.height), 0.495, -0.905, 0.05, label.mined ? ORANGE : '#f2f2f2', 'center');
-      txt(fmtN(label.txs) + ' tx · ' + fmtBtc(label.sats) + ' ₿', 0.52, -0.42, 0.06, label.mined ? '#9a2f00' : '#2b2518', 'center');   // the numbers along the side
+      const k = L * scale, txt = (str, ux, uy, size, color, align, weight = 600) => { g.save(); g.scale(1 / k, 1 / k); g.fillStyle = color; g.font = `${weight} ${Math.max(6, Math.round(size * k))}px ${MONO}`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, ux * k, uy * k); g.restore(); };   // text in real pixels
+      g.fillStyle = '#1a1a1a'; g.fillRect(0.51, -0.97, 0.21, 0.08); g.strokeStyle = '#6a6a6a'; g.lineWidth = 0.008; g.strokeRect(0.51, -0.97, 0.21, 0.08);
+      txt('#' + fmtN(label.height), 0.615, -0.93, 0.048, label.mined ? ORANGE : '#f2f2f2', 'center');
+      const ink = label.mined ? '#9a2f00' : '#2b2518';                                                  // the numbers on the bonnet
+      txt(fmtN(label.txs) + ' tx', 0.225, -0.45, 0.068, ink, 'center');
+      txt(fmtBtc(label.sats) + ' ₿', 0.225, -0.375, 0.068, ink, 'center');
     }
-    g.restore();
-  }
-  // a cypherpunk: hood up, hands in the pocket, some with a laptop under the arm; facing left
-  function punk(g, x, y, h, ph, s, walking, alpha = 1) {
-    g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(h, h);
-    const sw = walking ? Math.sin(ph) : 0, bob = walking ? Math.abs(Math.cos(ph)) * 0.02 : 0;
-    g.strokeStyle = s.trousers; g.lineWidth = 0.085; g.lineCap = 'round';
-    g.beginPath(); g.moveTo(0.03, -0.42); g.lineTo(0.03 - sw * 0.15, -0.03); g.moveTo(-0.03, -0.42); g.lineTo(-0.03 + sw * 0.15, -0.03); g.stroke();
-    g.translate(0, -bob);
-    g.fillStyle = s.hoodie; g.beginPath(); g.moveTo(-0.15, -0.4); g.lineTo(0.15, -0.4); g.lineTo(0.13, -0.76); g.lineTo(-0.13, -0.76); g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.02; g.beginPath(); g.moveTo(-0.1, -0.5); g.lineTo(0.1, -0.5); g.stroke();   // the pocket
-    if (s.laptop) { g.fillStyle = '#2a2a2a'; g.fillRect(-0.24, -0.63, 0.16, 0.11); g.fillStyle = ORANGE; g.fillRect(-0.12, -0.6, 0.025, 0.025); }
-    g.fillStyle = s.hoodie; g.beginPath(); g.ellipse(0.01, -0.86, 0.14, 0.14, 0, 0, Math.PI * 2); g.fill();     // the hood
-    g.beginPath(); g.moveTo(0.08, -0.98); g.lineTo(0.14, -1.0); g.lineTo(0.12, -0.9); g.closePath(); g.fill();   // its peak
-    g.fillStyle = '#0d0d0d'; g.beginPath(); g.ellipse(-0.04, -0.85, 0.08, 0.1, 0, 0, Math.PI * 2); g.fill();    // the face in shadow
-    if (s.mask) { g.fillStyle = '#3a3a3a'; g.fillRect(-0.12, -0.86, 0.1, 0.06); }
-    if (s.glasses) { g.fillStyle = '#000'; g.fillRect(-0.13, -0.9, 0.1, 0.03); g.fillStyle = 'rgba(255,106,0,.7)'; g.fillRect(-0.12, -0.895, 0.03, 0.02); }
     g.restore();
   }
   function streetFrame(now) {
@@ -1551,24 +1632,28 @@
     if (now - streetLast < (still ? 1000 : 31)) return;                             // ~30 frames a second is plenty for a background
     const dt = still ? 0 : Math.min(0.1, (now - streetLast) / 1000 || 0); streetLast = now;
     if (document.hidden || introOn) return;
-    const { g, W, H, Y, L, park, horizon, sun } = streetLayout();
-    g.fillStyle = '#171717'; g.fillRect(0, 0, W, H); g.fillStyle = '#242424'; g.fillRect(0, 0, W, 1);   // an opaque band along the bottom; the page scrolls above it
-    // the sunset: a glow, the sun half down, the land, low hills, the road
-    const glow = g.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, W * 0.55); glow.addColorStop(0, 'rgba(255,106,0,.28)'); glow.addColorStop(0.5, 'rgba(255,106,0,.06)'); glow.addColorStop(1, 'rgba(255,106,0,0)');
-    g.fillStyle = glow; g.fillRect(0, 0, W, horizon);
-    g.fillStyle = '#ff7a1a'; g.beginPath(); g.arc(sun.x, sun.y, sun.r, Math.PI, 0); g.fill();
-    g.fillStyle = LAND; g.fillRect(0, horizon, W, Y - horizon);
-    g.fillStyle = '#0f0f0f'; g.beginPath(); g.moveTo(0, horizon);
-    for (let x = 0; x <= W; x += W / 12) g.lineTo(x, horizon - L * 0.06 * (0.5 + 0.5 * Math.sin(x / W * 9 + 1.3)));
-    g.lineTo(W, horizon); g.closePath(); g.fill();
-    g.fillStyle = ROAD; g.fillRect(0, Y - L * 0.09, W, L * 0.09 + 8);
-    g.strokeStyle = '#2e2e2e'; g.lineWidth = 1; g.setLineDash([L * 0.12, L * 0.1]); g.beginPath(); g.moveTo(0, Y - L * 0.045); g.lineTo(W, Y - L * 0.045); g.stroke(); g.setLineDash([]);
+    const { g, W, H, Y, L, tab, ticker, top, phone, park } = streetLayout();
+    g.fillStyle = '#171717'; g.fillRect(0, 0, W, H); g.fillStyle = '#2a2a2a'; g.fillRect(0, 0, W, 1);   // an opaque band; the page scrolls above it
+    const d = streetData, mined = car.mode === 'leaving' && car.label, fx = (sats) => { const f = fiatShort(sats); return f ? ' ≈ ' + f : ''; };
+    if (phone) {   // a phone: one line (the scene, when opened, sits under it)
+      g.font = `10.5px ${MONO}`; g.textBaseline = 'middle'; g.textAlign = 'left';
+      let a, b;
+      if (streetErr) { a = 'the street'; b = 'waiting for the node…'; } else if (!d) { a = 'the street'; b = 'loading…'; }
+      else if (mined) { a = `block ${fmtN(car.label.height)} mined`; b = `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} ₿${fx(car.label.sats)}`; }
+      else { a = `#${fmtN(d.tip.height + 1)}`; b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿${fx(d.next.sats)} · ${fmtN(d.mempool.txs)} waiting`; if (g.measureText(a + '  ' + b).width > W - 44) b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿ · ${fmtN(d.mempool.txs)} waiting`; }
+      const yy = ticker ? (H - tab) / 2 : 15;
+      g.fillStyle = '#ff8a33'; g.fillText(a, 14, yy); g.fillStyle = '#b3b3b3'; g.fillText(b, 14 + g.measureText(a).width + 9, yy);
+      g.fillStyle = '#6f6f6f'; g.textAlign = 'right'; g.fillText(ticker ? '▲' : '▼', W - 12, yy);
+      if (ticker) return;
+    }
+    g.fillStyle = ROAD; g.fillRect(0, Y - L * 0.06, W, L * 0.06 + 8);                                   // the road
+    g.strokeStyle = '#2e2e2e'; g.lineWidth = 1; g.setLineDash([L * 0.12, L * 0.1]); g.beginPath(); g.moveTo(0, Y - L * 0.03); g.lineTo(W, Y - L * 0.03); g.stroke(); g.setLineDash([]);
     // the vehicle
     const door = () => car.x + L * 1.06;
     if (!still) {
       car.t += dt; car.bump += dt;
       if (car.mode === 'parked') car.x = park;
-      else if (car.mode === 'leaving') { const q = Math.min(1, car.t / 3.4), e = q * q; const nx = park - e * (park + L * 1.3); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'arriving'; car.t = 0; if (streetData) { car.label = nextLabel(streetData); car.fill = streetData.next.weight / 4e6; } } }
+      else if (car.mode === 'leaving') { const q = Math.min(1, car.t / 3.4), e = q * q; const nx = park - e * (park + L * 1.3); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'arriving'; car.t = 0; if (d) { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; } } }
       else if (car.mode === 'arriving') { const q = Math.min(1, car.t / 2.2), e = 1 - Math.pow(1 - q, 3); const nx = W + 20 - e * (W + 20 - park); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'parked'; car.bump = 0; } }
     } else car.x = park;
     const bounce = Math.sin(car.bump * 16) * Math.exp(-car.bump * 6) * L * 0.025;
@@ -1588,26 +1673,36 @@
     for (const p of punks) {
       if (p.st === 'board') { const q = p.bt / 0.55; punk(g, p.x - q * L * 0.1, Y - q * p.h * 0.25, p.h * (1 - 0.4 * q), p.ph, p.s, false, 1 - q); continue; }
       punk(g, p.x, Y, p.h, p.ph, p.s, p.st === 'walk');
-      if (p.sats !== null && p.sats !== undefined && p.x - lastLabel > 74) {   // one amount per figure, unless they bunch up
+      if (p.x - lastLabel > 80) {   // one label per figure, unless they bunch up
         lastLabel = p.x;
-        g.fillStyle = '#8f8f8f'; g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
-        g.fillText(fmtBtc(p.sats) + ' ₿' + (p.more ? ` +${p.more} more` : ''), p.x, Y - p.h - 6);
+        g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+        const amount = p.sats !== null && p.sats !== undefined ? fmtBtc(p.sats) + ' ₿' : '';
+        g.fillStyle = p.s.gold ? '#e2b84a' : '#8f8f8f'; g.fillText(p.tag + (p.more ? ` +${p.more}` : ''), p.x, Y - p.h - 6);
+        if (amount) { g.fillStyle = '#b3b3b3'; g.fillText(amount, p.x, Y - p.h - 18); }
       }
     }
-    defender(g, car.x, Y + bounce, L, { fill: car.fill, label: car.label, wheel: -car.dist / (L * 0.13), alpha: 1 - 0.9 * Math.pow(leaving, 2.5), scale: 1 - 0.2 * leaving });
-    // the caption
-    g.textAlign = 'left'; g.textBaseline = 'top'; g.font = `11px ${MONO}`;
-    let cap;
-    if (streetErr) cap = ['the street', 'waiting for the Olesia node…'];
-    else if (!streetData) cap = ['the street', 'loading…'];
-    else if (car.mode === 'leaving' && car.label) cap = [`block ${fmtN(car.label.height)} mined`, `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} BTC`];
-    else cap = [`block ${fmtN(streetData.tip.height + 1)} loading`, `${fmtN(streetData.next.txs)} tx · ${fmtBtc(streetData.next.sats)} BTC${streetData.next.valued < streetData.next.txs ? ' so far' : ''}${W < 700 ? '' : ` · ${fmtN(streetData.mempool.txs)} waiting`}`];
-    g.fillStyle = '#ff8a33'; g.fillText(cap[0], 16, 12); g.fillStyle = '#8f8f8f';
-    if (W < 700) g.fillText(cap[1], 16, 27); else g.fillText(cap[1], 16 + g.measureText(cap[0]).width + 10, 12);   // two lines on a phone, clear of the vehicle
+    defender(g, car.x, Y + bounce, L, { fill: car.fill, label: car.label, wheel: -car.dist / (L * 0.12), alpha: 1 - 0.9 * Math.pow(leaving, 2.5), scale: 1 - 0.2 * leaving });
+    if (phone) return;
+    // the panel on the left: block, transactions, value, the queue
+    g.textAlign = 'left'; g.textBaseline = 'top';
+    const line = (str, yy, font, color) => { g.font = font; g.fillStyle = color; g.fillText(str, 18, yy); return g.measureText(str).width; };
+    if (streetErr) { line('THE STREET', 16, `600 11px ${MONO}`, '#ff8a33'); line('waiting for the Olesia node…', 34, `13px ${SANS}`, '#8f8f8f'); }
+    else if (!d) { line('THE STREET', 16, `600 11px ${MONO}`, '#ff8a33'); line('loading…', 34, `13px ${SANS}`, '#8f8f8f'); }
+    else {
+      const L1 = mined ? car.label : { height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats };
+      line(`BLOCK ${fmtN(L1.height)} · ${mined ? 'MINED' : 'LOADING'}`, 16, `600 11px ${MONO}`, '#ff8a33');
+      line(`${fmtN(L1.txs)} transactions`, 34, `600 20px ${SANS}`, '#f4f4f4');
+      const w1 = line(`${fmtBtc(L1.sats)} BTC`, 60, `600 20px ${SANS}`, '#f4f4f4');
+      const f = fiatShort(L1.sats); if (f) { g.font = `500 14px ${MONO}`; g.fillStyle = '#8f8f8f'; g.fillText(`≈ ${f}`, 18 + w1 + 10, 65); }
+      line(mined ? `block ${fmtN(d.tip.height + 1)} loading next` : `${fmtN(d.mempool.txs)} waiting in the mempool${d.next.valued < d.next.txs ? ' · value so far' : ''}`, 92, `11px ${MONO}`, '#8f8f8f');
+      if (H - tab >= 200) line('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era', Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
+    }
   }
   function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }
   $('#set_street').addEventListener('change', (e) => streetSet(e.target.checked));
   $('#w_street').addEventListener('click', () => streetSet(!streetOn));
+  street.addEventListener('click', () => { if (isPhone()) { streetFull = !streetFull; streetLast = 0; } });   // a phone: the ticker opens into the scene and back
+  window.addEventListener('resize', () => { if (!isPhone()) streetFull = false; });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && streetOn) { streetLast = performance.now(); streetPoll(); } });
   show(street, streetOn); document.body.classList.toggle('street', streetOn); $('#set_street').checked = streetOn; $('#w_street').textContent = streetOn ? 'Hide the street' : 'Show the street';
   if (streetOn) { streetPoll(); streetTick(); }

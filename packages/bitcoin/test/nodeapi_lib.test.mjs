@@ -1,7 +1,7 @@
 // Node API logic with a MOCKED Bitcoin Core RPC: input validation, amount conversion, the
 // batching scan manager, incremental block following, reorg handling, and prev-tx fetching.
 import { VanityQueue, validateScripts, validateOutpoints, validateRawTx, isStandardScript, btcToSats, feerateToSatVb, txidOfRaw,
-         RateLimiter, ScanManager, fetchPrevTx, ApiError, PriceFeed, StreetWatch, quoteFromCoinbase, quotesFromCoinGecko, EsploraBackend, TEST_NETWORKS } from '../../../infra/nodeapi/lib.mjs';
+         RateLimiter, ScanManager, fetchPrevTx, ApiError, PriceFeed, StreetWatch, classifyInput, pushesOf, quoteFromCoinbase, quotesFromCoinGecko, EsploraBackend, TEST_NETWORKS } from '../../../infra/nodeapi/lib.mjs';
 
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(76), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
@@ -267,6 +267,21 @@ const waitDone = async (m, id) => { for (let i = 0; i < 200; i++) { const v = aw
   ok('vanity: finished jobs are forgotten after 30 minutes', err(() => q.view(j1.id)) === 404);
 }
 
+// ---- the street: what kind of coin an input spends, from the input alone ----
+{
+  const SIG = '30' + '44'.repeat(70) + '01', PUB = '02' + 'ab'.repeat(32), PUB65 = '04' + 'ab'.repeat(64), push = (h) => (h.length / 2).toString(16).padStart(2, '0') + h;
+  const vin = (sig, w) => ({ scriptSig: { hex: sig }, txinwitness: w });
+  ok('pushesOf: direct pushes, OP_0, PUSHDATA1, opcodes', JSON.stringify(pushesOf('00' + push('aa') + '4c02bbbb' + 'ac')) === JSON.stringify(['', 'aa', 'bbbb', null]));
+  ok('p2pk: one signature push and nothing else', classifyInput(vin(push(SIG), [])) === 'p2pk');
+  ok('p2pkh: signature + pubkey (compressed or uncompressed)', classifyInput(vin(push(SIG) + push(PUB), [])) === 'p2pkh' && classifyInput(vin(push(SIG) + '41' + PUB65, [])) === 'p2pkh');
+  ok('p2sh (multisig): OP_0, signatures, redeem script', classifyInput(vin('00' + push(SIG) + push(SIG) + '4c69' + '52' + '21'.repeat(0) + 'cc'.repeat(104), [])) === 'p2sh');
+  ok('p2sh-p2wpkh / p2sh-p2wsh: a witness program as the redeem script, with a witness', classifyInput(vin(push('0014' + '11'.repeat(20)), [SIG, PUB])) === 'p2sh-p2wpkh' && classifyInput(vin(push('0020' + '11'.repeat(32)), ['', SIG, 'ff'])) === 'p2sh-p2wsh');
+  ok('p2wpkh: empty scriptSig, witness = signature + pubkey', classifyInput(vin('', [SIG, PUB])) === 'p2wpkh');
+  ok('p2wsh: empty scriptSig, witness ends in a script', classifyInput(vin('', ['', SIG, SIG, '52' + 'cc'.repeat(70)])) === 'p2wsh');
+  ok('p2tr: key path (one 64-byte signature) and script path (control block last)', classifyInput(vin('', ['ab'.repeat(64)])) === 'p2tr' && classifyInput(vin('', ['ab'.repeat(64), '20' + 'ab'.repeat(32) + 'ac', 'c0' + 'cd'.repeat(32)])) === 'p2tr');
+  ok('coinbase and oddities', classifyInput({ coinbase: '01' }) === 'coinbase' && classifyInput(vin('51', [])) === 'other');
+}
+
 // ---- the street: a fake node whose mempool fills and whose tip advances ----
 {
   let height = 100, now = 1_000_000; const mem = new Map();   // txid -> { weight, fee(BTC), outs[] }
@@ -278,7 +293,8 @@ const waitDone = async (m, id) => { for (let i = 0; i < 200; i++) { const v = aw
     if (m === 'getblockstats') return { height: p[0], blockhash: 'h' + p[0], time: 1, txs: 3000, total_out: 123_456_789_000, totalfee: 5_000_000, subsidy: 312_500_000, total_weight: 3_990_000 };
     if (m === 'getrawmempool') return p[0] ? Object.fromEntries([...mem].map(([id, e]) => [id, { weight: e.weight, fees: { base: e.fee }, time: 5 }])) : [...mem.keys()];
     if (m === 'getmempoolentry') { const e = mem.get(p[0]); if (!e) throw new Error('Transaction not in mempool'); return { weight: e.weight, fees: { base: e.fee }, time: 5 }; }
-    if (m === 'getrawtransaction') { const e = mem.get(p[0]); if (!e) throw new Error('No such mempool transaction'); return { vout: e.outs.map((v) => ({ value: v })) }; }
+    if (m === 'getrawtransaction') { const e = mem.get(p[0]); if (!e) throw new Error('No such mempool transaction'); return { vin: e.vin || [{ txid: TX(9), vout: 0, scriptSig: { hex: '' }, txinwitness: ['30' + '44'.repeat(70) + '01', '02' + 'ab'.repeat(32)] }], vout: e.outs.map((v) => ({ value: v })) }; }
+    if (m === 'gettxout') { if (p[0] === TX(9)) return { confirmations: height - 50_000 + 1, value: 1 }; if (p[0] === TX(8)) return null; throw new Error('unexpected'); }
     throw new Error('unexpected rpc ' + m);
   };
   addTx(1, 1_000_000, 0.001, [1.5, 0.25]); addTx(2, 2_000_000, 0.0005, [10]); addTx(3, 1_500_000, 0.0001, [0.5]); addTx(4, 400, 0.00001, [0.0001]);
@@ -294,11 +310,18 @@ const waitDone = async (m, id) => { for (let i = 0; i < 200; i++) { const v = aw
   addTx(5, 800, 0.0002, [2]); now += 5000; mem.delete(TX(3));
   await w.poll(); v = w.view();
   ok('street: a new transaction is read once (getmempoolentry) and becomes an arrival with its value', v.arrivals.length === 1 && v.arrivals[0].sats === 200_000_000 && v.arrivals[0].t === now && v.arrivals[0].vsize === 200 && calls.filter((c) => c === 'getmempoolentry').length === 1);
+  ok('street: the arrival says what it spends (p2wpkh) and how old the coin is (block 50,000 via gettxout)', JSON.stringify(v.arrivals[0].kinds) === '["p2wpkh"]' && v.arrivals[0].era === 50_000 && calls.filter((c) => c === 'gettxout').length === 1);
+  mem.set(TX(6), { weight: 800, fee: 0.0002, outs: [1], vin: [{ txid: TX(8), vout: 1, scriptSig: { hex: '48' + '30' + '44'.repeat(70) + '01' }, txinwitness: [] }] }); now += 5000;
+  await w.poll(); v = w.view();
+  ok('street: a p2pk spend is recognised; an unconfirmed parent leaves the age unknown (null), asked once', v.arrivals[0].kinds[0] === 'p2pk' && v.arrivals[0].era === null && calls.filter((c) => c === 'gettxout').length === 2);
+  await w.poll();
+  ok('street: ages are not asked again', calls.filter((c) => c === 'gettxout').length === 2);
+  mem.delete(TX(6)); await w.poll(); v = w.view();
   ok('street: a transaction gone from the mempool is dropped', v.mempool.txs === 4 && w.entries.has(TX(3)) === false);
   height = 101; mem.delete(TX(5)); mem.delete(TX(4));
   await w.poll(); v = w.view();
   ok('street: a new tip is picked up with the block\'s stats; the old one kept in blocks[]', v.tip.height === 101 && v.blocks.length === 1 && v.blocks[0].height === 100 && v.next.txs === 2);
-  ok('street: an arrival that was mined stays listed (the page animates it) but the candidate shrinks', v.arrivals.length === 1 && v.next.sats === 175_000_000 + 1_000_000_000);
+  ok('street: an arrival that was mined stays listed (the page animates it) but the candidate shrinks', v.arrivals.length === 2 && v.next.sats === 175_000_000 + 1_000_000_000);
   const rpcFail = async (m) => { if (m === 'getblockchaininfo') throw new Error('node down'); return rpc(m); };
   const w2 = new StreetWatch({ rpc: rpcFail, now: () => now }); await w2.poll();
   ok('street: a failed poll is reported, not thrown', w2.view().error === 'node down' && w2.view().seq === 0);

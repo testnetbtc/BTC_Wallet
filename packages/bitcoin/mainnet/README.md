@@ -41,17 +41,24 @@ the bottom through the chapters and stops under the name at the end. It has its 
 makes it hurry rather than teleport.
 
 **The street.** A band along the bottom of the page (after txstreet): the Olesia node watching the
-next block being loaded. An old Land Rover Defender waits on a road at sunset; every transaction
-that reaches the node's mempool is a hooded figure who walks up and climbs in the back; the
-Defender carries the next block's number on its roof board and the count and value of what is loaded
-along its side (crates on the roof show how full it is); when the block is mined it drives off into
-the sunset with the block's exact numbers, and the next one pulls in. Fed by `GET /street` on the
-node API every 6 s (`infra/nodeapi/lib.mjs` `StreetWatch`: tip via `getblockstats`, the mempool
-diffed by txid so each transaction's fee/size is read once, the highest-feerate transactions that
-fit a block valued by reading their outputs — capped per poll, newest arrivals first). Public chain
-data only. "Hide the street" on Welcome and the Settings checkbox (`localStorage`
-`olesia:mainnet:street`); reduced motion gets a still picture; nothing is drawn or fetched while the
-tab is hidden or the opening is showing. The page scrolls above the band, never under it.
+next block being loaded. An old Land Rover Defender waits on the road; every transaction that
+reaches the node's mempool is a figure who walks up and climbs in the back, dressed for the kind of
+coin it spends — hoodie and laptop for `bc1q`, long coat and fedora for `1…` legacy, suit and
+briefcase for `3…` script, neon visor for `bc1p` Taproot, and a gold hooded Satoshi (after the
+Budapest statue) for a P2PK spend or a coin created before block 100,000 (2009–2010); each figure
+carries a tag and its amount, and a seeded wardrobe (colours, hats, glasses, masks, beards, items)
+gives dozens of looks per family. The Defender's roof board shows the next block's number and its
+bonnet the count and value loaded (crates on the roof = how full); the panel on the left says it in
+words with the fiat value and the mempool queue. When the block is mined it drives off with the
+block's exact numbers and the next one pulls in. On a phone the band is a one-line ticker; tap it
+for the scene. Fed by `GET /street` on the node API every 6 s (`infra/nodeapi/lib.mjs`
+`StreetWatch`: tip via `getblockstats`, the mempool diffed by txid so each transaction's fee/size
+is read once, the highest-feerate transactions that fit a block valued by reading their outputs —
+capped per poll, newest arrivals first; `classifyInput` reads the kind of coin from the spending
+input alone; `gettxout` without the mempool view gives the coin's age). Public chain data only.
+"Hide the street" on Welcome and the Settings checkbox (`localStorage` `olesia:mainnet:street`);
+reduced motion gets a still picture; nothing is drawn or fetched while the tab is hidden or the
+opening is showing. The page scrolls above the band, never under it.
 
 **Site identity.** `mainnet/icons/` (drawn by a script from the Olesia mark) is published as
 `favicon.ico`, `icon-32/192/512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` and

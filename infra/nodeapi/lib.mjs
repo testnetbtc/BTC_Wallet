@@ -410,9 +410,48 @@ export class PriceFeed {
 // candidates and the newest arrivals are ever valued, not the whole mempool. Public chain data
 // only; nothing a caller sends is involved.
 const BLOCK_WEIGHT = 4_000_000, COINBASE_ROOM = 8_000;
+// What kind of coin an input spends, read from the spending input alone (scriptSig pushes and the
+// witness) — enough for the picture; no previous output is fetched for it.
+//   p2pk (one signature push, no witness) · p2pkh (signature + pubkey) · p2sh (…, redeem script;
+//   p2sh-p2wpkh / p2sh-p2wsh when the redeem script is a witness program) · p2wpkh · p2wsh ·
+//   p2tr (key path: one 64/65-byte witness item; script path: a control block last) · other
+export function pushesOf(hex) {
+  const out = []; let i = 0; const b = (k) => parseInt(hex.slice(k, k + 2), 16);
+  while (i < hex.length) {
+    const op = b(i); i += 2; let n;
+    if (op === 0) { out.push(''); continue; }
+    if (op >= 1 && op <= 75) n = op;
+    else if (op === 76) { n = b(i); i += 2; }
+    else if (op === 77) { n = b(i) + 256 * b(i + 2); i += 4; }
+    else if (op === 78) { n = b(i) + 256 * b(i + 2) + 65536 * b(i + 4) + 16777216 * b(i + 6); i += 8; }
+    else { out.push(null); continue; }   // a non-push opcode
+    out.push(hex.slice(i, i + n * 2)); i += n * 2;
+  }
+  return out;
+}
+const isSig = (h) => typeof h === 'string' && h.length >= 16 && h.length <= 146 && h.startsWith('30');
+const isPub = (h) => typeof h === 'string' && (h.length === 66 && /^0[23]/.test(h) || h.length === 130 && h.startsWith('04'));
+export function classifyInput(vin) {
+  if (vin.coinbase) return 'coinbase';
+  const sig = vin.scriptSig?.hex || '', w = vin.txinwitness || [];
+  if (!sig) {
+    if (w.length === 2 && isPub(w[1])) return 'p2wpkh';
+    if (w.length === 1 && (w[0].length === 128 || w[0].length === 130)) return 'p2tr';
+    if (w.length >= 2) { const cb = w[w.length - 1]; if (/^c[0-9a-f]/.test(cb) && (cb.length - 66) % 64 === 0) return 'p2tr'; }
+    return w.length ? 'p2wsh' : 'other';
+  }
+  const p = pushesOf(sig);
+  if (p.length === 1 && isSig(p[0])) return 'p2pk';
+  if (p.length === 2 && isSig(p[0]) && isPub(p[1])) return 'p2pkh';
+  const last = p[p.length - 1];
+  if (typeof last === 'string' && last.length === 44 && last.startsWith('0014') && w.length) return 'p2sh-p2wpkh';
+  if (typeof last === 'string' && last.length === 68 && last.startsWith('0020') && w.length) return 'p2sh-p2wsh';
+  if (typeof last === 'string' && last.length >= 2 && p.length >= 2) return 'p2sh';
+  return 'other';
+}
 export class StreetWatch {
-  constructor({ rpc, rpcBatch = null, log = () => {}, now = () => Date.now(), pollMs = 5000, valuePerPoll = 400, entriesPerPoll = 4000, keepArrivals = 40 }) {
-    Object.assign(this, { rpc, log, now, pollMs, valuePerPoll, entriesPerPoll, keepArrivals });
+  constructor({ rpc, rpcBatch = null, log = () => {}, now = () => Date.now(), pollMs = 5000, valuePerPoll = 400, entriesPerPoll = 4000, keepArrivals = 40, agePerPoll = 120 }) {
+    Object.assign(this, { rpc, log, now, pollMs, valuePerPoll, entriesPerPoll, keepArrivals, agePerPoll });
     this.rpcBatch = rpcBatch || ((calls) => Promise.all(calls.map(([m, p]) => rpc(m, p).then((result) => ({ result }), (e) => ({ error: e.message })))));
     this.entries = new Map();   // txid -> { w (weight), fee (sats), rate (sat/vB), out (sats, or null until valued), t }
     this.pending = new Set();   // txids seen in the mempool whose entry has not been read yet
@@ -445,7 +484,7 @@ export class StreetWatch {
       const read = [...this.pending].slice(0, this.entriesPerPoll);
       if (read.length) {
         const rs = await this.rpcBatch(read.map((txid) => ['getmempoolentry', [txid]]));
-        rs.forEach((r, i) => { this.pending.delete(read[i]); if (r.result) { const e = this._entry(r.result, true); this.entries.set(read[i], e); this.arrivals.unshift({ txid: read[i], t: e.t, vsize: Math.ceil(e.w / 4), rate: e.rate, sats: null }); } });
+        rs.forEach((r, i) => { this.pending.delete(read[i]); if (r.result) { const e = this._entry(r.result, true); this.entries.set(read[i], e); this.arrivals.unshift({ txid: read[i], t: e.t, vsize: Math.ceil(e.w / 4), rate: e.rate, sats: null, kinds: null, ins: null, era: null }); } });
         this.arrivals.length = Math.min(this.arrivals.length, this.keepArrivals);
       }
     }
@@ -461,9 +500,24 @@ export class StreetWatch {
     for (const [txid, e] of cand) { if (want.length >= this.valuePerPoll) break; if (e.out === null && !seen.has(txid)) { want.push(txid); seen.add(txid); } }
     if (want.length) {
       const rs = await this.rpcBatch(want.slice(0, this.valuePerPoll).map((txid) => ['getrawtransaction', [txid, true]]));
-      rs.forEach((r, i) => { const e = this.entries.get(want[i]); if (!e) return; e.out = r.result ? (r.result.vout || []).reduce((s, o) => s + btcToSats(o.value), 0) : -1; });
+      rs.forEach((r, i) => {
+        const e = this.entries.get(want[i]); if (!e) return;
+        e.out = r.result ? (r.result.vout || []).reduce((s, o) => s + btcToSats(o.value), 0) : -1;
+        const a = this.arrivals.find((x) => x.txid === want[i]);
+        if (a && r.result) { const vin = r.result.vin || []; a.kinds = [...new Set(vin.map(classifyInput))]; a.ins = vin.slice(0, 3).map((v) => [v.txid, v.vout]).filter((v) => v[0]); }
+      });
     }
     for (const a of this.arrivals) { const e = this.entries.get(a.txid); if (e && e.out !== null && e.out >= 0) a.sats = e.out; }
+    // how old are the coins the newest arrivals spend? (their outputs are still in the UTXO set
+    // while the spend sits in the mempool — asked WITHOUT the mempool view, which would show them
+    // spent; a parent still in the mempool answers null)
+    const age = []; for (const a of this.arrivals) { if (a.era === null && a.ins && a.ins.length) { for (const [txid, vout] of a.ins) age.push([a, txid, vout]); } if (age.length >= this.agePerPoll) break; }
+    if (age.length) {
+      const rs = await this.rpcBatch(age.map(([, txid, vout]) => ['gettxout', [txid, vout, false]]));
+      const tip = this.tip ? this.tip.height : 0;
+      rs.forEach((r, i) => { const a = age[i][0]; const h = r.result && Number.isFinite(r.result.confirmations) ? tip - r.result.confirmations + 1 : null; if (h !== null) a.era = a.era === null || a.era === -1 ? h : Math.min(a.era, h); });
+      for (const [a] of age) if (a.era === null) a.era = -1;   // looked, could not tell
+    }
     let sats = 0, valued = 0;
     for (const [, e] of cand) if (e.out !== null && e.out >= 0) { sats += e.out; valued++; }
     this.next = { txs: cand.length, sats, valued, weight, minRate: cand.length ? Math.round(cand[cand.length - 1][1].rate * 10) / 10 : 0 };
@@ -479,7 +533,7 @@ export class StreetWatch {
       at: this.at, seq: this.seq, error: this.error,
       tip: this.tip, blocks: this.blocks.slice(1),
       mempool: this.mempool, next: this.next,
-      arrivals: this.arrivals.slice(0, this.keepArrivals).map(({ t, vsize, rate, sats }) => ({ t, vsize, rate: Math.round(rate * 10) / 10, sats })),
+      arrivals: this.arrivals.slice(0, this.keepArrivals).map(({ t, vsize, rate, sats, kinds, era }) => ({ t, vsize, rate: Math.round(rate * 10) / 10, sats, kinds, era: era === -1 ? null : era })),
     };
   }
 }

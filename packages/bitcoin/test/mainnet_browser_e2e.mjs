@@ -243,8 +243,8 @@ try {
   const manifest = await (await fetch(ORIGIN + '/site.webmanifest')).json();
   ok('web manifest names the app "Olesia" and lists 192/512 icons', manifest.short_name === 'Olesia' && manifest.icons.some((i) => i.sizes === '192x192') && manifest.icons.some((i) => i.sizes === '512x512'));
   // the street: the background scene fed by GET /street (the regtest node's last block and mempool)
-  await page.waitForFunction(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] > 150 && d[i + 1] > 90 && d[i + 2] < 60) lit++; return lit > 10; }, { timeout: 15000 });
-  ok('street: the scene is drawn on its canvas behind the page (sunset orange present) and GET /street was called', apiCalls.includes('GET /street'));
+  await page.waitForFunction(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] + d[i + 1] + d[i + 2] > 450) lit++; return lit > 10; }, { timeout: 15000 });
+  ok('street: the scene is drawn on its band (light pixels: the panel, the roof) and GET /street was called', apiCalls.includes('GET /street'));
   const streetView = await (await fetch(localApi + '/street', { headers: { origin: ORIGIN } })).json();
   ok('street: the node API reports the tip (height, tx count, value) and the next block from the mempool', Number.isInteger(streetView.tip.height) && streetView.tip.txs >= 1 && streetView.tip.sats >= 0 && 'txs' in streetView.next && Array.isArray(streetView.arrivals) && streetView.mempool.txs >= 0);
   await tap(page, '#w_street'); await sleep(200);
