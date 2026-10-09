@@ -35,8 +35,10 @@ jump a chapter; Enter at the end; "Watch the opening again" on Welcome and in Se
 `prefers-reduced-motion` goes straight to the final frame. It is drawn on a canvas by `ui.js`
 (section THE OPENING) — no video file, no image, nothing fetched, so the page stays one file with one
 hash. The genesis chapter shows the real hashes of blocks 0–5. A honey badger ("bitcoin is the
-honey badger of money") walks along the bottom through the chapters in its own strip and sits
-down under the name at the end.
+honey badger of money", drawn after the operator's angular print of one) walks right to left along
+the bottom through the chapters and stops under the name at the end. It has its own canvas layer
+(`#intro_b`) and its own clock, so chapter swaps never blank it; a tap that jumps the story ahead
+makes it hurry rather than teleport.
 
 **Site identity.** `mainnet/icons/` (drawn by a script from the Olesia mark) is published as
 `favicon.ico`, `icon-32/192/512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` and

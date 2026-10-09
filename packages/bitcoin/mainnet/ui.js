@@ -1167,7 +1167,7 @@
   // at the end. Remembered per browser; replayable from Welcome and Settings. People who asked
   // their system for reduced motion get the final frame and the Enter button straight away.
   const INTRO_KEY = 'olesia:mainnet:opening';
-  const intro = $('#intro'), canvas = $('#intro_c');
+  const intro = $('#intro'), canvas = $('#intro_c'), bcanvas = $('#intro_b');   // the scene, and the badger's own layer above it
   const CHAPTERS = [
     { dur: 5.5, k: 'I · Randomness', t: 'It begins with a number nobody can guess', p: 'A Bitcoin wallet is a secret number: 256 bits, chosen at random. There are more of them than atoms in the known universe. Olesia makes yours on your own device, and never sees it.' },
     { dur: 6, k: 'II · 1971 — 2008', t: 'Money came loose', p: 'In 1971 the dollar was cut from gold and every currency on Earth became a promise. In 2008 the promise was tested: banks fell, and the printing began.' },
@@ -1188,10 +1188,12 @@
 
   function introSize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = intro.clientWidth, h = intro.clientHeight;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
-    const g = canvas.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { g, W: w, H: h };
+    const w = intro.clientWidth, h = intro.clientHeight, ctx = [];
+    for (const c of [canvas, bcanvas]) {
+      if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+      const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.push(g);
+    }
+    return { g: ctx[0], gb: ctx[1], W: w, H: h };
   }
   // swap the caption (fading the old one out first), then tell the scene where it may draw
   function introCaption(i, first, then) {
@@ -1321,45 +1323,54 @@
       } },
   ];
   // The honey badger — "bitcoin is the honey badger of money": it does not care. It walks along
-  // the bottom through the chapters and sits down under the name at the end. Drawn in local units
-  // (1 = its height), facing right, (0, 0) at the ground under its rump.
+  // the bottom through the chapters, right to left, and stops under the name at the end. Drawn
+  // after the operator's print of it: flat angular shapes, orange, a yellow saddle along the back
+  // ending in a jagged edge, black edges. Local units (1 = its height), facing left, (0, 0) at the
+  // ground under its nose, the rump at x = 2.7, the tail tip at 3.05.
+  const BADGER_BODY = [[0, -0.78], [0.2, -0.6], [0.5, -0.47], [0.62, -0.42], [2.4, -0.42], [2.58, -0.5], [2.7, -0.66], [2.66, -0.82], [2.4, -0.86], [1.55, -1], [0.95, -0.93], [0.55, -0.86], [0.1, -0.84]];
+  const BADGER_SADDLE = [[0.3, -0.85], [0.55, -0.86], [0.95, -0.93], [1.55, -1], [2.4, -0.86], [2.45, -0.78], [2.3, -0.62], [1.98, -0.48], [1.8, -0.45], [1.7, -0.44], [1.66, -0.5], [1.56, -0.45], [1.5, -0.49], [1.2, -0.6], [0.85, -0.74], [0.5, -0.83]];
+  const BADGER_LEGS = [[0.72, Math.PI, 0], [2.1, 0, 0], [0.92, 0, 1], [2.3, Math.PI, 1]];   // hip x, gait phase, near side (drawn last) — a diagonal walk
+  const BADGER_YELLOW = '#ffd21f', BADGER_FAR = '#d95a00', BADGER_EDGE = '#0c0c0c';
+  function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); }
   function badger(g, x, y, h, phase, moving, t) {
-    g.save(); g.translate(x, y + (moving ? Math.sin(phase * 2) * 0.025 * h : 0)); g.scale(h, h);
-    const dark = ORANGE, pale = '#f3e3cc', look = moving ? 0 : 0.5 + 0.5 * Math.sin(t * 1.1);   // sitting: looks up at the name
-    g.lineCap = 'round'; g.strokeStyle = dark; g.lineWidth = 0.2;
-    for (const [hx, ph] of [[0.42, 0], [0.66, Math.PI], [1.42, Math.PI], [1.66, 0]]) {           // four short, thick legs
-      const sw = moving ? Math.sin(phase + ph) * 0.18 : 0; g.beginPath(); g.moveTo(hx, -0.4); g.lineTo(hx + sw, -0.03); g.stroke();
+    g.save(); g.translate(x, y + (moving ? Math.sin(phase * 2) * 0.02 * h : Math.sin(t * 2) * 0.006 * h)); g.scale(h, h);
+    g.lineJoin = 'miter'; g.miterLimit = 3; g.strokeStyle = BADGER_EDGE; g.lineWidth = 0.05;
+    for (const [hx, ph, near] of BADGER_LEGS) {
+      const sw = moving ? Math.sin(phase + ph) * 0.17 : 0, lift = moving ? Math.max(0, -Math.cos(phase + ph)) * 0.1 : 0;   // the foot lifts as it swings forward
+      const ky = -0.26 + lift * 0.5;
+      poly(g, [[hx - 0.13, -0.55], [hx + 0.13, -0.55], [hx + sw + 0.12, ky], [hx + sw + 0.14, -lift], [hx + sw - 0.17, -lift], [hx + sw - 0.1, ky]]);
+      g.fillStyle = near ? ORANGE : BADGER_FAR; g.fill(); g.stroke();
     }
-    g.strokeStyle = pale; g.lineWidth = 0.17; g.beginPath(); g.moveTo(0.08, -0.6);                 // short bushy tail, up; wags when sitting
-    g.quadraticCurveTo(-0.2, -0.86 - (moving ? 0 : Math.sin(t * 5) * 0.08), -0.34, -0.6); g.stroke();
-    g.fillStyle = dark; g.beginPath(); g.ellipse(1.04, -0.55, 1.08, 0.33, 0, 0, Math.PI * 2); g.fill();   // low, long body
-    g.save(); g.translate(0, -0.1 * look); g.rotate(-0.22 * look);                                   // head: broad and flat, blunt snout
-    g.beginPath(); g.ellipse(2.12, -0.52, 0.44, 0.25, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(2.5, -0.47, 0.2, 0.15, 0, 0, Math.PI * 2); g.fill();
-    g.restore();
-    g.strokeStyle = pale; g.lineWidth = 0.21; g.beginPath(); g.moveTo(0.0, -0.66);                // the pale mantle, nape to tail
-    g.quadraticCurveTo(1.05, -1.0, 2.0, -0.74); g.stroke();
-    g.save(); g.translate(0, -0.1 * look); g.rotate(-0.22 * look);
-    g.fillStyle = pale; g.beginPath(); g.moveTo(1.78, -0.7); g.quadraticCurveTo(2.15, -0.9, 2.66, -0.56);   // mantle over the head to the nose
-    g.lineTo(2.62, -0.5); g.quadraticCurveTo(2.15, -0.76, 1.8, -0.62); g.closePath(); g.fill();
-    g.fillStyle = dark; g.beginPath(); g.arc(1.98, -0.74, 0.065, 0, Math.PI * 2); g.fill();                // small ear
-    g.fillStyle = '#0c0c0c'; g.beginPath(); g.arc(2.26, -0.55, 0.04, 0, Math.PI * 2); g.fill();            // eye
-    g.beginPath(); g.arc(2.68, -0.47, 0.05, 0, Math.PI * 2); g.fill();                                      // nose
-    g.restore();
+    poly(g, BADGER_BODY); g.fillStyle = ORANGE; g.fill();
+    poly(g, BADGER_SADDLE); g.fillStyle = BADGER_YELLOW; g.fill(); g.stroke();
+    poly(g, BADGER_BODY); g.stroke();
+    g.save(); g.translate(2.68, -0.74); g.rotate(moving ? Math.sin(phase) * 0.08 : Math.sin(t * 5) * 0.22);   // the tail wags when it stands still
+    poly(g, [[-0.02, -0.08], [0.37, 0.02], [0.02, 0.08]]); g.fillStyle = ORANGE; g.fill(); g.stroke(); g.restore();
+    g.fillStyle = BADGER_EDGE; g.beginPath(); g.arc(0.32, -0.71, 0.035, 0, Math.PI * 2); g.fill();   // eye
     g.restore();
   }
   const badgerH = (W) => Math.max(26, Math.min(46, W / 30));
-  function introBadger(g, W, B) {
-    const last = CHAPTERS.length - 1, tSit = CHAPTERS.slice(0, last).reduce((a, c) => a + c.dur, 0);   // arrives centre-stage as the last chapter starts
-    const h = badgerH(W), len = 2.9 * h;
-    const x = lerp(-len, W / 2 - len / 2, Math.min(1, introT / tSit)), moving = introT < tSit;
-    badger(g, x, B, h, (x + len) / (h * 0.5), moving, introT);
+  // Its own layer and its own clock: the scene below can fade, swap and re-prepare without the
+  // badger ever blinking. It walks at a steady pace so as to arrive under the name as the last
+  // chapter begins; if a tap jumps the story ahead it hurries to catch up rather than teleporting.
+  let bx = null, bdist = 0, bground = null;
+  function introBadger(gb, W, H, dt) {
+    const last = CHAPTERS.length - 1, tSit = CHAPTERS.slice(0, last).reduce((a, c) => a + c.dur, 0);
+    const h = badgerH(W), len = 3.05 * h, from = W + 6, to = W / 2 - len / 2;
+    const target = lerp(from, to, Math.min(1, introT / tSit)), v = (from - to) / tSit;   // where the story says it should be, and its walking pace
+    if (bx === null) bx = target;
+    const gap = target - bx, want = Math.abs(gap), step = Math.min(want, (want > v * 0.3 ? v * 2.6 : v) * dt);
+    bx += Math.sign(gap) * step; bdist += step;
+    const G = Math.round($('#intro_foot').getBoundingClientRect().top) - 10;
+    bground = bground === null ? G : bground + (G - bground) * Math.min(1, dt * 8);   // the ground moves a little when the Enter button appears
+    gb.clearRect(0, 0, W, H);
+    badger(gb, bx, bground, h, bdist / (0.12 * h), step > 0.01, introT);
   }
   function introFrame(now) {
     if (!introOn) return;
     const dt = Math.min(0.05, (now - introLast) / 1000 || 0); introLast = now; introT += dt;
     let i = 0, t = introT; while (i < CHAPTERS.length - 1 && t >= CHAPTERS[i].dur) { t -= CHAPTERS[i].dur; i++; }
-    const { g, W, H } = introSize();
+    const { g, gb, W, H } = introSize();
     if (i !== introCh) {
       const first = introCh < 0; introCh = i; introState = null;
       introCaption(i, first, () => {   // the drawing lives between the (new) caption and the footer
@@ -1374,13 +1385,13 @@
       g.globalAlpha = Math.min(1, t / 0.5) * (i === CHAPTERS.length - 1 ? 1 : Math.min(1, (CHAPTERS[i].dur - t) / 0.5));
       SCENES[i].draw(g, W, H, p, introState); g.globalAlpha = 1;
       if (i !== CHAPTERS.length - 1) { const T = introState.T, m = g.createLinearGradient(0, T - 50, 0, T + 10); m.addColorStop(0, 'rgba(12,12,12,.96)'); m.addColorStop(1, 'rgba(12,12,12,0)'); g.fillStyle = m; g.fillRect(0, 0, W, T + 10); }   // keep the words legible
-      introBadger(g, W, introState.G);
     }
+    introBadger(gb, W, H, dt);   // on its own layer, whatever the scene is doing
     $$('#intro_bar b').forEach((b, k) => { b.style.width = (k < i ? 100 : k === i ? p * 100 : 0) + '%'; });
     introRaf = requestAnimationFrame(introFrame);
   }
   function introStart() {
-    introOn = true; introCh = -1; introT = 0; introLast = 0; show(intro, true); intro.classList.remove('out');
+    introOn = true; introCh = -1; introT = 0; introLast = 0; bx = null; bdist = 0; bground = null; show(intro, true); intro.classList.remove('out');
     const bar = $('#intro_bar'); bar.textContent = ''; CHAPTERS.forEach(() => { const i = el('i'); i.appendChild(el('b')); bar.appendChild(i); });
     if (reducedMotion()) introT = CHAPTERS.reduce((s, c) => s + c.dur, 0) - CHAPTERS[CHAPTERS.length - 1].dur + 0.6;   // straight to the end
     cancelAnimationFrame(introRaf); introRaf = requestAnimationFrame(introFrame);
@@ -1396,7 +1407,7 @@
   $('#intro_skip').addEventListener('click', introEnd);
   $('#intro_enter').addEventListener('click', introEnd);
   document.addEventListener('keydown', (e) => { if (introOn && (e.key === 'Escape' || e.key === 'Enter')) introEnd(); });
-  window.addEventListener('resize', () => { if (introOn) { introCh = -1; } });   // re-prepare the scene for the new size
+  window.addEventListener('resize', () => { if (introOn) { introCh = -1; bx = null; bground = null; } });   // re-prepare the scene (and re-place the badger) for the new size
   $('#w_intro').addEventListener('click', introStart);
   $('#set_intro').addEventListener('click', introStart);
   if (!introSeen()) introStart();

@@ -208,6 +208,7 @@ footer a{color:var(--muted)}
 #intro{position:fixed;inset:0;z-index:60;background:#0c0c0c;color:var(--text);overflow:hidden;opacity:1;transition:opacity .6s}
 #intro.out{opacity:0;pointer-events:none}
 #intro canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#intro_b{z-index:1;pointer-events:none}
 #intro_skip{position:absolute;top:max(14px,env(safe-area-inset-top));right:14px;z-index:3;background:rgba(23,23,23,.7)}
 #intro_cap{position:absolute;left:0;right:0;top:9%;z-index:2;text-align:center;padding:0 22px;pointer-events:none;transition:opacity .45s;max-width:720px;margin:0 auto}
 #intro_cap .k{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-text);margin-bottom:8px}
@@ -752,6 +753,7 @@ footer a{color:var(--muted)}
 <!-- the opening: six short chapters drawn on a canvas, captions below; Skip any time, Enter at the end -->
 <div id="intro" class="hide" role="dialog" aria-label="Opening">
   <canvas id="intro_c" aria-hidden="true"></canvas>
+  <canvas id="intro_b" aria-hidden="true"></canvas>
   <button class="sec small" id="intro_skip" type="button">Skip ›</button>
   <div id="intro_cap"><div class="k" id="intro_k"></div><h2 id="intro_t"></h2><p id="intro_p"></p></div>
   <div id="intro_foot">
