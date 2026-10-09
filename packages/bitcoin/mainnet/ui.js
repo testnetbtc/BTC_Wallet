@@ -1300,10 +1300,13 @@
     // V — scattered bits gather into the outline of a key
     { prep(W, H, T, B) { seed = 43; const pts = [], cx = W / 2, cy = (T + B) / 2, s = Math.min(W * 0.42, (B - T) * 0.7);
         for (let i = 0; i < 120; i++) { const a = i / 120 * Math.PI * 2; pts.push([cx - s * 0.55 + Math.cos(a) * s * 0.3, cy + Math.sin(a) * s * 0.3]); }   // the bow
-        for (let i = 0; i < 60; i++) pts.push([cx - s * 0.25 + i / 60 * s * 0.95, cy - s * 0.06]);           // the shaft
-        for (let i = 0; i < 60; i++) pts.push([cx - s * 0.25 + i / 60 * s * 0.95, cy + s * 0.06]);
-        for (const dx of [0.52, 0.7]) for (let i = 0; i < 16; i++) { pts.push([cx + s * dx - s * 0.04, cy + s * 0.06 + i / 16 * s * 0.16]); pts.push([cx + s * dx + s * 0.04, cy + s * 0.06 + i / 16 * s * 0.16]); }
-        for (let i = 0; i < 8; i++) { pts.push([cx + s * (0.48 + i / 8 * 0.08), cy + s * 0.22]); pts.push([cx + s * (0.66 + i / 8 * 0.08), cy + s * 0.22]); }
+        const END = 0.82;                                                                                     // the shaft, closed at the tip
+        for (let i = 0; i <= 70; i++) { const x = cx + s * (-0.25 + i / 70 * (0.25 + END)); pts.push([x, cy - s * 0.06]); pts.push([x, cy + s * 0.06]); }
+        for (let i = 1; i < 8; i++) pts.push([cx + s * END, cy - s * 0.06 + i / 8 * s * 0.12]);
+        for (const dx of [0.46, 0.65]) {                                                                       // two teeth hanging from the shaft
+          for (let i = 1; i <= 12; i++) { pts.push([cx + s * dx, cy + s * 0.06 + i / 12 * s * 0.17]); pts.push([cx + s * (dx + 0.1), cy + s * 0.06 + i / 12 * s * 0.17]); }
+          for (let i = 1; i < 7; i++) pts.push([cx + s * (dx + i / 7 * 0.1), cy + s * 0.23]);
+        }
         return { ps: pts.map(([tx, ty]) => ({ tx, ty, sx: rnd() * W, sy: rnd() * H, d: rnd() * 0.25, v: rnd() < 0.5 ? '0' : '1' })) }; },
       draw(g, W, H, p, st) {
         g.font = `${Math.round(Math.max(10, Math.min(14, W / 100)))}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -1317,6 +1320,41 @@
         rg.addColorStop(0, `rgba(255,106,0,${a})`); rg.addColorStop(1, 'rgba(255,106,0,0)'); g.fillStyle = rg; g.fillRect(0, 0, W, H);
       } },
   ];
+  // The honey badger — "bitcoin is the honey badger of money": it does not care. It walks along
+  // the bottom through the chapters and sits down under the name at the end. Drawn in local units
+  // (1 = its height), facing right, (0, 0) at the ground under its rump.
+  function badger(g, x, y, h, phase, moving, t) {
+    g.save(); g.translate(x, y + (moving ? Math.sin(phase * 2) * 0.025 * h : 0)); g.scale(h, h);
+    const dark = ORANGE, pale = '#f3e3cc', look = moving ? 0 : 0.5 + 0.5 * Math.sin(t * 1.1);   // sitting: looks up at the name
+    g.lineCap = 'round'; g.strokeStyle = dark; g.lineWidth = 0.2;
+    for (const [hx, ph] of [[0.42, 0], [0.66, Math.PI], [1.42, Math.PI], [1.66, 0]]) {           // four short, thick legs
+      const sw = moving ? Math.sin(phase + ph) * 0.18 : 0; g.beginPath(); g.moveTo(hx, -0.4); g.lineTo(hx + sw, -0.03); g.stroke();
+    }
+    g.strokeStyle = pale; g.lineWidth = 0.17; g.beginPath(); g.moveTo(0.08, -0.6);                 // short bushy tail, up; wags when sitting
+    g.quadraticCurveTo(-0.2, -0.86 - (moving ? 0 : Math.sin(t * 5) * 0.08), -0.34, -0.6); g.stroke();
+    g.fillStyle = dark; g.beginPath(); g.ellipse(1.04, -0.55, 1.08, 0.33, 0, 0, Math.PI * 2); g.fill();   // low, long body
+    g.save(); g.translate(0, -0.1 * look); g.rotate(-0.22 * look);                                   // head: broad and flat, blunt snout
+    g.beginPath(); g.ellipse(2.12, -0.52, 0.44, 0.25, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(2.5, -0.47, 0.2, 0.15, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+    g.strokeStyle = pale; g.lineWidth = 0.21; g.beginPath(); g.moveTo(0.0, -0.66);                // the pale mantle, nape to tail
+    g.quadraticCurveTo(1.05, -1.0, 2.0, -0.74); g.stroke();
+    g.save(); g.translate(0, -0.1 * look); g.rotate(-0.22 * look);
+    g.fillStyle = pale; g.beginPath(); g.moveTo(1.78, -0.7); g.quadraticCurveTo(2.15, -0.9, 2.66, -0.56);   // mantle over the head to the nose
+    g.lineTo(2.62, -0.5); g.quadraticCurveTo(2.15, -0.76, 1.8, -0.62); g.closePath(); g.fill();
+    g.fillStyle = dark; g.beginPath(); g.arc(1.98, -0.74, 0.065, 0, Math.PI * 2); g.fill();                // small ear
+    g.fillStyle = '#0c0c0c'; g.beginPath(); g.arc(2.26, -0.55, 0.04, 0, Math.PI * 2); g.fill();            // eye
+    g.beginPath(); g.arc(2.68, -0.47, 0.05, 0, Math.PI * 2); g.fill();                                      // nose
+    g.restore();
+    g.restore();
+  }
+  const badgerH = (W) => Math.max(26, Math.min(46, W / 30));
+  function introBadger(g, W, B) {
+    const last = CHAPTERS.length - 1, tSit = CHAPTERS.slice(0, last).reduce((a, c) => a + c.dur, 0);   // arrives centre-stage as the last chapter starts
+    const h = badgerH(W), len = 2.9 * h;
+    const x = lerp(-len, W / 2 - len / 2, Math.min(1, introT / tSit)), moving = introT < tSit;
+    badger(g, x, B, h, (x + len) / (h * 0.5), moving, introT);
+  }
   function introFrame(now) {
     if (!introOn) return;
     const dt = Math.min(0.05, (now - introLast) / 1000 || 0); introLast = now; introT += dt;
@@ -1325,8 +1363,9 @@
     if (i !== introCh) {
       const first = introCh < 0; introCh = i; introState = null;
       introCaption(i, first, () => {   // the drawing lives between the (new) caption and the footer
-        const T = Math.round($('#intro_cap').getBoundingClientRect().bottom) + 12, B = Math.round($('#intro_foot').getBoundingClientRect().top) - 12;
-        introState = { T, B, ...SCENES[i].prep(W, H, T, B) };
+        const T = Math.round($('#intro_cap').getBoundingClientRect().bottom) + 12, G = Math.round($('#intro_foot').getBoundingClientRect().top) - 10;   // G: the ground the badger walks on
+        const B = G - badgerH(W) - 10;                                                                     // scenes stay above its strip
+        introState = { T, B, G, ...SCENES[i].prep(W, H, T, B) };
       });
     }
     const p = Math.min(1, t / CHAPTERS[i].dur);
@@ -1335,6 +1374,7 @@
       g.globalAlpha = Math.min(1, t / 0.5) * (i === CHAPTERS.length - 1 ? 1 : Math.min(1, (CHAPTERS[i].dur - t) / 0.5));
       SCENES[i].draw(g, W, H, p, introState); g.globalAlpha = 1;
       if (i !== CHAPTERS.length - 1) { const T = introState.T, m = g.createLinearGradient(0, T - 50, 0, T + 10); m.addColorStop(0, 'rgba(12,12,12,.96)'); m.addColorStop(1, 'rgba(12,12,12,0)'); g.fillStyle = m; g.fillRect(0, 0, W, T + 10); }   // keep the words legible
+      introBadger(g, W, introState.G);
     }
     $$('#intro_bar b').forEach((b, k) => { b.style.width = (k < i ? 100 : k === i ? p * 100 : 0) + '%'; });
     introRaf = requestAnimationFrame(introFrame);

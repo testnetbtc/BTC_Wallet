@@ -34,7 +34,9 @@ the welcome screen). See `docs/WALLET_TOOLS.md`; testing in `docs/TESTING.md`.
 jump a chapter; Enter at the end; "Watch the opening again" on Welcome and in Settings;
 `prefers-reduced-motion` goes straight to the final frame. It is drawn on a canvas by `ui.js`
 (section THE OPENING) — no video file, no image, nothing fetched, so the page stays one file with one
-hash. The genesis chapter shows the real hashes of blocks 0–5.
+hash. The genesis chapter shows the real hashes of blocks 0–5. A honey badger ("bitcoin is the
+honey badger of money") walks along the bottom through the chapters in its own strip and sits
+down under the name at the end.
 
 **Site identity.** `mainnet/icons/` (drawn by a script from the Olesia mark) is published as
 `favicon.ico`, `icon-32/192/512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` and
