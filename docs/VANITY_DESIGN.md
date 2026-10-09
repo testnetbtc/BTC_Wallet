@@ -64,6 +64,14 @@ while the trading research keeps the other cores.
 4. **Result**: address, "verified by a second path" badge, then the wallet's normal **Save as encrypted
    .dat** step (password, file, fingerprint). The private key is shown only on request and never stored.
    Only `bc1q` / `1` — the two types the wallet issues.
+5. **One key at a time** (2026-10-09, after the operator found an earlier key still on screen under a
+   new result): while a found key is unsaved the pattern form is locked; every search start, discard,
+   completed save and screen change goes through `vanityForget()`, which wipes the key from memory
+   and from every element that held it. Discard is two clicks (a slip must not throw away hours of
+   work); "‹ Back" from the save screen returns to the unsaved result instead of dropping it.
+6. **Phones and tablets**: an explicit warning (full-CPU search → heat, battery, pauses on screen
+   lock); past 10 minutes expected on the device it turns red and the in-browser Start needs a ticked
+   acknowledgement. Desktops get a nudge towards the offline script past 10 minutes.
 
 ## Files
 - `packages/bitcoin/src/vanity.js` — pattern parser/validator/suggester, exact difficulty, matcher,

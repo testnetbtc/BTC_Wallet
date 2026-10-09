@@ -279,7 +279,11 @@
     armIdle(); saveRender(); pane('save');
   }
   // leaving this step abandons the wallet being made: nothing was saved, nothing is kept
-  $('#s_back').addEventListener('click', () => { draft = null; pending = null; ready = null; pane('welcome'); });
+  $('#s_back').addEventListener('click', () => {
+    const fromVanity = pending && pending.kind === 'wif' && vanityResult && pending.wif === vanityResult.wif;
+    draft = null; pending = null; ready = null;
+    if (fromVanity) { pane('vanity'); $('#v_result').scrollIntoView({ block: 'start' }); toast('The vanity address is still here, unsaved.'); } else pane('welcome');
+  });
   $('#s_usepass').addEventListener('change', () => { show($('#s_passfields'), $('#s_usepass').checked); show($('#s_storebox'), $('#s_usepass').checked); saveRender(); });
   $('#s_show').addEventListener('click', () => {
     const t = $('#s_pw').type === 'password' ? 'text' : 'password';
@@ -347,6 +351,7 @@
       download(name, text);
       // the plain secret and the password are no longer needed by this page
       draft = null; pending = null; lastGenerated = ''; quiz = []; $('#q_box').textContent = '';
+      vanityForget();   // a vanity key, now in its encrypted file, leaves the page too
       ['#s_pw', '#s_pw2', '#s_pass', '#s_pass2'].forEach((s) => { $(s).value = ''; $(s).type = 'password'; });
       $('#c_words').textContent = ''; $('#s_policy').textContent = '';
       const done = $('#s_done'); done.textContent = '';
@@ -791,11 +796,19 @@
   // =====================================================================================
   // The search runs in Web Workers (OM.vanity). A found key lives in `vanityResult` only until
   // it is saved (it becomes `pending` for the normal save step) or the screen is left.
-  let vType = 'p2wpkh', vAnalysis = null, vRate = null, vRun = null, vanityResult = null, vBenchP = null;
+  let vType = 'p2wpkh', vAnalysis = null, vRate = null, vRun = null, vanityResult = null, vBenchP = null, vDiscardArmed = 0;
   const V = OM.vanity;
   const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
+  // Phones and tablets: a full-CPU search makes them hot, flattens the battery and pauses when
+  // the screen locks. Anything beyond a few minutes is warned against and, past LONG_MOBILE,
+  // needs an explicit acknowledgement before it can start.
+  const isMobile = (navigator.userAgentData && navigator.userAgentData.mobile)
+    || /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));   // iPadOS reports itself as a Mac
+  const LONG_MOBILE = 10 * 60, LONG_DESKTOP = 10 * 60;
   function vanityOpen() {
-    show($('#v_result'), false); show($('#v_browser'), false); show($('#v_script'), false); show($('#v_server'), false);
+    vanityForget();
+    show($('#v_browser'), false); show($('#v_script'), false); show($('#v_server'), false);
     $('#v_text').value = ''; $('#v_ic').checked = false; vanitySetType('p2wpkh');
     if (V.script) { $('#v_sha').textContent = V.script.sha256; $('#v_size').textContent = '(' + Math.round(V.script.bytes / 1024) + ' kB)'; }
     pane('vanity'); $('#v_text').focus();
@@ -803,9 +816,23 @@
       vBenchP = V.benchmark().then((r) => { vRate = r; vanityRender(); }).catch(() => { vRate = 0; vanityRender(); });
     }
   }
+  // Wipe a found key from memory and from the page, and give the form back. Called before any
+  // new search starts, on discard, after the key has been saved, and when the screen is left —
+  // so a previous key can never linger under a new result.
+  function vanityForget() {
+    vanityResult = null; vDiscardArmed = 0;
+    $('#v_wif').textContent = ''; show($('#v_wif'), false); show($('#v_wifwarn'), false); $('#v_showkey').textContent = 'Show private key';
+    $('#v_addr').textContent = ''; $('#v_found_stats').textContent = ''; $('#v_discard').textContent = 'Discard and start over';
+    show($('#v_result'), false); show($('#v_unsaved'), false);
+    vanityLockForm(false);
+  }
   function vanityLeave() {
     if (vRun) { vRun.stop(); vRun = null; }
-    vanityResult = null; $('#v_wif').textContent = ''; show($('#v_wif'), false); show($('#v_wifwarn'), false); $('#v_showkey').textContent = 'Show private key';
+    vanityForget();
+  }
+  // while a search runs, or a found key is still unsaved, the pattern cannot be changed
+  function vanityLockForm(on) {
+    $('#v_text').disabled = on; $$('#v_type button').forEach((b) => { b.disabled = on; }); $('#v_ic').disabled = on;
   }
   function vanitySetType(t) {
     vType = t;
@@ -847,18 +874,43 @@
     $('#v_display').textContent = vAnalysis.display + (vAnalysis.ignoreCase ? ' (any capitalisation)' : '');
     $('#v_diff').textContent = vAnalysis.difficultyHuman;
     const here = $('#v_est_here'), hereS = $('#v_est_here_s');
+    let hereSecs = null;
     if (vRate == null) { here.textContent = 'measuring…'; hereS.textContent = ''; }
     else if (!vRate) { here.textContent = 'unavailable'; hereS.textContent = 'this browser cannot run the search — use the script'; }
     else {
-      const e = V.estimate(vAnalysis.difficulty, vRate * V.threads);
-      here.textContent = e.expected; hereS.textContent = fmtInt(vRate * V.threads) + ' keys/s on ' + V.threads + ' threads';
+      const e = V.estimate(vAnalysis.difficulty, vRate * V.threads); hereSecs = e.expectedSeconds;
+      here.textContent = e.expected; hereS.textContent = fmtInt(vRate * V.threads) + ' keys/s on ' + V.threads + ' threads' + (isMobile ? ' (this phone/tablet)' : '');
     }
     const cores = parseInt($('#v_cores').value, 10) || 8;
     const perThread = vRate || 50000;   // until measured, assume a typical desktop thread
     const es = V.estimate(vAnalysis.difficulty, perThread * cores);
     $('#v_est_script').textContent = es.expected;
     $('#v_cmd').textContent = 'node olesia-vanity.mjs ' + vAnalysis.display + (vAnalysis.ignoreCase ? ' --ignore-case' : '');
+    vanityDeviceAdvice(hereSecs);
   }
+  // The device warning: explicit for phones/tablets, a nudge towards the script on long desktop runs.
+  function vanityDeviceAdvice(hereSecs) {
+    const box = $('#v_device'), long = hereSecs != null && hereSecs > (isMobile ? LONG_MOBILE : LONG_DESKTOP);
+    box.textContent = ''; box.className = 'hide';
+    if (isMobile) {
+      box.className = long ? 'danger' : 'warn';
+      box.appendChild(el('b', null, long ? 'Do not run this search on a phone. ' : 'You are on a phone or tablet. '));
+      box.appendChild(document.createTextNode(long
+        ? `It is expected to take ${hereSecs >= 3600 ? V.humanTime(hereSecs) : 'more than 10 minutes'} here, with every core flat out: the phone gets hot, the battery drains in minutes, and hours of it can damage the battery — and the moment the screen locks or you switch apps, the search pauses anyway. Use a desktop or laptop with the offline script, or let the Olesia server do it.`
+        : 'Searching uses every core flat out: the phone gets hot and the battery drains fast, and it pauses whenever the screen locks or you switch apps. Short patterns (a few minutes) are fine; anything longer belongs on a desktop or laptop with the offline script, or on the Olesia server.'));
+    } else if (long) {
+      box.className = 'note';
+      box.appendChild(el('b', null, 'This is a long search for a browser tab. '));
+      box.appendChild(document.createTextNode(`Expected ${V.humanTime(hereSecs)} here; the offline script uses all your CPU and does not need a tab kept open — it is the better tool past ten minutes.`));
+    }
+    // the in-browser Start button: on a phone past the limit it needs an explicit acknowledgement
+    const gate = isMobile && long;
+    show($('#v_ackrow'), gate);
+    if (!gate) $('#v_ack').checked = false;
+    $('#v_start').disabled = gate && !$('#v_ack').checked;
+    $('#v_start').textContent = gate && !$('#v_ack').checked ? 'Too long for a phone — tick the box to run anyway' : 'Start searching';
+  }
+  $('#v_ack').addEventListener('change', () => { $('#v_start').disabled = !$('#v_ack').checked; $('#v_start').textContent = $('#v_ack').checked ? 'Start searching (I will stop it if the phone gets hot)' : 'Too long for a phone — tick the box to run anyway'; });
   $('#w_vanity').addEventListener('click', vanityOpen);
   $('#set_vanity').addEventListener('click', vanityOpen);
   $('#v_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
@@ -881,10 +933,11 @@
     } catch (e) { $('#v_srv_status').textContent = 'The server-assisted search is not available right now (' + e.message + ').'; $('#v_srv_start').disabled = true; }
   });
   $('#v_srv_start').addEventListener('click', async () => {
-    if (!vAnalysis || !vAnalysis.ok || vRun) return;
+    if (!vAnalysis || !vAnalysis.ok || vRun || vanityResult) return;
     const a = vAnalysis, t0 = Date.now();
-    show($('#v_srv_start'), false); show($('#v_srv_running'), true); show($('#v_result'), false);
-    $('#v_text').disabled = true; $$('#v_type button').forEach((b) => { b.disabled = true; }); $('#v_ic').disabled = true;
+    vanityForget();   // nothing from an earlier run may survive under the new result
+    show($('#v_srv_start'), false); show($('#v_srv_running'), true);
+    vanityLockForm(true);
     const paint = (v) => {
       const p = 1 - Math.exp(-(v.tried || 0) / a.difficulty);
       $('#v_srv_state').textContent = v.state === 'queued' ? `Queued · position ${v.position}` : v.state === 'running' ? 'Searching on the server' : v.state;
@@ -902,7 +955,7 @@
       if (vRun) toast('Server search: ' + e.message, 'bad');
     } finally {
       vRun = null; show($('#v_srv_start'), true); show($('#v_srv_running'), false);
-      $('#v_text').disabled = false; $$('#v_type button').forEach((x) => { x.disabled = false; }); $('#v_ic').disabled = false;
+      vanityLockForm(!!vanityResult);   // the form stays locked while a found key is unsaved
     }
   });
   $('#v_srv_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Job cancelled.'); } });
@@ -911,15 +964,17 @@
     $('#v_addr').textContent = '';
     const lead = r.address.slice(0, a.display.length); const b = el('b', null, lead); $('#v_addr').appendChild(b); $('#v_addr').appendChild(document.createTextNode(r.address.slice(lead.length)));
     $('#v_found_stats').textContent = 'Found after ' + fmtInt(r.tried) + ' keys in ' + V.humanTime((Date.now() - t0) / 1000) + '.';
-    show($('#v_result'), true); show($('#v_choose'), false);
+    show($('#v_result'), true); show($('#v_choose'), false); show($('#v_unsaved'), true);
+    vanityLockForm(true);
     $('#v_result').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   $('#v_start').addEventListener('click', async () => {
-    if (!vAnalysis || !vAnalysis.ok || vRun) return;
+    if (!vAnalysis || !vAnalysis.ok || vRun || vanityResult) return;
     const a = vAnalysis, t0 = Date.now();
-    show($('#v_start'), false); show($('#v_running'), true); show($('#v_result'), false);
-    $('#v_text').disabled = true; $$('#v_type button').forEach((b) => { b.disabled = true; }); $('#v_ic').disabled = true;
+    vanityForget();   // nothing from an earlier run may survive under the new result
+    show($('#v_start'), false); show($('#v_running'), true);
+    vanityLockForm(true);
     const paint = (tried) => {
       const secs = (Date.now() - t0) / 1000, rate = tried / Math.max(secs, 0.5);
       const p = 1 - Math.exp(-tried / a.difficulty);
@@ -940,13 +995,16 @@
     } finally {
       clearInterval(ticker); vRun = null;
       show($('#v_start'), true); show($('#v_running'), false);
-      $('#v_text').disabled = false; $$('#v_type button').forEach((x) => { x.disabled = false; }); $('#v_ic').disabled = false;
+      vanityLockForm(!!vanityResult);   // the form stays locked while a found key is unsaved
     }
   });
   $('#v_stop').addEventListener('click', () => { if (vRun) { const r = vRun; vRun = null; r.stop(); toast('Search stopped.'); } });
+  // Save: the key becomes `pending` for the normal save step. `vanityResult` is kept until the file
+  // is actually written, so "‹ Back" from the save screen returns here with the key still present
+  // instead of silently losing a search that may have taken hours.
   $('#v_save').addEventListener('click', () => {
     if (!vanityResult) return;
-    pending = { kind: 'wif', wif: vanityResult.wif }; vanityResult = null;
+    pending = { kind: 'wif', wif: vanityResult.wif };
     openSave('import');
   });
   $('#v_showkey').addEventListener('click', () => {
@@ -955,5 +1013,15 @@
     $('#v_wif').textContent = on ? vanityResult.wif : ''; show($('#v_wif'), on); show($('#v_wifwarn'), on);
     $('#v_showkey').textContent = on ? 'Hide private key' : 'Show private key';
   });
-  $('#v_discard').addEventListener('click', () => { vanityLeave(); show($('#v_result'), false); show($('#v_choose'), true); toast('Discarded — nothing was saved.'); });
+  // Discard needs two clicks within a few seconds: one click must not throw away an hour of work.
+  $('#v_discard').addEventListener('click', () => {
+    if (!vanityResult) { vanityForget(); show($('#v_choose'), true); return; }
+    if (Date.now() - vDiscardArmed > 5000) {
+      vDiscardArmed = Date.now(); $('#v_discard').textContent = 'Really discard? Click again';
+      setTimeout(() => { if (vanityResult) $('#v_discard').textContent = 'Discard and start over'; }, 5000);
+      return;
+    }
+    vanityForget(); $('#v_text').value = ''; vanityRender(); $('#v_text').focus();
+    toast('Discarded — nothing was saved.');
+  });
 })();

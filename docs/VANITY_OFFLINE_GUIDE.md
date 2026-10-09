@@ -22,6 +22,14 @@ address was made for you. This guide is for the offline script, which tells nobo
   A file you downloaded, hashed and kept cannot change under you.
 * The script uses every CPU core; a browser tab is slower and must stay open.
 
+## Not on a phone
+
+The page can search in a phone's browser, and for a short text (a few minutes) that is fine. A
+long search is not: it runs every core flat out, the phone gets hot, the battery drains in
+minutes, hours of it can damage the battery, and the search pauses whenever the screen locks.
+Anything the page estimates at more than a few minutes belongs on a desktop or laptop with this
+script — or, for texts up to the server's limit, on the "Let the Olesia server search" option.
+
 ## What you need
 
 * A computer you trust (the one you keep your wallet files on is ideal).

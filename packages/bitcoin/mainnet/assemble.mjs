@@ -430,13 +430,15 @@ footer a{color:var(--muted)}
         <div><div class="k">Offline script</div><div class="v" id="v_est_script"></div><div class="s">on a computer with <select id="v_cores" style="width:auto;padding:2px 6px;font-size:12px;margin:0;display:inline"><option>4</option><option selected>8</option><option>16</option><option>32</option></select> CPU threads</div></div>
       </div>
       <p class="hint" style="margin-top:8px">Expected times. The search is random: half of all runs finish sooner, 95% within 3× the expected time, and one run in 150 takes longer than 5×.</p>
+      <div id="v_device" class="hide"></div>
     </div>
   </div>
+  <div class="note hide" id="v_unsaved"><b>An address has been found and not yet saved.</b> Save it as a wallet file or discard it before making another — the text above is locked until then.</div>
 
   <div id="v_choose" class="hide">
     <h3>How to run it</h3>
     <button class="choice primary" id="v_pick_script" type="button"><span class="ic">${IC.dl}</span><span><b>Offline script — recommended</b><span>Download one small file and run it on your own computer, disconnected. Safest, and uses all your CPU.</span></span></button>
-    <button class="choice" id="v_pick_browser" type="button"><span class="ic">${IC.cpu}</span><span><b>In this browser</b><span>Starts right here. Fine for short patterns — keep this tab open and the device plugged in.</span></span></button>
+    <button class="choice" id="v_pick_browser" type="button"><span class="ic">${IC.cpu}</span><span><b>In this browser</b><span>Starts right here. Fine for short patterns — keep this tab open and the device plugged in. Not for long runs on a phone.</span></span></button>
     <button class="choice" id="v_pick_server" type="button"><span class="ic">${IC.cloud}</span><span><b>Let the Olesia server search</b><span>Split-key: your browser keeps a secret, the server only gets a public key and can never learn your private key. Shared and queued.</span></span></button>
   </div>
 
@@ -475,7 +477,8 @@ footer a{color:var(--muted)}
   <div id="v_browser" class="hide">
     <h3>In this browser</h3>
     <div class="card">
-      <div class="warn" style="margin-top:0"><b>Keep this tab open</b> until it finishes — closing it abandons the search (nothing is saved anywhere, so nothing is lost either). On a laptop or phone, plug in: this uses all the CPU it can.</div>
+      <div class="warn" style="margin-top:0"><b>Keep this tab open and in front</b> until it finishes — closing it, or letting a phone's screen lock, stops the search (nothing is saved anywhere, so nothing is lost either). Plug in: this uses all the CPU it can. <b>Phones and tablets:</b> only for patterns of a few minutes — a long run makes the device hot, drains the battery and can damage it. For anything longer use a desktop or laptop with the offline script, or the Olesia server.</div>
+      <label class="inline hide" id="v_ackrow"><input type="checkbox" id="v_ack"><span>I understand this is too long for a phone, I will keep the screen on, and I will stop it if the device gets hot.</span></label>
       <button class="wide" id="v_start" type="button">Start searching</button>
       <div id="v_running" class="hide">
         <div class="bar"><i id="v_bar"></i></div>
@@ -494,9 +497,10 @@ footer a{color:var(--muted)}
       <p class="hint" id="v_found_stats"></p>
       <button class="wide" id="v_save" type="button">Save as an encrypted wallet file</button>
       <p class="hint" style="margin:10px 0 6px">The address becomes a normal Olesia wallet: you choose a password, the key is encrypted into a <code>.dat</code> file on this computer, and you can receive and send from it like any other.</p>
-      <div class="row"><button class="sec" id="v_showkey" type="button">Show private key</button><button class="sec" id="v_discard" type="button">Discard</button></div>
+      <div class="row"><button class="sec" id="v_showkey" type="button">Show private key</button><button class="sec" id="v_discard" type="button">Discard and start over</button></div>
       <p class="mono hide" id="v_wif" style="margin-top:10px"></p>
       <div class="danger hide" id="v_wifwarn">This is the private key. Anyone who sees it can spend everything the address ever receives. Nothing has been saved — if you leave this screen without saving, the address is gone for good.</div>
+      <p class="hint" style="margin:10px 0 0">Discarding wipes the key from this page (two clicks, so a slip cannot throw away a long search) and clears the form for a new one. Leaving this screen does the same.</p>
     </div>
   </div>
 </section>

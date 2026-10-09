@@ -578,7 +578,12 @@ try {
   const vDerived = btc.p2pkh(secp256k1.getPublicKey(vKey.slice(1, 33), true)).address;
   ok('vanity: the shown private key (WIF) re-derives to the shown address', vKey[0] === 0x80 && vKey.length === 34 && vDerived === vAddr);
   ok('vanity: no plaintext key in storage while the result is on screen', await page.evaluate(() => Object.keys(localStorage).every((k) => !/^[KL5]/.test(localStorage.getItem(k)))));
+  ok('vanity: while a found key is unsaved the pattern form is locked and says so', await page.$eval('#v_text', (e) => e.disabled) && await visible(page, '#v_unsaved'));
+  // "‹ Back" from the save screen must not lose the key
+  await tap(page, '#v_save'); await onPane(page, 'save'); await tap(page, '#s_back'); await onPane(page, 'vanity');
+  ok('vanity: backing out of the save screen returns to the same unsaved address', (await text(page, '#v_addr')) === vAddr && (await text(page, '#v_wif')) === vWif);
   await tap(page, '#v_save'); curPw = await saveStep(page);
+  ok('vanity: once the wallet file is written the key is wiped from the vanity screen', (await text(page, '#v_wif')) === '' && (await text(page, '#v_addr')) === '');
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   await page.select('#r_type', 'p2pkh');
   ok('vanity: saved as a wallet file and opened — the wallet receives on the vanity address', (await text(page, '#r_addr')) === vAddr);
@@ -597,8 +602,38 @@ try {
   const sWif = await text(page, '#v_wif'); const sKey = b58.decode(sWif);
   ok('vanity/server: a bc1qjn… address came back and the key combined in the browser derives to it', sAddr.startsWith('bc1qjn') && btc.p2wpkh(secp256k1.getPublicKey(sKey.slice(1, 33), true)).address === sAddr);
   ok('vanity/server: the API never saw a private key (only the public point was posted)', !apiRequestBodies.some((b) => /"secret"|"wif"|"privKey"/.test(b)) && apiRequestBodies.some((b) => /"pubkey":"0[23][0-9a-f]{64}"/.test(b)));
+  // ---- discard + make another: the earlier key must not survive anywhere on the page ----
   await tap(page, '#v_discard');
+  ok('vanity: discard asks for a second click and keeps the key until it gets one', /Really discard/.test(await text(page, '#v_discard')) && (await text(page, '#v_wif')) === sWif);
+  await tap(page, '#v_discard');
+  ok('vanity: the second click wipes the key and the address and unlocks a cleared form',
+     (await text(page, '#v_wif')) === '' && (await text(page, '#v_addr')) === '' && !(await visible(page, '#v_result')) && await page.$eval('#v_text', (e) => !e.disabled && e.value === ''));
+  await page.type('#v_text', 'q'); await tap(page, '#v_pick_browser'); await tap(page, '#v_start');
+  await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 60000 });
+  ok('vanity: a second search shows its own result with the key hidden again', (await text(page, '#v_addr')).startsWith('bc1qq') && !(await visible(page, '#v_wif')) && (await text(page, '#v_showkey')) === 'Show private key');
+  await tap(page, '#v_showkey');
+  const wif2 = await text(page, '#v_wif');
+  ok('vanity: the key shown for the second result is a new one, not the discarded one', wif2 !== sWif && wif2 !== vWif && btc.p2wpkh(secp256k1.getPublicKey(b58.decode(wif2).slice(1, 33), true)).address === await text(page, '#v_addr'));
+  ok('vanity: the discarded keys appear nowhere in the page', await page.evaluate((a, b) => !document.body.innerHTML.includes(a) && !document.body.innerHTML.includes(b), sWif, vWif));
+  await tap(page, '#v_discard'); await tap(page, '#v_discard');
   await tab(page, 'wallet');
+
+  // ---- phones: an explicit warning, and a long in-browser run needs an acknowledgement ----
+  await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Mobile/15E148 Safari/604.1');
+  await page.goto(`http://127.0.0.1:${WEBPORT}/`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('#w_vanity'), { timeout: 20000 });
+  await tap(page, '#w_vanity'); await onPane(page, 'vanity');
+  await page.type('#v_text', 'jn');
+  await page.waitForFunction(() => !/measuring/.test(document.querySelector('#v_est_here').textContent), { timeout: 30000 });
+  ok('vanity/phone: a short pattern gets the phone warning but can be started', (await page.$eval('#v_device', (e) => e.className)) === 'warn' && /phone or tablet/.test(await text(page, '#v_device')) && !(await visible(page, '#v_ackrow')));
+  await page.type('#v_text', 'jjjjjj');   // 8 characters: years on a phone
+  ok('vanity/phone: a long pattern gets the red "do not run this on a phone" warning', (await page.$eval('#v_device', (e) => e.className)) === 'danger' && /Do not run this search on a phone/.test(await text(page, '#v_device')));
+  await tap(page, '#v_pick_browser');
+  ok('vanity/phone: Start is disabled until the risk is acknowledged', await visible(page, '#v_ackrow') && await page.$eval('#v_start', (b) => b.disabled && /Too long for a phone/.test(b.textContent)));
+  await page.click('#v_ack');
+  ok('vanity/phone: ticking the box enables Start with the condition in its label', await page.$eval('#v_start', (b) => !b.disabled && /stop it if the phone gets hot/.test(b.textContent)));
+  await page.$eval('#v_text', (e) => { e.value = 'jn'; e.dispatchEvent(new Event('input')); });
+  ok('vanity/phone: shortening the pattern removes the gate again', !(await visible(page, '#v_ackrow')) && await page.$eval('#v_start', (b) => !b.disabled && b.textContent === 'Start searching'));
 
   // ================= global invariants =================
   ok('the page talked to exactly one remote host: api.olesia.io', [...hosts].sort().join(',') === ['127.0.0.1:' + WEBPORT, 'api.olesia.io'].sort().join(','));
