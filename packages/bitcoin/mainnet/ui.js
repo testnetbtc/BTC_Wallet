@@ -1158,4 +1158,206 @@
   });
   $('#pp_save').addEventListener('click', () => { if (!paperKey) return; pending = { kind: 'wif', wif: paperKey.wif }; openSave('import'); });
   $('#pp_done').addEventListener('click', () => { paperLeave(); show($('#pp_sheetwrap'), false); show($('#pp_intro'), true); toast('Wiped from the screen. The paper is now the only copy.', 'ok'); });
+
+  // ================= THE OPENING =================
+  // A half-minute animated sequence shown the first time a browser opens the page: randomness,
+  // the money of 1971 and 2008, the genesis block, the 21 million, your keys, Olesia. It is drawn
+  // on a canvas by the code below — no video file, no image, nothing fetched — so the page stays
+  // one self-contained file with one hash. Skip at any time; tap to jump a chapter ahead; Enter
+  // at the end. Remembered per browser; replayable from Welcome and Settings. People who asked
+  // their system for reduced motion get the final frame and the Enter button straight away.
+  const INTRO_KEY = 'olesia:mainnet:opening';
+  const intro = $('#intro'), canvas = $('#intro_c');
+  const CHAPTERS = [
+    { dur: 5.5, k: 'I · Randomness', t: 'It begins with a number nobody can guess', p: 'A Bitcoin wallet is a secret number: 256 bits, chosen at random. There are more of them than atoms in the known universe. Olesia makes yours on your own device, and never sees it.' },
+    { dur: 6, k: 'II · 1971 — 2008', t: 'Money came loose', p: 'In 1971 the dollar was cut from gold and every currency on Earth became a promise. In 2008 the promise was tested: banks fell, and the printing began.' },
+    { dur: 6.5, k: 'III · 3 January 2009', t: 'A block with a headline inside it', p: '“The Times 03/Jan/2009 Chancellor on brink of second bailout for banks.” Satoshi Nakamoto wrote the day’s news into the first block, and the answer to 2008 was running.' },
+    { dur: 6, k: 'IV · Hard money', t: '21,000,000 — and never more', p: 'New coins are issued on a schedule that halves every four years. The supply is fixed by mathematics, not by a committee. Nobody can print more. Not even Satoshi.' },
+    { dur: 5.5, k: 'V · Self-reliance', t: 'Your keys. Your money.', p: 'No bank, no account, no permission needed. The key is made here, kept by you, and backed up in twelve or twenty-four words. With that comes the responsibility: nobody can reset it for you.' },
+    { dur: 4.5, k: 'VI', t: 'Olesia.', p: 'A wallet you hold yourself. One page, your device, your keys.', logo: true },
+  ];
+  let introRaf = 0, introT = 0, introLast = 0, introCh = -1, introState = null, introOn = false;
+  const introSeen = () => { try { return localStorage.getItem(INTRO_KEY) === 'seen'; } catch { return false; } };
+  const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+  // a small deterministic generator, so a chapter's particles are the same on every showing
+  let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const ease = (x) => (x = Math.max(0, Math.min(1, x)), x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+  const easeOut = (x) => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ORANGE = '#ff6a00', INK = '#f4f4f4', DIM = '#6f6f6f', MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace", SANS = "'IBM Plex Sans', system-ui, sans-serif";
+
+  function introSize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = intro.clientWidth, h = intro.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const g = canvas.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { g, W: w, H: h };
+  }
+  // swap the caption (fading the old one out first), then tell the scene where it may draw
+  function introCaption(i, first, then) {
+    const c = CHAPTERS[i], cap = $('#intro_cap');
+    cap.style.opacity = '0';
+    setTimeout(() => {
+      if (introCh !== i) return;
+      $('#intro_k').textContent = c.k; $('#intro_p').textContent = c.p; cap.classList.toggle('logo-cap', !!c.logo);
+      const h = $('#intro_t'); h.textContent = c.logo ? c.t.replace(/\.$/, '') : c.t; if (c.logo) h.appendChild(el('span', 'ldot', '.'));
+      cap.style.opacity = '1';
+      then();
+    }, first ? 0 : 450);
+    show($('#intro_enter'), i === CHAPTERS.length - 1); show($('#intro_skip'), i !== CHAPTERS.length - 1);
+    show($('#intro_hint'), i !== CHAPTERS.length - 1);
+  }
+  // each chapter prepares its particles once (W, H known) and draws with progress p in [0, 1]
+  const SCENES = [
+    // I — bits rain down and settle into a 16×16 grid, which reads out as a 64-character key
+    { prep(W, H, T, B) { seed = 11; const s = Math.min(28, W * 0.74 / 16, (B - T - 60) / 18.5), ox = (W - 16 * s) / 2, oy = T + 10; const bits = [];
+        for (let i = 0; i < 256; i++) bits.push({ v: rnd() < 0.5 ? 0 : 1, sx: rnd() * W, sy: -rnd() * H * 0.8, tx: ox + (i % 16) * s + s / 2, ty: oy + Math.floor(i / 16) * s + s / 2, d: rnd() * 0.3 });
+        const hex = []; for (let i = 0; i < 64; i++) hex.push((bits[i * 4].v * 8 + bits[i * 4 + 1].v * 4 + bits[i * 4 + 2].v * 2 + bits[i * 4 + 3].v).toString(16));
+        return { bits, hex: hex.join(''), s, oy }; },
+      draw(g, W, H, p, st) {
+        g.font = `${Math.max(9, st.s * 0.62)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        for (const b of st.bits) {
+          const q = ease((p - b.d) / 0.5), x = lerp(b.sx, b.tx, q), y = lerp(b.sy, b.ty, q);
+          g.fillStyle = q >= 1 ? (b.v ? ORANGE : '#3a3a3a') : `rgba(255,255,255,${0.25 + 0.5 * q})`;
+          g.fillText(String(b.v), x, y);
+        }
+        if (p > 0.62) {   // the number reads out, eight characters at a time
+          const n = Math.min(64, Math.floor((p - 0.62) / 0.3 * 64)); const groups = [];
+          for (let i = 0; i < n; i += 8) groups.push(st.hex.slice(i, Math.min(n, i + 8)));
+          g.font = `${Math.min(18, W / 40)}px ${MONO}`; g.fillStyle = INK; g.textAlign = 'center';
+          const y = st.oy + 16 * st.s + Math.max(28, st.s * 1.6);
+          g.fillText(groups.slice(0, 4).join('  '), W / 2, y); g.fillText(groups.slice(4).join('  '), W / 2, y + 24);
+        }
+      } },
+    // II — a timeline from 1960 to 2010 with a money-supply curve climbing away above it
+    { prep(W, H, T, B) { return { x0: W * 0.12, x1: W * 0.88, y: B - 30, top: T + 20 }; },
+      draw(g, W, H, p, st) {
+        const X = (yr) => lerp(st.x0, st.x1, (yr - 1960) / 50), q = easeOut(p / 0.85);
+        g.strokeStyle = '#444'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(st.x0, st.y); g.lineTo(lerp(st.x0, st.x1, q), st.y); g.stroke();
+        g.font = `12px ${MONO}`; g.fillStyle = DIM; g.textAlign = 'center'; g.textBaseline = 'top';
+        for (let yr = 1960; yr <= 2010; yr += 10) if (X(yr) <= lerp(st.x0, st.x1, q) + 1) { g.fillRect(X(yr) - 0.5, st.y - 4, 1, 8); g.fillText(String(yr), X(yr), st.y + 10); }
+        // the curve: flat on gold, then away
+        g.strokeStyle = ORANGE; g.lineWidth = 2.5; g.beginPath();
+        for (let i = 0; i <= 200; i++) { const yr = 1960 + 50 * i / 200; if (yr > 1960 + 50 * q) break; const v = (yr < 1971 ? 0.02 * (yr - 1960) / 11 : 0.02 + Math.pow((yr - 1971) / 39, 2.2) * (yr > 2008 ? 1 + (yr - 2008) * 0.8 : 1)) / 2.7; const y = st.y - 6 - v * (st.y - st.top); i ? g.lineTo(X(yr), y) : g.moveTo(X(yr), y); }
+        g.stroke();
+        g.textBaseline = 'bottom'; g.font = `600 13px ${SANS}`;
+        const mark = (yr, label, when) => { if (q * 50 + 1960 < yr) return; const a = easeOut((q * 50 + 1960 - yr) / 3); g.fillStyle = `rgba(255,106,0,${a})`; g.beginPath(); g.arc(X(yr), st.y, 5 + (1 - a) * 8, 0, Math.PI * 2); g.fill(); g.fillStyle = `rgba(244,244,244,${a})`; g.fillText(label, X(yr), st.y - 14 - when); };
+        mark(1971, 'gold window closed', 0); mark(2008, 'bailouts', 36);
+      } },
+    // III — the chain grows block by block from the genesis block, which carries the headline
+    //       (wide screens: one row; phones: a big genesis block with the chain underneath)
+    { prep(W, H, T, B) {
+        const narrow = W < 520, n = narrow ? 5 : 6;
+        // the real hashes of blocks 0–5 (read from the Olesia node)
+        const hs = ['000000000019d668', '00000000839a8e68', '000000006a625f06', '0000000082b50155', '000000004ebadb55', '000000009b726231'];
+        if (!narrow) { const s = Math.min(150, (W * 0.84) / n - 14, B - T - 20); return { narrow, n, hs, s, s1: s, ox: (W - n * s - (n - 1) * 14) / 2, y: (T + B) / 2 - s / 2 }; }
+        const s = Math.min(W * 0.78, (B - T) * 0.58), s1 = (s - 3 * 10) / 4, total = s + 24 + s1;
+        return { narrow, n, hs, s, s1, ox: (W - s) / 2, y: (T + B) / 2 - total / 2 }; },
+      draw(g, W, H, p, st) {
+        for (let i = 0; i < st.n; i++) {
+          const a = easeOut((p - i * 0.11) / 0.25); if (a <= 0) break;
+          const big = i === 0, sz = big ? st.s : st.s1;
+          const x = st.narrow ? (big ? st.ox : st.ox + (i - 1) * (st.s1 + 10)) : st.ox + i * (st.s + 14);
+          const y = (st.narrow && !big ? st.y + st.s + 24 : st.y) + (1 - a) * 16;
+          g.globalAlpha = a; g.fillStyle = big ? '#2b1a0c' : '#1a1a1a'; g.strokeStyle = big ? ORANGE : '#3a3a3a'; g.lineWidth = big ? 2 : 1.2;
+          g.beginPath(); if (g.roundRect) g.roundRect(x, y, sz, sz, 8); else g.rect(x, y, sz, sz); g.fill(); g.stroke();
+          g.fillStyle = DIM; g.font = `11px ${MONO}`; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText('#' + i, x + 9, y + 8);
+          if (sz >= 110) { g.fillStyle = big ? '#ff8a33' : '#8f8f8f'; g.textAlign = 'right'; g.fillText(st.hs[i].slice(0, sz < 140 ? 12 : 16), x + sz - 9, y + 8); }
+          if (i > 0 && a > 0.5) {   // the link to the block before
+            g.strokeStyle = '#555'; g.lineWidth = 1.5; g.fillStyle = '#555'; g.beginPath();
+            if (st.narrow && i === 1) { g.moveTo(st.ox + st.s1 / 2, st.y + st.s); g.lineTo(st.ox + st.s1 / 2, y); } else { g.moveTo(x - (st.narrow ? 10 : 14), y + sz / 2); g.lineTo(x, y + sz / 2); }
+            g.stroke(); g.beginPath(); g.arc(st.narrow && i === 1 ? st.ox + st.s1 / 2 : x - (st.narrow ? 10 : 14), st.narrow && i === 1 ? st.y + st.s : y + sz / 2, 3, 0, Math.PI * 2); g.fill();
+          }
+          if (big) {   // the headline types itself into the genesis block
+            const words = 'The Times 03/Jan/2009 Chancellor on brink of second bailout for banks'.split(' '); const nw = Math.floor(easeOut((p - 0.25) / 0.6) * words.length);
+            const fs = Math.max(10, Math.min(15, sz / 11)); g.fillStyle = INK; g.font = `500 ${fs}px ${MONO}`; g.textAlign = 'left';
+            let line = '', ly = y + 28; const maxW = sz - 18;
+            for (const w of words.slice(0, nw)) { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line) { g.fillText(line, x + 9, ly); ly += fs * 1.35; line = w; } else line = t; }
+            g.fillText(line, x + 9, ly);
+          }
+          g.globalAlpha = 1;
+        }
+      } },
+    // IV — the halving staircase and the supply curve meeting the 21 million line
+    { prep(W, H, T, B) { return { x0: W * 0.1, x1: W * 0.9, y0: B - 30, y1: T + 30 }; },
+      draw(g, W, H, p, st) {
+        const X = (yr) => lerp(st.x0, st.x1, (yr - 2009) / 36), q = easeOut(p / 0.8), until = 2009 + 36 * q;
+        g.strokeStyle = '#444'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(st.x0, st.y0); g.lineTo(st.x1, st.y0); g.stroke();
+        g.font = `12px ${MONO}`; g.fillStyle = DIM; g.textAlign = 'center'; g.textBaseline = 'top';
+        for (let yr = 2009; yr <= 2045; yr += 4) if (yr <= until) g.fillText(String(yr), X(yr), st.y0 + 8);
+        // the 21M line
+        g.setLineDash([5, 5]); g.strokeStyle = '#555'; g.beginPath(); g.moveTo(st.x0, st.y1); g.lineTo(st.x1, st.y1); g.stroke(); g.setLineDash([]);
+        // block reward staircase (scaled to the axis) in dim, supply in orange
+        g.strokeStyle = '#8f8f8f'; g.lineWidth = 1.5; g.beginPath();
+        for (let i = 0; i < 9; i++) { const a = 2009 + 4 * i, b = Math.min(until, a + 4); if (a > until) break; const y = st.y0 - (50 / Math.pow(2, i)) / 50 * (st.y0 - st.y1) * 0.5; g.moveTo(X(a), y); g.lineTo(X(b), y); if (b === a + 4 && i < 8) g.lineTo(X(b), st.y0 - (50 / Math.pow(2, i + 1)) / 50 * (st.y0 - st.y1) * 0.5); }
+        g.stroke();
+        g.strokeStyle = ORANGE; g.lineWidth = 2.5; g.beginPath();
+        for (let i = 0; i <= 240; i++) { const yr = 2009 + 36 * i / 240; if (yr > until) break; const era = (yr - 2009) / 4, k = Math.floor(era), f = era - k; const sup = (1 - Math.pow(0.5, k)) * 21 + Math.pow(0.5, k) * 10.5 * f; const y = st.y0 - sup / 21 * (st.y0 - st.y1); i ? g.lineTo(X(yr), y) : g.moveTo(X(yr), y); }
+        g.stroke();
+        g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = `600 ${W < 520 ? 11 : 13}px ${SANS}`; g.fillStyle = '#8f8f8f'; g.fillText('new coins per block: 50 → 25 → 12.5 → 6.25 → …', st.x1, st.y0 - (st.y0 - st.y1) * 0.14);
+        if (p > 0.55) { const a = easeOut((p - 0.55) / 0.3); g.fillStyle = `rgba(244,244,244,${a})`; g.font = `500 ${Math.min(22, W / 24)}px ${MONO}`; g.textAlign = 'right'; g.fillText('21,000,000', st.x1, st.y1 - 8); }
+      } },
+    // V — scattered bits gather into the outline of a key
+    { prep(W, H, T, B) { seed = 43; const pts = [], cx = W / 2, cy = (T + B) / 2, s = Math.min(W * 0.42, (B - T) * 0.7);
+        for (let i = 0; i < 120; i++) { const a = i / 120 * Math.PI * 2; pts.push([cx - s * 0.55 + Math.cos(a) * s * 0.3, cy + Math.sin(a) * s * 0.3]); }   // the bow
+        for (let i = 0; i < 60; i++) pts.push([cx - s * 0.25 + i / 60 * s * 0.95, cy - s * 0.06]);           // the shaft
+        for (let i = 0; i < 60; i++) pts.push([cx - s * 0.25 + i / 60 * s * 0.95, cy + s * 0.06]);
+        for (const dx of [0.52, 0.7]) for (let i = 0; i < 16; i++) { pts.push([cx + s * dx - s * 0.04, cy + s * 0.06 + i / 16 * s * 0.16]); pts.push([cx + s * dx + s * 0.04, cy + s * 0.06 + i / 16 * s * 0.16]); }
+        for (let i = 0; i < 8; i++) { pts.push([cx + s * (0.48 + i / 8 * 0.08), cy + s * 0.22]); pts.push([cx + s * (0.66 + i / 8 * 0.08), cy + s * 0.22]); }
+        return { ps: pts.map(([tx, ty]) => ({ tx, ty, sx: rnd() * W, sy: rnd() * H, d: rnd() * 0.25, v: rnd() < 0.5 ? '0' : '1' })) }; },
+      draw(g, W, H, p, st) {
+        g.font = `${Math.round(Math.max(10, Math.min(14, W / 100)))}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        const glow = p > 0.8 ? 0.5 + 0.5 * Math.sin((p - 0.8) * 40) : 0;
+        for (const q of st.ps) { const e = ease((p - q.d) / 0.4); const x = lerp(q.sx, q.tx, e), y = lerp(q.sy, q.ty, e); g.fillStyle = e >= 1 ? `rgba(255,${Math.round(106 + glow * 60)},0,1)` : `rgba(255,255,255,${0.2 + 0.6 * e})`; g.fillText(q.v, x, y); }
+      } },
+    // VI — a slow orange breath behind the name
+    { prep(W, H) { return { cx: W / 2, cy: H * 0.45, r: Math.max(W, H) * 0.5 }; },
+      draw(g, W, H, p, st) {
+        const a = 0.12 + 0.08 * Math.sin(p * Math.PI * 3), rg = g.createRadialGradient(st.cx, st.cy, 0, st.cx, st.cy, st.r);
+        rg.addColorStop(0, `rgba(255,106,0,${a})`); rg.addColorStop(1, 'rgba(255,106,0,0)'); g.fillStyle = rg; g.fillRect(0, 0, W, H);
+      } },
+  ];
+  function introFrame(now) {
+    if (!introOn) return;
+    const dt = Math.min(0.05, (now - introLast) / 1000 || 0); introLast = now; introT += dt;
+    let i = 0, t = introT; while (i < CHAPTERS.length - 1 && t >= CHAPTERS[i].dur) { t -= CHAPTERS[i].dur; i++; }
+    const { g, W, H } = introSize();
+    if (i !== introCh) {
+      const first = introCh < 0; introCh = i; introState = null;
+      introCaption(i, first, () => {   // the drawing lives between the (new) caption and the footer
+        const T = Math.round($('#intro_cap').getBoundingClientRect().bottom) + 12, B = Math.round($('#intro_foot').getBoundingClientRect().top) - 12;
+        introState = { T, B, ...SCENES[i].prep(W, H, T, B) };
+      });
+    }
+    const p = Math.min(1, t / CHAPTERS[i].dur);
+    g.fillStyle = '#0c0c0c'; g.fillRect(0, 0, W, H);
+    if (introState) {
+      g.globalAlpha = Math.min(1, t / 0.5) * (i === CHAPTERS.length - 1 ? 1 : Math.min(1, (CHAPTERS[i].dur - t) / 0.5));
+      SCENES[i].draw(g, W, H, p, introState); g.globalAlpha = 1;
+      if (i !== CHAPTERS.length - 1) { const T = introState.T, m = g.createLinearGradient(0, T - 50, 0, T + 10); m.addColorStop(0, 'rgba(12,12,12,.96)'); m.addColorStop(1, 'rgba(12,12,12,0)'); g.fillStyle = m; g.fillRect(0, 0, W, T + 10); }   // keep the words legible
+    }
+    $$('#intro_bar b').forEach((b, k) => { b.style.width = (k < i ? 100 : k === i ? p * 100 : 0) + '%'; });
+    introRaf = requestAnimationFrame(introFrame);
+  }
+  function introStart() {
+    introOn = true; introCh = -1; introT = 0; introLast = 0; show(intro, true); intro.classList.remove('out');
+    const bar = $('#intro_bar'); bar.textContent = ''; CHAPTERS.forEach(() => { const i = el('i'); i.appendChild(el('b')); bar.appendChild(i); });
+    if (reducedMotion()) introT = CHAPTERS.reduce((s, c) => s + c.dur, 0) - CHAPTERS[CHAPTERS.length - 1].dur + 0.6;   // straight to the end
+    cancelAnimationFrame(introRaf); introRaf = requestAnimationFrame(introFrame);
+  }
+  function introEnd() {
+    if (!introOn) return;
+    introOn = false; cancelAnimationFrame(introRaf);
+    try { localStorage.setItem(INTRO_KEY, 'seen'); } catch { /* not persisted: it will play again next time */ }
+    intro.classList.add('out'); setTimeout(() => { show(intro, false); intro.classList.remove('out'); }, 650);
+  }
+  // tap: a chapter ahead (the last chapter's tap is the Enter button's job)
+  canvas.addEventListener('click', () => { if (!introOn) return; let i = 0, t = introT, acc = 0; while (i < CHAPTERS.length - 1 && t >= CHAPTERS[i].dur) { t -= CHAPTERS[i].dur; acc += CHAPTERS[i].dur; i++; } if (i < CHAPTERS.length - 1) introT = acc + CHAPTERS[i].dur; });
+  $('#intro_skip').addEventListener('click', introEnd);
+  $('#intro_enter').addEventListener('click', introEnd);
+  document.addEventListener('keydown', (e) => { if (introOn && (e.key === 'Escape' || e.key === 'Enter')) introEnd(); });
+  window.addEventListener('resize', () => { if (introOn) { introCh = -1; } });   // re-prepare the scene for the new size
+  $('#w_intro').addEventListener('click', introStart);
+  $('#set_intro').addEventListener('click', introStart);
+  if (!introSeen()) introStart();
 })();

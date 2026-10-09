@@ -91,6 +91,8 @@ const pageHtml = readFileSync(join(HERE, '../mainnet/publish/index.html'));
 const cspHeader = readFileSync(join(HERE, '../mainnet/publish/_headers'), 'utf8').match(/Content-Security-Policy: (.*)/)[1];
 const web = http.createServer((req, res) => {
   if (req.url === '/' || req.url.startsWith('/?')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': cspHeader, 'referrer-policy': 'no-referrer' }); return res.end(pageHtml); }
+  const f = req.url.replace(/\?.*/, '').slice(1), TYPES = { ico: 'image/x-icon', png: 'image/png', webmanifest: 'application/manifest+json' };
+  if (/^[a-z0-9.-]+$/.test(f) && TYPES[f.split('.').pop()] && existsSync(join(HERE, '../mainnet/publish', f))) { res.writeHead(200, { 'content-type': TYPES[f.split('.').pop()], 'content-security-policy': cspHeader }); return res.end(readFileSync(join(HERE, '../mainnet/publish', f))); }
   res.writeHead(404); res.end('nope');
 });
 
@@ -208,6 +210,37 @@ try {
   // ================= page loads under its real CSP =================
   let page = await newPage();
   ok('page loads; cryptography self-check passes (welcome buttons enabled)', await page.$eval('#w_create', (b) => !b.disabled) && !(await visible(page, '#selfcheck')));
+
+  // ================= the opening =================
+  const drawing = () => page.evaluate(() => { const c = document.querySelector('#intro_c'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit > 20; });
+  ok('opening: plays on a first visit — Skip offered from the start, Enter not yet', await visible(page, '#intro') && await visible(page, '#intro_skip') && !(await visible(page, '#intro_enter')));
+  await sleep(1500);
+  ok('opening: chapter I is captioned and the canvas is really drawing', /number nobody can guess/.test(await text(page, '#intro_t')) && await drawing());
+  await page.$eval('#intro_c', (c) => c.click()); await sleep(800);
+  ok('opening: a tap jumps to the next chapter', /Money came loose/.test(await text(page, '#intro_t')));
+  for (let i = 0; i < 4; i++) { await page.$eval('#intro_c', (c) => c.click()); await sleep(700); }
+  ok('opening: the last chapter is Olesia with the Enter button; Skip is gone', /^Olesia\.$/.test(await text(page, '#intro_t')) && await visible(page, '#intro_enter') && !(await visible(page, '#intro_skip')));
+  await tap(page, '#intro_enter'); await sleep(900);
+  ok('opening: Enter closes it; the welcome page is underneath', !(await visible(page, '#intro')) && await visible(page, '#pane-welcome'));
+  await page.reload({ waitUntil: 'load' }); await sleep(400);
+  ok('opening: a returning visitor is not shown it again', !(await visible(page, '#intro')) && await visible(page, '#pane-welcome'));
+  await tap(page, '#w_intro'); await sleep(400);
+  const replayed = await visible(page, '#intro') && await visible(page, '#intro_skip');
+  await tap(page, '#intro_skip'); await sleep(900);
+  ok('opening: "Watch the opening again" replays it, and Skip closes it at once', replayed && !(await visible(page, '#intro')));
+  await tap(page, '#w_intro'); await sleep(400); await page.keyboard.press('Escape'); await sleep(900);
+  ok('opening: the Escape key skips it too', !(await visible(page, '#intro')));
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+  await page.evaluate(() => localStorage.removeItem('olesia:mainnet:opening')); await page.reload({ waitUntil: 'load' }); await sleep(500);
+  ok('opening: a visitor who asked for reduced motion gets the final frame and Enter straight away', await visible(page, '#intro_enter') && /^Olesia\.$/.test(await text(page, '#intro_t')));
+  await tap(page, '#intro_enter'); await page.emulateMediaFeatures([]); await sleep(900);
+  ok('opening: nothing about it is kept except a one-word "seen" flag', await page.evaluate(() => localStorage.getItem('olesia:mainnet:opening') === 'seen'));
+  // site identity: icons and manifest are linked from the page and really served
+  const linked = await page.evaluate(() => [...document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"],link[rel="manifest"]')].map((l) => l.getAttribute('href')));
+  const served = await Promise.all(linked.map(async (h) => { const r = await fetch(ORIGIN + h); return r.ok && (r.headers.get('content-type') || '').startsWith(h.endsWith('.webmanifest') ? 'application/manifest+json' : 'image/'); }));
+  ok('site icons: favicon.ico, PNG icons, Apple touch icon and web manifest are linked and served', linked.length === 5 && linked.includes('/favicon.ico') && linked.includes('/apple-touch-icon.png') && linked.includes('/site.webmanifest') && served.every(Boolean));
+  const manifest = await (await fetch(ORIGIN + '/site.webmanifest')).json();
+  ok('web manifest names the app "Olesia" and lists 192/512 icons', manifest.short_name === 'Olesia' && manifest.icons.some((i) => i.sizes === '192x192') && manifest.icons.some((i) => i.sizes === '512x512'));
   ok('RNG health line reports the system generator is alive', (await text(page, '#rngmsg')).startsWith('✓'));
   await page.waitForFunction(() => document.querySelector('#chip_node_t').textContent !== 'node…', { timeout: 15000 });
 
@@ -424,8 +457,8 @@ try {
   const stored = await page.evaluate(() => ({ local: Object.fromEntries(Object.entries(localStorage)), session: Object.fromEntries(Object.entries(sessionStorage)) }));
   const storedText = JSON.stringify(stored);
   const storedValues = Object.values(stored.local).map(jsonValues).join('\n');
-  ok('browser storage holds only address counters — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
-    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur')
+  ok('browser storage holds only address counters, the currency and the "opening seen" flag — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
+    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening')
     && !storedText.includes(curPw));
   // the open page holds no plaintext secret: not in the DOM, not on window.OM, not in any global
   const leak = await page.evaluate((w) => { const hay = document.documentElement.outerHTML; const fields = [...document.querySelectorAll('input,textarea')].map((e) => ' ' + e.value + ' ').join('|'); return w.filter((x) => x.length > 5 && (hay.includes('>' + x + '<') || fields.includes(' ' + x + ' '))).length; }, words24);
@@ -740,6 +773,7 @@ try {
   await tap(page, '#v_pick_browser');
   ok('vanity/phone: Start is disabled until the risk is acknowledged', await visible(page, '#v_ackrow') && await page.$eval('#v_start', (b) => b.disabled && /Too long for a phone/.test(b.textContent)));
   await page.click('#v_ack');
+  if (await page.$eval('#v_start', (b) => b.disabled)) await page.screenshot({ path: join(tmpdir(), 'olesia-e2e-phone-ack-fail.png') }).catch(() => {});
   ok('vanity/phone: ticking the box enables Start with the condition in its label', await page.$eval('#v_start', (b) => !b.disabled && /stop it if the phone gets hot/.test(b.textContent)));
   await page.$eval('#v_text', (e) => { e.value = 'jn'; e.dispatchEvent(new Event('input')); });
   ok('vanity/phone: shortening the pattern removes the gate again', !(await visible(page, '#v_ackrow')) && await page.$eval('#v_start', (b) => !b.disabled && b.textContent === 'Start searching'));

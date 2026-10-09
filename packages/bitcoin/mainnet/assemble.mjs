@@ -3,7 +3,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 const bundle = readFileSync('mainnet/dist/mainnet.bundle.js', 'utf8');
 const ui = readFileSync('mainnet/ui.js', 'utf8');
-const icon = 'data:image/png;base64,' + readFileSync('web/olesia-icon.png').toString('base64');
 const connect = process.env.OLESIA_API_BASE || 'https://api.olesia.io';
 // IBM Plex (SIL OFL), latin subset, embedded so the page never loads a font from a server.
 const font = (f) => 'data:font/woff2;base64,' + readFileSync('mainnet/fonts/' + f).toString('base64');
@@ -35,7 +34,14 @@ const html = `<!doctype html>
 <title>Olesia — Bitcoin wallet</title>
 <meta name="description" content="Olesia: a non-custodial Bitcoin mainnet wallet that runs in your browser. Your keys stay on your computer in an encrypted wallet file.">
 <meta name="theme-color" content="#171717">
-<link rel="icon" href="${icon}">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="application-name" content="Olesia">
+<meta name="apple-mobile-web-app-title" content="Olesia">
+<meta name="description" content="Olesia — a non-custodial Bitcoin wallet in one page. Your keys are made on your device and stay there.">
 <style>
 @font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:100 700;font-display:swap;src:url(${font('IBMPlexSans-var-latin.woff2')}) format('woff2');unicode-range:${fontRange}}
 @font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(${font('IBMPlexMono-500-latin.woff2')}) format('woff2');unicode-range:${fontRange}}
@@ -198,6 +204,27 @@ footer a{color:var(--muted)}
 .addr b{color:var(--accent-text);font-weight:500}
 .stat{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);margin:6px 0;flex-wrap:wrap}
 .stat span b{color:var(--text);font-family:var(--mono);font-weight:500}
+/* the opening: a full-screen animated sequence drawn in-page (canvas), shown once per browser */
+#intro{position:fixed;inset:0;z-index:60;background:#0c0c0c;color:var(--text);overflow:hidden;opacity:1;transition:opacity .6s}
+#intro.out{opacity:0;pointer-events:none}
+#intro canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#intro_skip{position:absolute;top:max(14px,env(safe-area-inset-top));right:14px;z-index:3;background:rgba(23,23,23,.7)}
+#intro_cap{position:absolute;left:0;right:0;top:9%;z-index:2;text-align:center;padding:0 22px;pointer-events:none;transition:opacity .45s;max-width:720px;margin:0 auto}
+#intro_cap .k{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-text);margin-bottom:8px}
+#intro_cap h2{font-size:clamp(24px,4.6vw,38px);line-height:1.15;margin:0 0 12px;font-weight:600;letter-spacing:-.02em}
+#intro_cap p{font-size:clamp(14.5px,1.9vw,18px);line-height:1.5;color:#d9d9d9;margin:0;text-wrap:balance}
+#intro_cap.logo-cap h2{font-size:clamp(48px,11vw,96px);font-weight:700;letter-spacing:-.03em;margin:4vh 0 6px}
+#intro_foot{position:absolute;left:0;right:0;bottom:max(6%,env(safe-area-inset-bottom));z-index:3;text-align:center;padding:0 20px}
+#intro_bar{display:flex;gap:6px;justify-content:center;margin-bottom:16px}
+#intro_bar i{display:block;width:min(40px,11vw);height:3px;background:#2a2a2a;border-radius:2px;overflow:hidden;position:relative}
+#intro_bar i b{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent)}
+#intro_enter{font-size:17px;padding:14px 44px;min-width:200px;animation:introIn .6s ease-out,introPulse 2.2s 1s infinite}
+#intro_hint{font-size:12px;color:var(--faint);margin:12px 0 0}
+@keyframes introIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes introPulse{0%{box-shadow:0 0 0 0 rgba(255,106,0,.45)}70%{box-shadow:0 0 0 14px rgba(255,106,0,0)}100%{box-shadow:0 0 0 0 rgba(255,106,0,0)}}
+#intro_cap.logo-cap{top:22%}
+@media(max-width:520px){#intro_cap{top:7%}#intro_cap h2{font-size:23px;margin-bottom:8px}#intro_cap p{font-size:14px;line-height:1.45}#intro_cap .k{font-size:11px}}
+@media(max-height:560px){#intro_cap{top:6%}#intro_cap p{display:none}}
 </style></head>
 <body><div id="shell">
 <header>
@@ -222,6 +249,7 @@ footer a{color:var(--muted)}
   <button class="choice" id="w_paper" type="button"><span class="ic">${IC.print}</span><span><b>Make a paper wallet</b><span>One key, printed on paper — the classic cold storage, done carefully</span></span></button>
   <button class="choice" id="w_verify" type="button"><span class="ic">${IC.pen}</span><span><b>Verify a signed message</b><span>Check that a message really was signed by the owner of an address</span></span></button>
   <div class="warn"><b>This is a hot wallet for real bitcoin.</b> Keep here only an amount you could afford to lose. Olesia cannot recover a lost password or recovery phrase — nobody can. No independent security firm has audited this software.</div>
+  <p class="hint" style="text-align:center;margin-top:14px"><button class="back" id="w_intro" type="button">Watch the opening again</button></p>
 </section>
 
 <!-- ===================== CREATE 1: entropy ===================== -->
@@ -430,6 +458,7 @@ footer a{color:var(--muted)}
   <button class="sec wide" id="set_privacy" type="button" style="margin-bottom:10px">Privacy check · what the chain shows about this wallet</button>
   <button class="sec wide" id="set_vanity" type="button" style="margin-bottom:10px">Create a vanity address</button>
   <button class="sec wide" id="set_paper" type="button" style="margin-bottom:10px">Make a paper wallet</button>
+  <button class="sec wide" id="set_intro" type="button" style="margin-bottom:10px">Watch the opening again</button>
   <button class="sec wide" id="set_lock" type="button">Lock wallet</button>
 </section>
 
@@ -720,6 +749,17 @@ footer a{color:var(--muted)}
   <div class="row" style="margin-top:10px"><button class="sec" id="p_cancel" type="button">Cancel</button><button id="p_go" type="button">Unlock</button></div>
 </div></div>
 <div id="toast"></div>
+<!-- the opening: six short chapters drawn on a canvas, captions below; Skip any time, Enter at the end -->
+<div id="intro" class="hide" role="dialog" aria-label="Opening">
+  <canvas id="intro_c" aria-hidden="true"></canvas>
+  <button class="sec small" id="intro_skip" type="button">Skip ›</button>
+  <div id="intro_cap"><div class="k" id="intro_k"></div><h2 id="intro_t"></h2><p id="intro_p"></p></div>
+  <div id="intro_foot">
+    <div id="intro_bar" aria-hidden="true"></div>
+    <button id="intro_enter" class="hide" type="button">Enter</button>
+    <p id="intro_hint">tap anywhere to skip ahead</p>
+  </div>
+</div>
 
 <footer>
   <p><b style="color:var(--muted)">How this works.</b> This page is one self-contained file. It talks to a single server — the Olesia Bitcoin node — to look up coins, estimate fees and broadcast. That server sees which addresses you ask about, never your keys. While a wallet is open this tab holds it only in encrypted form; your password decrypts it for the moment a payment is signed. Nothing secret is stored in the browser.</p>

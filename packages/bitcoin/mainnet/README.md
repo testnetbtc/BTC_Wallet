@@ -28,6 +28,20 @@ by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIG
 **Signed messages, privacy check, paper wallet.** Settings → Tools (verify and paper wallet also on
 the welcome screen). See `docs/WALLET_TOOLS.md`; testing in `docs/TESTING.md`.
 
+**The opening.** A half-minute animated sequence (randomness → 1971/2008 → the genesis block → the
+21 million → your keys → Olesia) shown the first time a browser opens the page, then remembered
+(`localStorage` `olesia:mainnet:opening`). Skip button from the first frame, Esc/Enter keys, tap to
+jump a chapter; Enter at the end; "Watch the opening again" on Welcome and in Settings;
+`prefers-reduced-motion` goes straight to the final frame. It is drawn on a canvas by `ui.js`
+(section THE OPENING) — no video file, no image, nothing fetched, so the page stays one file with one
+hash. The genesis chapter shows the real hashes of blocks 0–5.
+
+**Site identity.** `mainnet/icons/` (drawn by a script from the Olesia mark) is published as
+`favicon.ico`, `icon-32/192/512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` and
+`site.webmanifest` (name "Olesia", `display: browser` — switching to `standalone` is the first PWA
+step and must be tested on a real iPhone because the wallet relies on file downloads). Their hashes
+are listed in `BUILD_HASH.txt` and checked by the live check; CSP gains `manifest-src 'self'`.
+
 ## Layout
 
 | File | Role |
@@ -49,6 +63,7 @@ the welcome screen). See `docs/WALLET_TOOLS.md`; testing in `docs/TESTING.md`.
 | `../src/privacy.js` | privacy report from unspent coins + their creating transactions (reuse, dust, linked inputs) |
 | `../src/paper.js` | paper wallets: CSPRNG key, second-path check, read-back verification |
 | `vanity_worker.js` | the Web Worker wrapper (bundled into the page, started from a `blob:` URL) |
+| `icons/` | site icons (favicon, PNG sizes, Apple touch icon, maskable) copied into `publish/` with the generated `site.webmanifest` |
 | `../vanity/cli.mjs` | the offline script, bundled to `publish/olesia-vanity.mjs` |
 | `../../../infra/nodeapi/` | the node API server (`olesia-nodeapi.service`): coins, fees, prev-tx, broadcast, and the display-only price feed |
 
