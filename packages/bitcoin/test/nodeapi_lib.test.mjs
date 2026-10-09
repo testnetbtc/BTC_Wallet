@@ -1,7 +1,7 @@
 // Node API logic with a MOCKED Bitcoin Core RPC: input validation, amount conversion, the
 // batching scan manager, incremental block following, reorg handling, and prev-tx fetching.
 import { VanityQueue, validateScripts, validateOutpoints, validateRawTx, isStandardScript, btcToSats, feerateToSatVb, txidOfRaw,
-         RateLimiter, ScanManager, fetchPrevTx, ApiError, PriceFeed, quoteFromCoinbase, quotesFromCoinGecko, EsploraBackend, TEST_NETWORKS } from '../../../infra/nodeapi/lib.mjs';
+         RateLimiter, ScanManager, fetchPrevTx, ApiError, PriceFeed, StreetWatch, quoteFromCoinbase, quotesFromCoinGecko, EsploraBackend, TEST_NETWORKS } from '../../../infra/nodeapi/lib.mjs';
 
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(76), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
@@ -265,6 +265,43 @@ const waitDone = async (m, id) => { for (let i = 0; i < 200; i++) { const v = aw
   ok('vanity: a job nobody polls for 10 minutes is abandoned and its process killed', q.view(j4.id).state === 'cancelled' && procs[2].killed);
   now += 31 * 60_000; q.gc();
   ok('vanity: finished jobs are forgotten after 30 minutes', err(() => q.view(j1.id)) === 404);
+}
+
+// ---- the street: a fake node whose mempool fills and whose tip advances ----
+{
+  let height = 100, now = 1_000_000; const mem = new Map();   // txid -> { weight, fee(BTC), outs[] }
+  const addTx = (n, weight, feeBtc, outs) => mem.set(TX(n), { weight, fee: feeBtc, outs });
+  const calls = [];
+  const rpc = async (m, p = []) => {
+    calls.push(m);
+    if (m === 'getblockchaininfo') return { blocks: height };
+    if (m === 'getblockstats') return { height: p[0], blockhash: 'h' + p[0], time: 1, txs: 3000, total_out: 123_456_789_000, totalfee: 5_000_000, subsidy: 312_500_000, total_weight: 3_990_000 };
+    if (m === 'getrawmempool') return p[0] ? Object.fromEntries([...mem].map(([id, e]) => [id, { weight: e.weight, fees: { base: e.fee }, time: 5 }])) : [...mem.keys()];
+    if (m === 'getmempoolentry') { const e = mem.get(p[0]); if (!e) throw new Error('Transaction not in mempool'); return { weight: e.weight, fees: { base: e.fee }, time: 5 }; }
+    if (m === 'getrawtransaction') { const e = mem.get(p[0]); if (!e) throw new Error('No such mempool transaction'); return { vout: e.outs.map((v) => ({ value: v })) }; }
+    throw new Error('unexpected rpc ' + m);
+  };
+  addTx(1, 1_000_000, 0.001, [1.5, 0.25]); addTx(2, 2_000_000, 0.0005, [10]); addTx(3, 1_500_000, 0.0001, [0.5]); addTx(4, 400, 0.00001, [0.0001]);
+  const w = new StreetWatch({ rpc, now: () => now, valuePerPoll: 2 });
+  await w.poll();
+  let v = w.view();
+  ok('street: first pass reads the whole mempool verbose, the tip via getblockstats', calls.filter((c) => c === 'getrawmempool').length === 1 && v.tip.height === 100 && v.tip.txs === 3000 && v.tip.sats === 123_456_789_000 && v.mempool.txs === 4);
+  // feerates (sat/vB): tx4 10, tx1 0.4, tx2 0.1, tx3 0.027 -> tx4 + tx1 + tx2 = 3,000,400 WU fit; tx3 would not
+  ok('street: the next block is the highest feerates that fit', v.next.txs === 3 && v.next.weight === 3_000_400 && v.next.minRate === 0.1);
+  ok('street: valuation is capped per poll and the cap counted', v.next.valued === 2 && calls.filter((c) => c === 'getrawtransaction').length === 2);
+  await w.poll(); v = w.view();
+  ok('street: the rest is valued on the next poll; no arrivals yet', v.next.valued === 3 && v.next.sats === 10_000 + 175_000_000 + 1_000_000_000 && v.arrivals.length === 0);
+  addTx(5, 800, 0.0002, [2]); now += 5000; mem.delete(TX(3));
+  await w.poll(); v = w.view();
+  ok('street: a new transaction is read once (getmempoolentry) and becomes an arrival with its value', v.arrivals.length === 1 && v.arrivals[0].sats === 200_000_000 && v.arrivals[0].t === now && v.arrivals[0].vsize === 200 && calls.filter((c) => c === 'getmempoolentry').length === 1);
+  ok('street: a transaction gone from the mempool is dropped', v.mempool.txs === 4 && w.entries.has(TX(3)) === false);
+  height = 101; mem.delete(TX(5)); mem.delete(TX(4));
+  await w.poll(); v = w.view();
+  ok('street: a new tip is picked up with the block\'s stats; the old one kept in blocks[]', v.tip.height === 101 && v.blocks.length === 1 && v.blocks[0].height === 100 && v.next.txs === 2);
+  ok('street: an arrival that was mined stays listed (the page animates it) but the candidate shrinks', v.arrivals.length === 1 && v.next.sats === 175_000_000 + 1_000_000_000);
+  const rpcFail = async (m) => { if (m === 'getblockchaininfo') throw new Error('node down'); return rpc(m); };
+  const w2 = new StreetWatch({ rpc: rpcFail, now: () => now }); await w2.poll();
+  ok('street: a failed poll is reported, not thrown', w2.view().error === 'node down' && w2.view().seq === 0);
 }
 
 console.log(bad ? '\nNODEAPI LIB TESTS FAILED' : '\nnodeapi lib: all checks passed');

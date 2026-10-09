@@ -52,6 +52,7 @@ try {
   const text = (sel) => page.$eval(sel, (e) => e.textContent);
   const onPane = (n, timeout = 60000) => page.waitForFunction((x) => document.querySelector('#pane-' + x).classList.contains('on'), { timeout }, n);
   await page.goto(URL_, { waitUntil: 'load' });
+  ok('the opening plays on a first visit and Skip dismisses it', await page.$eval('#intro', (e) => !e.classList.contains('hide')) && (await tap('#intro_skip'), await sleep(800), await page.$eval('#intro', (e) => e.classList.contains('hide'))));
   ok('page boots; self-check passes', await page.$eval('#w_create', (b) => !b.disabled));
   await page.waitForFunction(() => /node · block/.test(document.querySelector('#chip_node_t').textContent), { timeout: 30000 });
   console.log('   ' + await text('#chip_node_t'));
@@ -110,6 +111,7 @@ try {
 
   // public test phrase: its addresses hold real dust on mainnet -> exercises coin display (read-only)
   await page.goto(URL_, { waitUntil: 'load' });
+  if (await page.$eval('#intro', (e) => !e.classList.contains('hide'))) { await tap('#intro_skip'); await sleep(800); }
   await tap('#w_import'); await page.type('#i_phrase', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'); await tap('#i_go');
   await onPane('save'); await tap('#s_gen'); await tap('#s_go');     // an import must be given a password + file first
   await page.waitForFunction(() => !document.querySelector('#s_done').classList.contains('hide'), { timeout: 180000 });
@@ -127,6 +129,11 @@ try {
   console.log(`   public test phrase: balance ${await text('#bal')} BTC in ${await page.$$eval('#coins .coin', (c) => c.length)} coins (lookup ${Math.round((Date.now() - t1) / 1000)} s)`);
   ok('imported phrase: lookup completes and coins render', /^\d+\.\d{8}$/.test(await text('#bal')));
 
+  // the street: the live API's block/mempool feed agrees with the node's tip shown in the page
+  const st = await (await fetch('https://api.olesia.io/street')).json();
+  const chipHeight = Number(((await text('#chip_node_t')).match(/[\d,]+$/) || [''])[0].replace(/,/g, ''));
+  ok('street feed: the last block\'s height, tx count and value, and the next block being loaded', Number.isInteger(st.tip?.height) && Math.abs(st.tip.height - chipHeight) <= 1 && st.tip.txs > 0 && st.tip.sats > 0 && st.next.txs > 0 && st.mempool.txs >= st.next.txs);
+  ok('street: drawn on its band along the bottom of the live page', await page.evaluate(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] > 150 && d[i + 1] > 90 && d[i + 2] < 60) lit++; return lit > 10; }));
   ok('page contacted only its own origin and api.olesia.io', [...hosts].every((h) => h === new URL(URL_).host || h === 'api.olesia.io'));
   ok('no console errors / CSP violations', errors.length === 0);
   if (errors.length) console.log(errors.slice(0, 5));

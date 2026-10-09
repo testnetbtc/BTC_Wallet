@@ -276,7 +276,7 @@ window.OM = {
   open: openLocked,
 
   // node
-  status: () => api.status(), fees: (network = NETWORK) => apis[network].fees(), price: () => api.price(),
+  status: () => api.status(), fees: (network = NETWORK) => apis[network].fees(), price: () => api.price(), street: () => api.street(),
   checkAddress: (a, network = NETWORK) => { try { assertAddressNetwork(a, network); return true; } catch { return false; } },
 
   qr: async (text) => 'data:image/svg+xml;base64,' + btoa(await QRCode.toString(text, { type: 'svg', margin: 1, color: { dark: '#0e1116', light: '#eef2f6' } })),

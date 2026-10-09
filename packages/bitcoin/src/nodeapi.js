@@ -36,6 +36,8 @@ export function makeNodeApi({ base = DEFAULT_API, network = 'mainnet', fetchFn =
     fees: () => call('GET', '/fees'),
     // display-only market price; never used when building a transaction
     price: () => call('GET', '/price'),
+    // the page's background scene: the last block and what is loading for the next (public chain data)
+    street: () => call('GET', '/street'),
     // split-key vanity jobs: the server only ever sees a public point (see src/vanity.js)
     vanityInfo: () => call('GET', '/vanity'),
     vanitySubmit: ({ type, text, ignoreCase, pubkey }) => call('POST', '/vanity/jobs', { type, text, ignoreCase: !!ignoreCase, pubkey }),

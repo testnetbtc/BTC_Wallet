@@ -401,6 +401,89 @@ export class PriceFeed {
   }
 }
 
+// ---- the street: what the node sees being loaded into the next block -------------------------
+// Feeds the wallet page's background scene (a Land Rover filling up with transactions and driving
+// off when the block is mined). Polls the node: the tip (getblockstats — exact transaction count
+// and value of the last block), the mempool's txids (diffed, so each transaction's fee and size
+// are fetched once), and the "next block" — the highest-feerate transactions that fit in a block,
+// whose outputs are read (batched, capped per poll) so their total value can be shown. Only the
+// candidates and the newest arrivals are ever valued, not the whole mempool. Public chain data
+// only; nothing a caller sends is involved.
+const BLOCK_WEIGHT = 4_000_000, COINBASE_ROOM = 8_000;
+export class StreetWatch {
+  constructor({ rpc, rpcBatch = null, log = () => {}, now = () => Date.now(), pollMs = 5000, valuePerPoll = 400, entriesPerPoll = 4000, keepArrivals = 40 }) {
+    Object.assign(this, { rpc, log, now, pollMs, valuePerPoll, entriesPerPoll, keepArrivals });
+    this.rpcBatch = rpcBatch || ((calls) => Promise.all(calls.map(([m, p]) => rpc(m, p).then((result) => ({ result }), (e) => ({ error: e.message })))));
+    this.entries = new Map();   // txid -> { w (weight), fee (sats), rate (sat/vB), out (sats, or null until valued), t }
+    this.pending = new Set();   // txids seen in the mempool whose entry has not been read yet
+    this.tip = null; this.blocks = []; this.arrivals = []; this.mempool = { txs: 0, vbytes: 0 };
+    this.next = { txs: 0, sats: 0, valued: 0, weight: 0, minRate: 0 };
+    this.seq = 0; this.at = 0; this.timer = null; this.running = false; this.error = null;
+  }
+  start() { if (!this.timer) { this.timer = setInterval(() => this.poll().catch(() => {}), this.pollMs); this.timer.unref?.(); this.poll().catch(() => {}); } }
+  stop() { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
+  async poll() {
+    if (this.running) return; this.running = true;
+    try { await this._poll(); this.error = null; } catch (e) { this.error = e.message; this.log('street: ' + e.message); } finally { this.running = false; }
+  }
+  async _poll() {
+    const info = await this.rpc('getblockchaininfo');
+    if (!this.tip || this.tip.height !== info.blocks) {
+      const s = await this.rpc('getblockstats', [info.blocks, ['height', 'blockhash', 'time', 'txs', 'total_out', 'totalfee', 'subsidy', 'total_weight']]);
+      this.tip = { height: s.height, hash: s.blockhash, time: s.time, txs: s.txs, sats: s.total_out, fees: s.totalfee, subsidy: s.subsidy, weight: s.total_weight, seen: this.now() };
+      this.blocks = [this.tip, ...this.blocks.filter((b) => b.height !== s.height)].slice(0, 6);
+    }
+    // the mempool: on the first pass everything verbose in one go; afterwards txids only, diffed
+    if (!this.entries.size && !this.pending.size) {
+      const all = await this.rpc('getrawmempool', [true]);
+      for (const [txid, e] of Object.entries(all)) this.entries.set(txid, this._entry(e, false));
+    } else {
+      const ids = await this.rpc('getrawmempool', [false]), live = new Set(ids);
+      for (const txid of this.entries.keys()) if (!live.has(txid)) this.entries.delete(txid);
+      for (const txid of this.pending) if (!live.has(txid)) this.pending.delete(txid);
+      for (const txid of ids) if (!this.entries.has(txid)) this.pending.add(txid);
+      const read = [...this.pending].slice(0, this.entriesPerPoll);
+      if (read.length) {
+        const rs = await this.rpcBatch(read.map((txid) => ['getmempoolentry', [txid]]));
+        rs.forEach((r, i) => { this.pending.delete(read[i]); if (r.result) { const e = this._entry(r.result, true); this.entries.set(read[i], e); this.arrivals.unshift({ txid: read[i], t: e.t, vsize: Math.ceil(e.w / 4), rate: e.rate, sats: null }); } });
+        this.arrivals.length = Math.min(this.arrivals.length, this.keepArrivals);
+      }
+    }
+    let vbytes = 0; for (const e of this.entries.values()) vbytes += e.w / 4;
+    this.mempool = { txs: this.entries.size + this.pending.size, vbytes: Math.ceil(vbytes) };
+    // the next block: highest feerate first until the block is full (packages ignored — a picture, not a template)
+    const sorted = [...this.entries.entries()].sort((a, b) => b[1].rate - a[1].rate);
+    const cand = []; let weight = 0;
+    for (const [txid, e] of sorted) { if (weight + e.w > BLOCK_WEIGHT - COINBASE_ROOM) continue; cand.push([txid, e]); weight += e.w; if (weight > BLOCK_WEIGHT - COINBASE_ROOM - 400) break; }
+    // value what will be shown: the newest arrivals first, then the candidates
+    const want = []; const seen = new Set();
+    for (const a of this.arrivals) { const e = this.entries.get(a.txid); if (e && e.out === null && !seen.has(a.txid)) { want.push(a.txid); seen.add(a.txid); } }
+    for (const [txid, e] of cand) { if (want.length >= this.valuePerPoll) break; if (e.out === null && !seen.has(txid)) { want.push(txid); seen.add(txid); } }
+    if (want.length) {
+      const rs = await this.rpcBatch(want.slice(0, this.valuePerPoll).map((txid) => ['getrawtransaction', [txid, true]]));
+      rs.forEach((r, i) => { const e = this.entries.get(want[i]); if (!e) return; e.out = r.result ? (r.result.vout || []).reduce((s, o) => s + btcToSats(o.value), 0) : -1; });
+    }
+    for (const a of this.arrivals) { const e = this.entries.get(a.txid); if (e && e.out !== null && e.out >= 0) a.sats = e.out; }
+    let sats = 0, valued = 0;
+    for (const [, e] of cand) if (e.out !== null && e.out >= 0) { sats += e.out; valued++; }
+    this.next = { txs: cand.length, sats, valued, weight, minRate: cand.length ? Math.round(cand[cand.length - 1][1].rate * 10) / 10 : 0 };
+    this.seq++; this.at = this.now();
+  }
+  _entry(e, fresh) {
+    const fee = btcToSats(e.fees?.base ?? e.fee ?? 0), w = Number(e.weight) || Number(e.vsize) * 4 || 0;
+    return { w, fee, rate: w ? fee / (w / 4) : 0, out: null, t: fresh ? this.now() : Number(e.time) * 1000 || this.now() };
+  }
+  // the snapshot the page polls (all amounts in sats)
+  view() {
+    return {
+      at: this.at, seq: this.seq, error: this.error,
+      tip: this.tip, blocks: this.blocks.slice(1),
+      mempool: this.mempool, next: this.next,
+      arrivals: this.arrivals.slice(0, this.keepArrivals).map(({ t, vsize, rate, sats }) => ({ t, vsize, rate: Math.round(rate * 10) / 10, sats })),
+    };
+  }
+}
+
 // ---- practice networks (testnet4 / signet / testnet3) ---------------------------------------------
 // The operator runs no nodes for these. Their chain data comes from a public Esplora API and is
 // RELAYED here, so the wallet page still talks to one host only. The coins are worthless, so the

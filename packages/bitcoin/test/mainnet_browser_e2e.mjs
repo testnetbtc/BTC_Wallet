@@ -32,6 +32,7 @@ const RPCPORT = 18653, APIPORT = 18797, WEBPORT = 18798, ESPPORT = 18799;
 const REG = { bech32: 'bcrt', pubKeyHash: 0x6f, scriptHash: 0xc4, wif: 0xef };
 const b58 = createBase58check(sha256);
 
+const consoleErrors = [];
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(80), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -124,7 +125,7 @@ try {
   const ORIGIN = `http://127.0.0.1:${WEBPORT}`;
 
   browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu'] });
-  const consoleErrors = [], hosts = new Set(), apiCalls = [], apiRequestBodies = [];
+  const hosts = new Set(), apiCalls = [], apiRequestBodies = [];
   async function newPage() {
     const page = await browser.newPage();
     await page.setViewport({ width: 900, height: 1000 });
@@ -241,6 +242,15 @@ try {
   ok('site icons: favicon.ico, PNG icons, Apple touch icon and web manifest are linked and served', linked.length === 5 && linked.includes('/favicon.ico') && linked.includes('/apple-touch-icon.png') && linked.includes('/site.webmanifest') && served.every(Boolean));
   const manifest = await (await fetch(ORIGIN + '/site.webmanifest')).json();
   ok('web manifest names the app "Olesia" and lists 192/512 icons', manifest.short_name === 'Olesia' && manifest.icons.some((i) => i.sizes === '192x192') && manifest.icons.some((i) => i.sizes === '512x512'));
+  // the street: the background scene fed by GET /street (the regtest node's last block and mempool)
+  await page.waitForFunction(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] > 150 && d[i + 1] > 90 && d[i + 2] < 60) lit++; return lit > 10; }, { timeout: 15000 });
+  ok('street: the scene is drawn on its canvas behind the page (sunset orange present) and GET /street was called', apiCalls.includes('GET /street'));
+  const streetView = await (await fetch(localApi + '/street', { headers: { origin: ORIGIN } })).json();
+  ok('street: the node API reports the tip (height, tx count, value) and the next block from the mempool', Number.isInteger(streetView.tip.height) && streetView.tip.txs >= 1 && streetView.tip.sats >= 0 && 'txs' in streetView.next && Array.isArray(streetView.arrivals) && streetView.mempool.txs >= 0);
+  await tap(page, '#w_street'); await sleep(200);
+  ok('street: "Hide the street" hides the canvas and remembers it', !(await visible(page, '#street')) && await page.evaluate(() => localStorage.getItem('olesia:mainnet:street') === 'off') && (await text(page, '#w_street')) === 'Show the street');
+  await tap(page, '#w_street'); await sleep(200);
+  ok('street: and back on', await visible(page, '#street') && await page.evaluate(() => localStorage.getItem('olesia:mainnet:street') === 'on'));
   ok('RNG health line reports the system generator is alive', (await text(page, '#rngmsg')).startsWith('✓'));
   await page.waitForFunction(() => document.querySelector('#chip_node_t').textContent !== 'node…', { timeout: 15000 });
 
@@ -257,6 +267,7 @@ try {
   // ================= CREATE =================
   await tap(page, '#w_create'); await onPane(page, 'create1');
   ok('Generate is locked until the mouse has been moved', await page.$eval('#c_gen', (b) => b.disabled));
+  await page.$eval('#pad', (e) => e.scrollIntoView({ block: 'center' }));   // the street band along the bottom is real UI: scroll the pad clear of it, as a person would
   const pad = await (await page.$('#pad')).boundingBox();
   for (let i = 0; i < 300; i++) await page.mouse.move(pad.x + 5 + (i * 37 % (pad.width - 10)), pad.y + 5 + (i * 53 % (pad.height - 10)));
   ok('mouse movement fills the bar to 100% and unlocks Generate', (await text(page, '#padmsg')).startsWith('100%') && await page.$eval('#c_gen', (b) => !b.disabled));
@@ -457,8 +468,8 @@ try {
   const stored = await page.evaluate(() => ({ local: Object.fromEntries(Object.entries(localStorage)), session: Object.fromEntries(Object.entries(sessionStorage)) }));
   const storedText = JSON.stringify(stored);
   const storedValues = Object.values(stored.local).map(jsonValues).join('\n');
-  ok('browser storage holds only address counters, the currency and the "opening seen" flag — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
-    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening')
+  ok('browser storage holds only address counters, the currency, the "opening seen" and street flags — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
+    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening' || k === 'olesia:mainnet:street')
     && !storedText.includes(curPw));
   // the open page holds no plaintext secret: not in the DOM, not on window.OM, not in any global
   const leak = await page.evaluate((w) => { const hay = document.documentElement.outerHTML; const fields = [...document.querySelectorAll('input,textarea')].map((e) => ' ' + e.value + ' ').join('|'); return w.filter((x) => x.length > 5 && (hay.includes('>' + x + '<') || fields.includes(' ' + x + ' '))).length; }, words24);
@@ -731,7 +742,8 @@ try {
 
   // ================= PAPER WALLET =================
   await tap(page, '#set_paper'); await onPane(page, 'paper');
-  const callsBeforePaper = apiCalls.length;
+  const notStreet = () => apiCalls.filter((c) => c !== 'GET /street').length;   // the background scene polls on its own clock
+  const callsBeforePaper = notStreet();
   ok('paper: nothing exists before "Make"', !(await visible(page, '#pp_sheetwrap')) && (await text(page, '#pp_sheet_wif')) === '');
   await page.$eval('#pp_make', (e) => e.click());
   await page.waitForFunction(() => !document.querySelector('#pp_sheetwrap').classList.contains('hide'));
@@ -743,7 +755,7 @@ try {
   await page.type('#pp_check', typo); await tap(page, '#pp_verify'); shownKeys.delete(typo);
   ok('paper: read-back with a mistyped key fails clearly', /✗/.test(await text(page, '#pp_checkout')));
   await page.$eval('#pp_check', (e) => { e.value = ''; }); await page.type('#pp_check', ppWif); await tap(page, '#pp_verify');
-  ok('paper: making and checking a paper wallet made no network request at all', apiCalls.length === callsBeforePaper);
+  ok('paper: making and checking a paper wallet made no network request at all', notStreet() === callsBeforePaper);
   ok('paper: read-back with the exact key passes and clears the field', /✓/.test(await text(page, '#pp_checkout')) && (await page.$eval('#pp_check', (e) => e.value)) === '');
   await page.emulateMediaType('print');
   const printLook = await page.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('#pp_sheet_wif')).visibility, button: getComputedStyle(document.querySelector('#pp_print')).visibility, header: getComputedStyle(document.querySelector('header')).visibility }));
@@ -785,7 +797,7 @@ try {
   ok(`secret sweep: ${sweeps} sweeps after every click — no private key ever lingered in the page, a form field or storage`, sweeps > 150 && sweepFails === 0);
   if (realErrors.length) console.log(realErrors.slice(0, 6));
 } catch (e) {
-  console.error('\nBROWSER E2E ABORTED:', e.stack || e.message); bad = true;
+  console.error('\nBROWSER E2E ABORTED:', e.stack || e.message); if (consoleErrors.length) console.error('page console errors so far:', consoleErrors); bad = true;
 } finally { await cleanup(); }
 
 console.log(bad ? '\nBROWSER E2E FAILED' : '\nmainnet wallet browser e2e: all checks passed');

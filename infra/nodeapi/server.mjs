@@ -4,6 +4,7 @@
 //   GET  /status          chain tip + sync state
 //   GET  /fees            fee estimates (sat/vB) from the node
 //   GET  /price           BTC market price + 24h change (display only; fetched server-side)
+//   GET  /street          the last block and what is loading for the next one (the page's background scene)
 //   POST /scan            start a UTXO-set lookup for a list of scriptPubKeys -> { id }
 //   GET  /scan/<id>       job state / progress / result (coins, with mempool-spent flags)
 //   POST /txout           is each outpoint still unspent (mempool included)?
@@ -23,7 +24,7 @@ import { spawn as spawnProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { analyzePattern as vanityAnalyze } from '../../packages/bitcoin/src/vanity.js';
 import { ApiError, RateLimiter, ScanManager, VanityQueue, validateScripts, validateOutpoints, validateRawTx,
-         btcToSats, feerateToSatVb, fetchPrevTx, txidOfRaw, PriceFeed, EsploraBackend, TEST_NETWORKS } from './lib.mjs';
+         btcToSats, feerateToSatVb, fetchPrevTx, txidOfRaw, PriceFeed, StreetWatch, EsploraBackend, TEST_NETWORKS } from './lib.mjs';
 
 const PORT = Number(process.env.OLESIA_API_PORT || 8787);
 const NODE_CONF = process.env.OLESIA_NODE_CONF || '/home/faucet/gsmg-frontier/btc_mainnet_node/bitcoin.conf';
@@ -61,8 +62,7 @@ function loadRpcConfig(confPath) {
 }
 const RPC = loadRpcConfig(NODE_CONF);
 let rpcSeq = 0;
-function rpc(method, params = [], { timeout = 30_000 } = {}) {
-  const body = JSON.stringify({ jsonrpc: '1.0', id: ++rpcSeq, method, params });
+function rpcPost(body, timeout) {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: RPC.port, method: 'POST', path: '/', timeout,
       headers: { 'content-type': 'application/json', authorization: RPC.authHeader, 'content-length': Buffer.byteLength(body) } }, (res) => {
@@ -70,14 +70,27 @@ function rpc(method, params = [], { timeout = 30_000 } = {}) {
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
         let j; try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return reject(new Error(`node RPC returned HTTP ${res.statusCode}`)); }
-        if (j.error) return reject(new Error(j.error.message || 'node RPC error'));
-        resolve(j.result);
+        resolve(j);
       });
     });
     req.on('timeout', () => req.destroy(new Error('node RPC timed out')));
     req.on('error', (e) => reject(new Error(e.code === 'ECONNREFUSED' ? 'the Bitcoin node is not reachable' : e.message)));
     req.end(body);
   });
+}
+async function rpc(method, params = [], { timeout = 30_000 } = {}) {
+  const j = await rpcPost(JSON.stringify({ jsonrpc: '1.0', id: ++rpcSeq, method, params }), timeout);
+  if (j.error) throw new Error(j.error.message || 'node RPC error');
+  return j.result;
+}
+// several calls in one HTTP request; each answer is { result } or { error } in the same order
+async function rpcBatch(calls, { timeout = 60_000 } = {}) {
+  if (!calls.length) return [];
+  const ids = calls.map(() => ++rpcSeq);
+  const j = await rpcPost(JSON.stringify(calls.map(([method, params], i) => ({ jsonrpc: '1.0', id: ids[i], method, params }))), timeout);
+  if (!Array.isArray(j)) throw new Error('node RPC batch returned no array');
+  const byId = new Map(j.map((r) => [r.id, r]));
+  return ids.map((id) => { const r = byId.get(id); return !r ? { error: 'no answer' } : r.error ? { error: r.error.message || 'node RPC error' } : { result: r.result }; });
 }
 
 const log = (m) => console.log(`${new Date().toISOString()} ${m}`);
@@ -87,7 +100,7 @@ const scans = new ScanManager({ rpc, log });
 const RATE_SCALE = Math.max(1, Number(process.env.OLESIA_RATE_SCALE) || 1);
 const lim = (max, win) => ({ max: max * RATE_SCALE, win });
 const limiter = new RateLimiter({
-  status: lim(60, 60_000), fees: lim(60, 60_000), price: lim(30, 60_000),
+  status: lim(60, 60_000), fees: lim(60, 60_000), price: lim(30, 60_000), street: lim(40, 60_000),
   scan: lim(30, 10 * 60_000), poll: lim(240, 60_000),
   txout: lim(60, 60_000), prevtx: lim(40, 10 * 60_000),
   broadcast: lim(12, 60_000),
@@ -156,6 +169,9 @@ async function fetchJson(url) {
 let priceFixture = null;
 try { priceFixture = process.env.OLESIA_PRICE_FIXTURE ? JSON.parse(process.env.OLESIA_PRICE_FIXTURE) : null; } catch { priceFixture = null; }
 const prices = process.env.OLESIA_PRICE === 'off' ? null : new PriceFeed({ fetchJson, fixture: priceFixture, log });
+// The street (the page's background scene): a watcher that polls the node every few seconds.
+// OLESIA_STREET=off disables it.
+const street = process.env.OLESIA_STREET === 'off' ? null : new StreetWatch({ rpc, rpcBatch, log, pollMs: Math.max(1000, Number(process.env.OLESIA_STREET_POLL_MS) || 5000) });
 
 // Practice networks: relayed public data (see lib.mjs). OLESIA_TESTNETS=off disables them;
 // OLESIA_TEST_BASE_<NETWORK> points one at another Esplora-compatible server (used by the tests).
@@ -221,6 +237,7 @@ async function route(req, res) {
   if (req.method === 'GET' && path === '/status') { gate('status'); return send(res, 200, await getStatus()); }
   if (req.method === 'GET' && path === '/fees') { gate('fees'); return send(res, 200, await getFees()); }
   if (req.method === 'GET' && path === '/price') { gate('price'); return send(res, 200, prices ? await prices.get() : { available: false, quotes: {}, at: null, source: null }); }
+  if (req.method === 'GET' && path === '/street') { gate('street'); if (!street) throw new ApiError(404, 'the street is switched off'); return send(res, 200, street.view()); }
 
   if (req.method === 'POST' && path === '/scan') {
     gate('scan');
@@ -310,4 +327,5 @@ server.requestTimeout = 60_000; server.headersTimeout = 20_000;
 rpc('getblockchaininfo').then((i) => {
   if (i.chain !== EXPECT_CHAIN) { console.error(`node is on chain "${i.chain}", expected "${EXPECT_CHAIN}" — refusing to start`); process.exit(1); }
   server.listen(PORT, '127.0.0.1', () => log(`olesia node API on 127.0.0.1:${PORT} (chain ${i.chain}, height ${i.blocks})`));
+  if (street) street.start();
 }).catch((e) => { console.error('cannot reach the Bitcoin node: ' + e.message); process.exit(1); });

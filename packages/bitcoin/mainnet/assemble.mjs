@@ -52,6 +52,8 @@ const html = `<!doctype html>
 html,body{margin:0;min-height:100%}
 body{font:15px/1.5 var(--sans);color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
 #shell{max-width:600px;margin:0 auto;padding:0 16px 110px}
+body.street #shell{padding-bottom:calc(var(--street-h,200px) + 20px)}
+#street{position:fixed;left:0;right:0;bottom:0;width:100%;height:clamp(150px,22vh,230px);z-index:2;display:block}
 header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 0 12px;flex-wrap:wrap}
 .logo{font-weight:700;font-size:22px;letter-spacing:-.01em}
 .ldot{color:var(--accent)}
@@ -250,7 +252,7 @@ footer a{color:var(--muted)}
   <button class="choice" id="w_paper" type="button"><span class="ic">${IC.print}</span><span><b>Make a paper wallet</b><span>One key, printed on paper — the classic cold storage, done carefully</span></span></button>
   <button class="choice" id="w_verify" type="button"><span class="ic">${IC.pen}</span><span><b>Verify a signed message</b><span>Check that a message really was signed by the owner of an address</span></span></button>
   <div class="warn"><b>This is a hot wallet for real bitcoin.</b> Keep here only an amount you could afford to lose. Olesia cannot recover a lost password or recovery phrase — nobody can. No independent security firm has audited this software.</div>
-  <p class="hint" style="text-align:center;margin-top:14px"><button class="back" id="w_intro" type="button">Watch the opening again</button></p>
+  <p class="hint" style="text-align:center;margin-top:14px"><button class="back" id="w_intro" type="button">Watch the opening again</button> · <button class="back" id="w_street" type="button">Hide the street</button></p>
 </section>
 
 <!-- ===================== CREATE 1: entropy ===================== -->
@@ -460,6 +462,7 @@ footer a{color:var(--muted)}
   <button class="sec wide" id="set_vanity" type="button" style="margin-bottom:10px">Create a vanity address</button>
   <button class="sec wide" id="set_paper" type="button" style="margin-bottom:10px">Make a paper wallet</button>
   <button class="sec wide" id="set_intro" type="button" style="margin-bottom:10px">Watch the opening again</button>
+  <label class="inline" style="margin:4px 0 14px"><input type="checkbox" id="set_street" checked> <span>Show the street — the Land Rover at the bottom of the page loading the next block from the Olesia node, driving off when the block is mined.</span></label>
   <button class="sec wide" id="set_lock" type="button">Lock wallet</button>
 </section>
 
@@ -751,6 +754,7 @@ footer a{color:var(--muted)}
 </div></div>
 <div id="toast"></div>
 <!-- the opening: six short chapters drawn on a canvas, captions below; Skip any time, Enter at the end -->
+<canvas id="street" aria-hidden="true"></canvas>
 <div id="intro" class="hide" role="dialog" aria-label="Opening">
   <canvas id="intro_c" aria-hidden="true"></canvas>
   <canvas id="intro_b" aria-hidden="true"></canvas>

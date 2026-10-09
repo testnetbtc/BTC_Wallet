@@ -1411,4 +1411,204 @@
   $('#w_intro').addEventListener('click', introStart);
   $('#set_intro').addEventListener('click', introStart);
   if (!introSeen()) introStart();
+
+  // ================= THE STREET =================
+  // The wallet's background: the Olesia node watching the next block being loaded (after
+  // txstreet). An old Land Rover Defender waits on a road along the bottom of the page. Every
+  // transaction that reaches the node's mempool is a hooded figure who walks up and climbs in the
+  // back; the Defender carries the count and value of what is loaded for the next block; when the
+  // block is mined it drives off into the sunset with the block's exact numbers on its side, and
+  // the next one pulls in. Data: GET /street on the node API every 6 s — public chain data, nothing
+  // about this wallet. Off switch on Welcome and in Settings; reduced motion gets a still picture;
+  // nothing is drawn or fetched while the tab is hidden or the opening is showing.
+  const STREET_KEY = 'olesia:mainnet:street';
+  const street = $('#street');
+  const streetWanted = () => { try { return localStorage.getItem(STREET_KEY) !== 'off'; } catch { return true; } };
+  let streetOn = streetWanted(), streetRaf = 0, streetLast = 0, streetTimer = 0, streetData = null, streetErr = null, streetSeenT = 0, streetHeight = 0;
+  const SAND = '#c7b88c', ROOF = '#e9e4d3', GLASS = '#182026', TYRE = '#101010', RIM = '#6d6d6d', ROAD = '#1c1c1c', LAND = '#121212';
+  const HOODIES = ['#262626', '#2c2c2c', '#1f2a22', '#241f33', '#2a2420', '#1d2630'];
+  // one vehicle: where it is, what it says on its side, what it is doing
+  const car = { x: 0, mode: 'parked', t: 0, dist: 0, bump: 9, label: null, fill: 0 };
+  let punks = [];   // the figures walking up: { x, h, v, s (style), ph, st ('walk' | 'wait' | 'board'), bt, sats, more }
+  const fmtBtc = (sats) => { const b = sats / 1e8; return b.toLocaleString('en-US', { minimumFractionDigits: b >= 100 ? 1 : b >= 1 ? 2 : 4, maximumFractionDigits: b >= 100 ? 1 : b >= 1 ? 2 : 4 }); };
+  const fmtN = (x) => Number(x || 0).toLocaleString('en-US');
+
+  function streetLayout() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1), W = street.clientWidth, H = street.clientHeight;
+    if (street.width !== Math.round(W * dpr) || street.height !== Math.round(H * dpr)) { street.width = Math.round(W * dpr); street.height = Math.round(H * dpr); }
+    const g = street.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bar = $('#tabbar'), tab = bar.classList.contains('hide') ? 0 : bar.offsetHeight;
+    const base = Math.max(150, Math.min(230, window.innerHeight * 0.22)) + tab;              // the tab bar, when shown, must not eat the road
+    if (Math.abs(H - base) > 1) { street.style.height = base + 'px'; document.body.style.setProperty('--street-h', base + 'px'); return streetLayout(); }   // the page scrolls above the band, never over it
+    const Y = H - tab - 8, L = Math.max(150, Math.min(170, W * 0.14));                       // the ground, and the Defender's length
+    return { g, W, H, Y, L, park: W * 0.5 - L / 2 + (W < 700 ? L * 0.22 : 0), horizon: Y - 0.5 * L, sun: { x: W * 0.14, y: Y - 0.5 * L + 0.04 * L, r: 0.22 * L } };
+  }
+  function streetSet(on) {
+    streetOn = on; try { localStorage.setItem(STREET_KEY, on ? 'on' : 'off'); } catch { /* fine */ }
+    show(street, on); document.body.classList.toggle('street', on); $('#set_street').checked = on; $('#w_street').textContent = on ? 'Hide the street' : 'Show the street';
+    if (on) { streetPoll(); streetTick(); } else { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); }
+  }
+  // ---- data ----
+  async function streetPoll() {
+    clearTimeout(streetTimer);
+    if (!streetOn) return;
+    if (document.hidden || introOn) { streetTimer = setTimeout(streetPoll, 2000); return; }
+    let wait = 6000;
+    try {
+      const d = await OM.street();
+      if (!d || !d.tip) throw new Error('no data');
+      streetErr = null;
+      const first = !streetData; streetData = d;
+      if (first) { streetHeight = d.tip.height; streetSeenT = d.at; car.label = nextLabel(d); car.fill = d.next.weight / 4e6; }
+      else if (d.tip.height > streetHeight && car.mode === 'parked') {   // the block is mined: it leaves with the block's numbers on its side
+        streetHeight = d.tip.height; car.label = { height: d.tip.height, txs: d.tip.txs, sats: d.tip.sats, mined: true }; car.fill = 1; car.mode = 'leaving'; car.t = 0;
+      } else if (car.mode === 'parked') { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; }
+      // the newest arrivals become figures (at most 8 per poll; the last one carries the overflow)
+      const fresh = (d.arrivals || []).filter((a) => a.t > streetSeenT).sort((a, b) => a.t - b.t);
+      if (fresh.length) streetSeenT = fresh[fresh.length - 1].t;
+      if (!reducedMotion()) {
+        const room = Math.max(0, 14 - punks.length), take = fresh.slice(0, Math.min(8, room));
+        take.forEach((a, i) => punks.push(newPunk(a, i, i === take.length - 1 ? fresh.length - take.length : 0)));
+      }
+    } catch (e) { streetErr = e.message; wait = 30000; }
+    streetTimer = setTimeout(streetPoll, wait);
+  }
+  const nextLabel = (d) => ({ height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats, mined: false });
+  function newPunk(a, i, more) {
+    const { W, L } = streetLayout();
+    return { x: W + 30 + i * L * 0.45, h: L * 0.62, v: L * (0.58 + Math.random() * 0.08), ph: Math.random() * 6, st: 'walk', bt: 0, sats: a.sats, more,
+      s: { hoodie: HOODIES[Math.floor(Math.random() * HOODIES.length)], trousers: Math.random() < 0.5 ? '#1a1a1a' : '#23262b', laptop: Math.random() < 0.45, glasses: Math.random() < 0.5, mask: Math.random() < 0.35 } };
+  }
+  // ---- drawing ----
+  // the Defender, in local units (1 = its length), facing left, (0, 0) on the ground under the front bumper
+  function defender(g, x, y, L, { fill, label, wheel, alpha = 1, scale = 1 }) {
+    g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(L * scale, L * scale);
+    g.lineJoin = 'round';
+    // wheels behind the body
+    for (const wx of [0.2, 0.78]) {
+      g.fillStyle = TYRE; g.beginPath(); g.arc(wx, -0.13, 0.13, 0, Math.PI * 2); g.fill();
+      g.fillStyle = RIM; g.beginPath(); g.arc(wx, -0.13, 0.07, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#3a3a3a'; g.lineWidth = 0.014; g.beginPath();
+      for (let k = 0; k < 5; k++) { const a = wheel + k * Math.PI * 2 / 5; g.moveTo(wx, -0.13); g.lineTo(wx + Math.cos(a) * 0.065, -0.13 + Math.sin(a) * 0.065); }
+      g.stroke(); g.fillStyle = '#222'; g.beginPath(); g.arc(wx, -0.13, 0.02, 0, Math.PI * 2); g.fill();
+    }
+    // body: the bonnet is low and flat, the cab and the back are tall and square
+    g.fillStyle = SAND; g.beginPath();
+    g.moveTo(0.01, -0.2); g.lineTo(0.01, -0.44); g.lineTo(0.3, -0.44); g.lineTo(0.3, -0.47); g.lineTo(0.33, -0.76); g.lineTo(0.97, -0.76); g.lineTo(0.98, -0.2); g.closePath(); g.fill();
+    g.fillStyle = ROOF; g.fillRect(0.33, -0.79, 0.65, 0.04);                                             // the white roof
+    g.strokeStyle = '#8f8468'; g.lineWidth = 0.012; g.beginPath(); g.moveTo(0.01, -0.47); g.lineTo(0.3, -0.47); g.moveTo(0.3, -0.47); g.lineTo(0.98, -0.47); g.stroke();   // the belt line
+    g.beginPath(); for (const sx of [0.42, 0.6]) { g.moveTo(sx, -0.74); g.lineTo(sx, -0.47); g.moveTo(sx, -0.37); g.lineTo(sx, -0.22); } g.stroke();   // door seams, leaving the band for the numbers
+    // windows: dark glass that lights up, from the back forward, as the block fills
+    const wins = [[0.34, 0.41, true], [0.43, 0.59, false], [0.61, 0.78, false], [0.8, 0.96, false]];
+    wins.forEach(([a, b, screen], i) => {
+      const lit = Math.max(0, Math.min(1, fill * 4 - (3 - i)));
+      g.fillStyle = GLASS; g.beginPath();
+      if (screen) { g.moveTo(a + 0.02, -0.72); g.lineTo(b, -0.72); g.lineTo(b, -0.5); g.lineTo(a, -0.5); } else g.rect(a, -0.72, b - a, 0.22);
+      g.closePath(); g.fill();
+      if (lit > 0) { g.fillStyle = `rgba(255,140,40,${0.2 + 0.55 * lit})`; g.fill(); }
+    });
+    // wheel arches, front, bumpers, headlight, spare wheel on the back door
+    g.fillStyle = TYRE; for (const wx of [0.2, 0.78]) { g.beginPath(); g.arc(wx, -0.2, 0.17, Math.PI, 0); g.lineTo(wx + 0.17, -0.2); g.closePath(); g.fill(); }
+    g.fillStyle = SAND; g.fillRect(0.01, -0.44, 0.07, 0.22); g.fillStyle = '#1a1a1a'; g.fillRect(0.0, -0.4, 0.045, 0.14);   // the grille
+    g.fillStyle = '#9a9a9a'; g.fillRect(-0.03, -0.23, 0.33, 0.035); g.fillRect(0.9, -0.23, 0.1, 0.035);                  // bumpers
+    g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(0.055, -0.33, 0.028, 0, Math.PI * 2); g.fill();                         // headlight
+    g.fillStyle = TYRE; g.beginPath(); g.ellipse(0.995, -0.52, 0.03, 0.11, 0, 0, Math.PI * 2); g.fill();                 // the spare
+    g.fillStyle = RIM; g.beginPath(); g.ellipse(0.995, -0.52, 0.012, 0.05, 0, 0, Math.PI * 2); g.fill();
+    // roof rack: the block-number board at the front, then the load — one crate per fifth of a block
+    g.strokeStyle = '#555'; g.lineWidth = 0.014; g.beginPath(); g.moveTo(0.36, -0.86); g.lineTo(0.96, -0.86);
+    for (const rx of [0.38, 0.66, 0.94]) { g.moveTo(rx, -0.86); g.lineTo(rx, -0.79); } g.stroke();
+    const crates = Math.min(5, Math.floor(fill * 5 + 1e-9));
+    for (let i = 0; i < crates; i++) { g.fillStyle = i % 2 ? '#d9661a' : ORANGE; g.fillRect(0.64 + i * 0.06, -0.92, 0.056, 0.055); }
+    if (label) {
+      const k = L * scale, txt = (str, ux, uy, size, color, align) => { g.save(); g.scale(1 / k, 1 / k); g.fillStyle = color; g.font = `600 ${Math.max(6, Math.round(size * k))}px ${MONO}`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, ux * k, uy * k); g.restore(); };   // text in real pixels
+      g.fillStyle = '#1a1a1a'; g.fillRect(0.37, -0.95, 0.25, 0.085); g.strokeStyle = '#6a6a6a'; g.lineWidth = 0.008; g.strokeRect(0.37, -0.95, 0.25, 0.085);
+      txt('#' + fmtN(label.height), 0.495, -0.905, 0.05, label.mined ? ORANGE : '#f2f2f2', 'center');
+      txt(fmtN(label.txs) + ' tx · ' + fmtBtc(label.sats) + ' ₿', 0.52, -0.42, 0.06, label.mined ? '#9a2f00' : '#2b2518', 'center');   // the numbers along the side
+    }
+    g.restore();
+  }
+  // a cypherpunk: hood up, hands in the pocket, some with a laptop under the arm; facing left
+  function punk(g, x, y, h, ph, s, walking, alpha = 1) {
+    g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(h, h);
+    const sw = walking ? Math.sin(ph) : 0, bob = walking ? Math.abs(Math.cos(ph)) * 0.02 : 0;
+    g.strokeStyle = s.trousers; g.lineWidth = 0.085; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(0.03, -0.42); g.lineTo(0.03 - sw * 0.15, -0.03); g.moveTo(-0.03, -0.42); g.lineTo(-0.03 + sw * 0.15, -0.03); g.stroke();
+    g.translate(0, -bob);
+    g.fillStyle = s.hoodie; g.beginPath(); g.moveTo(-0.15, -0.4); g.lineTo(0.15, -0.4); g.lineTo(0.13, -0.76); g.lineTo(-0.13, -0.76); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.02; g.beginPath(); g.moveTo(-0.1, -0.5); g.lineTo(0.1, -0.5); g.stroke();   // the pocket
+    if (s.laptop) { g.fillStyle = '#2a2a2a'; g.fillRect(-0.24, -0.63, 0.16, 0.11); g.fillStyle = ORANGE; g.fillRect(-0.12, -0.6, 0.025, 0.025); }
+    g.fillStyle = s.hoodie; g.beginPath(); g.ellipse(0.01, -0.86, 0.14, 0.14, 0, 0, Math.PI * 2); g.fill();     // the hood
+    g.beginPath(); g.moveTo(0.08, -0.98); g.lineTo(0.14, -1.0); g.lineTo(0.12, -0.9); g.closePath(); g.fill();   // its peak
+    g.fillStyle = '#0d0d0d'; g.beginPath(); g.ellipse(-0.04, -0.85, 0.08, 0.1, 0, 0, Math.PI * 2); g.fill();    // the face in shadow
+    if (s.mask) { g.fillStyle = '#3a3a3a'; g.fillRect(-0.12, -0.86, 0.1, 0.06); }
+    if (s.glasses) { g.fillStyle = '#000'; g.fillRect(-0.13, -0.9, 0.1, 0.03); g.fillStyle = 'rgba(255,106,0,.7)'; g.fillRect(-0.12, -0.895, 0.03, 0.02); }
+    g.restore();
+  }
+  function streetFrame(now) {
+    if (!streetOn) return;
+    streetRaf = requestAnimationFrame(streetFrame);
+    const still = reducedMotion();                                                  // reduced motion: a still picture, redrawn once a second as the data changes
+    if (now - streetLast < (still ? 1000 : 31)) return;                             // ~30 frames a second is plenty for a background
+    const dt = still ? 0 : Math.min(0.1, (now - streetLast) / 1000 || 0); streetLast = now;
+    if (document.hidden || introOn) return;
+    const { g, W, H, Y, L, park, horizon, sun } = streetLayout();
+    g.fillStyle = '#171717'; g.fillRect(0, 0, W, H); g.fillStyle = '#242424'; g.fillRect(0, 0, W, 1);   // an opaque band along the bottom; the page scrolls above it
+    // the sunset: a glow, the sun half down, the land, low hills, the road
+    const glow = g.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, W * 0.55); glow.addColorStop(0, 'rgba(255,106,0,.28)'); glow.addColorStop(0.5, 'rgba(255,106,0,.06)'); glow.addColorStop(1, 'rgba(255,106,0,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, W, horizon);
+    g.fillStyle = '#ff7a1a'; g.beginPath(); g.arc(sun.x, sun.y, sun.r, Math.PI, 0); g.fill();
+    g.fillStyle = LAND; g.fillRect(0, horizon, W, Y - horizon);
+    g.fillStyle = '#0f0f0f'; g.beginPath(); g.moveTo(0, horizon);
+    for (let x = 0; x <= W; x += W / 12) g.lineTo(x, horizon - L * 0.06 * (0.5 + 0.5 * Math.sin(x / W * 9 + 1.3)));
+    g.lineTo(W, horizon); g.closePath(); g.fill();
+    g.fillStyle = ROAD; g.fillRect(0, Y - L * 0.09, W, L * 0.09 + 8);
+    g.strokeStyle = '#2e2e2e'; g.lineWidth = 1; g.setLineDash([L * 0.12, L * 0.1]); g.beginPath(); g.moveTo(0, Y - L * 0.045); g.lineTo(W, Y - L * 0.045); g.stroke(); g.setLineDash([]);
+    // the vehicle
+    const door = () => car.x + L * 1.06;
+    if (!still) {
+      car.t += dt; car.bump += dt;
+      if (car.mode === 'parked') car.x = park;
+      else if (car.mode === 'leaving') { const q = Math.min(1, car.t / 3.4), e = q * q; const nx = park - e * (park + L * 1.3); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'arriving'; car.t = 0; if (streetData) { car.label = nextLabel(streetData); car.fill = streetData.next.weight / 4e6; } } }
+      else if (car.mode === 'arriving') { const q = Math.min(1, car.t / 2.2), e = 1 - Math.pow(1 - q, 3); const nx = W + 20 - e * (W + 20 - park); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'parked'; car.bump = 0; } }
+    } else car.x = park;
+    const bounce = Math.sin(car.bump * 16) * Math.exp(-car.bump * 6) * L * 0.025;
+    const leaving = car.mode === 'leaving' ? Math.min(1, car.t / 3.4) : 0;
+    // the figures: walk to the back door, wait if the Defender is away, climb in
+    if (!still) {
+      for (const p of punks) {
+        p.ph += dt * 9 * (p.st === 'walk' ? 1 : 0);
+        if (p.st === 'walk') { const tx = door(); if (car.mode !== 'parked' && p.x <= park + L * 1.06 + 4) { p.st = 'wait'; continue; } p.x -= p.v * dt; if (p.x <= tx) { p.x = tx; p.st = 'board'; p.bt = 0; car.bump = 0; } }
+        else if (p.st === 'wait') { if (car.mode === 'parked') p.st = 'walk'; }
+        else { p.bt += dt; }
+      }
+      punks = punks.filter((p) => p.st !== 'board' || p.bt < 0.55);
+      punks.sort((a, b) => a.x - b.x);
+    }
+    let lastLabel = -1e9;
+    for (const p of punks) {
+      if (p.st === 'board') { const q = p.bt / 0.55; punk(g, p.x - q * L * 0.1, Y - q * p.h * 0.25, p.h * (1 - 0.4 * q), p.ph, p.s, false, 1 - q); continue; }
+      punk(g, p.x, Y, p.h, p.ph, p.s, p.st === 'walk');
+      if (p.sats !== null && p.sats !== undefined && p.x - lastLabel > 74) {   // one amount per figure, unless they bunch up
+        lastLabel = p.x;
+        g.fillStyle = '#8f8f8f'; g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+        g.fillText(fmtBtc(p.sats) + ' ₿' + (p.more ? ` +${p.more} more` : ''), p.x, Y - p.h - 6);
+      }
+    }
+    defender(g, car.x, Y + bounce, L, { fill: car.fill, label: car.label, wheel: -car.dist / (L * 0.13), alpha: 1 - 0.9 * Math.pow(leaving, 2.5), scale: 1 - 0.2 * leaving });
+    // the caption
+    g.textAlign = 'left'; g.textBaseline = 'top'; g.font = `11px ${MONO}`;
+    let cap;
+    if (streetErr) cap = ['the street', 'waiting for the Olesia node…'];
+    else if (!streetData) cap = ['the street', 'loading…'];
+    else if (car.mode === 'leaving' && car.label) cap = [`block ${fmtN(car.label.height)} mined`, `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} BTC`];
+    else cap = [`block ${fmtN(streetData.tip.height + 1)} loading`, `${fmtN(streetData.next.txs)} tx · ${fmtBtc(streetData.next.sats)} BTC${streetData.next.valued < streetData.next.txs ? ' so far' : ''}${W < 700 ? '' : ` · ${fmtN(streetData.mempool.txs)} waiting`}`];
+    g.fillStyle = '#ff8a33'; g.fillText(cap[0], 16, 12); g.fillStyle = '#8f8f8f';
+    if (W < 700) g.fillText(cap[1], 16, 27); else g.fillText(cap[1], 16 + g.measureText(cap[0]).width + 10, 12);   // two lines on a phone, clear of the vehicle
+  }
+  function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }
+  $('#set_street').addEventListener('change', (e) => streetSet(e.target.checked));
+  $('#w_street').addEventListener('click', () => streetSet(!streetOn));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && streetOn) { streetLast = performance.now(); streetPoll(); } });
+  show(street, streetOn); document.body.classList.toggle('street', streetOn); $('#set_street').checked = streetOn; $('#w_street').textContent = streetOn ? 'Hide the street' : 'Show the street';
+  if (streetOn) { streetPoll(); streetTick(); }
 })();
