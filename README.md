@@ -15,6 +15,8 @@ down describes that earlier platform and is **not accurate for the live site**.
 | Node API | `https://api.olesia.io` — [`infra/nodeapi/`](infra/nodeapi/), in front of the operator's own Bitcoin Core node |
 | Build hash | [`packages/bitcoin/mainnet/BUILD_HASH.txt`](packages/bitcoin/mainnet/BUILD_HASH.txt) — compare with `curl -s https://olesia.io/ | sha256sum` |
 | Vanity addresses | in the wallet ("Create a vanity address") or offline with `olesia-vanity.mjs` — [how-to guide](docs/VANITY_OFFLINE_GUIDE.md), [design](docs/VANITY_DESIGN.md) |
+| Signed messages, privacy check, paper wallets | prove you own an address (legacy + BIP-322), see what the chain shows about your wallet, print a paper wallet with a read-back check — [docs/WALLET_TOOLS.md](docs/WALLET_TOOLS.md) |
+| Testing and audits | [how it is tested](docs/TESTING.md) · [audit process](docs/AUDIT_PROCESS.md) |
 
 ## What it does
 

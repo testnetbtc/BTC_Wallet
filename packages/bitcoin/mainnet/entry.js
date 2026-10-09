@@ -20,6 +20,8 @@ import { makeNodeApi, DEFAULT_API } from '../src/nodeapi.js';
 import { Session, MAINNET_WINDOW, TEST_WINDOW } from '../src/session.js';
 import { NETWORKS } from '../src/networks.js';
 import { lockWallet, LockedWallet } from '../src/locked.js';
+import { createPaperWallet, checkPaperWallet, PAPER_TYPES, WIF_LOOKALIKES } from '../src/paper.js';
+import { signMessage as signMessageWithKey, verifyMessage, coreVerifyCommand, MESSAGE_MAX as SIGN_MESSAGE_MAX } from '../src/message.js';
 import { analyzePattern as vanityAnalyze, estimate as vanityEstimate, humanTime, TYPES as VANITY_TYPES, MAX_PATTERN as VANITY_MAX, splitKeyStart, splitKeyFinish } from '../src/vanity.js';
 
 const NETWORK = 'mainnet';
@@ -129,6 +131,18 @@ function openLocked({ pubs, vaultText, scriptType = null }) {
       const { secret } = await lockedFor(NETWORK).unlock(password, { onProgress });
       return secret.kind === 'wif' ? { kind: 'wif', wif: secret.wif } : { kind: 'seed', mnemonic: normalizeMnemonic(secret.mnemonic), hasPassphrase: !!secret.passphrase };
     },
+    // Sign a message with the key behind one of this wallet's addresses (proof of ownership /
+    // reserves). The key is fetched through the same signer the spends use and dropped at once.
+    signMessage: async (network, { address, message }, password, onProgress) => {
+      const s = session(network);
+      const entry = await s.findEntry(address);
+      if (!entry) throw new Error('that address does not belong to this wallet');
+      return lockedFor(network).withSigner(password, (signer) => {
+        const key = signer.keyFor(entry);
+        const r = signMessageWithKey({ privKey: key.privKey, compressed: key.pubkey.length === 33, address: entry.address, message, network });
+        return { ...r, address: entry.address, message, coreCommand: coreVerifyCommand({ address: entry.address, message, signature: r.signature, format: r.format }) };
+      }, { onProgress });
+    },
   };
 }
 
@@ -213,7 +227,21 @@ const vanity = {
   },
 };
 
+// ---- signed messages: verification needs no wallet, no password, no network ----
+const message = {
+  max: SIGN_MESSAGE_MAX,
+  verify: ({ address, message: text, signature, network = NETWORK }) => verifyMessage({ address, message: text, signature, network }),
+};
+
+// ---- paper wallets: made here from crypto.getRandomValues, never stored, never sent ----
+const paper = {
+  types: PAPER_TYPES, lookalikes: WIF_LOOKALIKES,
+  create: (type) => createPaperWallet({ randomBytes: (n) => crypto.getRandomValues(new Uint8Array(n)), type, network: NETWORK }),
+  check: ({ wif, expectAddress, type }) => checkPaperWallet({ wif, expectAddress, type, network: NETWORK }),
+};
+
 window.OM = {
+  message, paper,
   vanity,
   network: NETWORK, apiBase: API_BASE, typeLabel: TYPE_LABEL, maxFeeRate: MAX_FEERATE,
   netInfo: NET_INFO, practiceNetworks: PRACTICE, faucetUrl: FAUCET_URL,

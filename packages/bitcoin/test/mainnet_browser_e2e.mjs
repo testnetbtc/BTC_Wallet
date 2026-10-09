@@ -149,8 +149,37 @@ try {
     await page.goto(ORIGIN + '/', { waitUntil: 'load' });
     return page;
   }
+  // SECRET SWEEP — runs after EVERY click. No private key may be anywhere in the page (visible
+  // text, hidden elements, element values) or in browser storage, unless the test has declared
+  // that this exact key is legitimately on screen right now because the user asked to see it.
+  // Added after a real bug: an earlier vanity key stayed in a hidden element under a new result.
+  const WIF_RE = /\b[KL5c9][1-9A-HJ-NP-Za-km-z]{50,51}\b/g;
+  let shownKeys = new Set();   // keys the user has deliberately revealed at this moment
+  let sweeps = 0, sweepFails = 0;
+  const sweep = async (page, where) => {
+    let r;
+    try { r = await page.evaluate(() => {
+      let store = '';
+      try { for (let i = 0; i < localStorage.length; i++) store += localStorage.getItem(localStorage.key(i)) + '\n'; for (let i = 0; i < sessionStorage.length; i++) store += sessionStorage.getItem(sessionStorage.key(i)) + '\n'; } catch { /* unavailable */ }
+      const values = [...document.querySelectorAll('input,textarea')].map((e) => e.value).join('\n');
+      // every text node in the page, hidden ones included (that is where the lingering key was); scripts, styles and images excluded
+      const c = document.body.cloneNode(true); c.querySelectorAll('script,style,img,svg,noscript').forEach((e) => e.remove());
+      return { html: c.textContent, store, values };
+    }); } catch (e) { if (/Execution context was destroyed|navigation/.test(e.message)) return; throw e; }   // the click reloaded the page (Lock)
+    const found = (t) => t.match(WIF_RE) || [];
+    const htmlBad = found(r.html).filter((w) => !shownKeys.has(w));
+    const valBad = found(r.values).filter((w) => !shownKeys.has(w));
+    const storeBad = found(r.store);
+    sweeps++;
+    if (htmlBad.length || storeBad.length || valBad.length) {
+      sweepFails++; bad = true;
+      console.log(`  ✗ SECRET SWEEP after ${where}: ${htmlBad.length ? 'a private key is in the page ' : ''}${valBad.length ? 'a private key is in a form field ' : ''}${storeBad.length ? 'a private key is in browser storage' : ''}`);
+    }
+  };
   // DOM-level click: immune to layout shifts and overlays, fires the same handlers
-  const tap = (page, sel) => page.$eval(sel, (e) => e.click());
+  const tap = async (page, sel) => { await page.$eval(sel, (e) => e.click()); await sweep(page, 'click ' + sel); };
+  // a click that deliberately shows a key: read it, declare it, then sweep
+  const reveal = async (page, sel, readSel) => { await page.$eval(sel, (e) => e.click()); const w = await text(page, readSel); shownKeys.add(w); await sweep(page, 'reveal ' + sel); return w; };
   const text = (page, sel) => page.$eval(sel, (e) => e.textContent);
   const visible = (page, sel) => page.$eval(sel, (e) => !e.classList.contains('hide') && e.getClientRects().length > 0);
   const onPane = (page, name) => page.waitForFunction((n) => document.querySelector('#pane-' + n).classList.contains('on'), { timeout: 60000 }, name);
@@ -228,7 +257,12 @@ try {
   const dat = datName ? readFileSync(join(DL, datName), 'utf8') : '';
   ok('a .dat file was downloaded (olesia-wallet-YYYYMMDD-HHMMSS.dat)', /^olesia-wallet-\d{8}-\d{6}\.dat$/.test(datName || ''));
   ok('the file is an encrypted olesia-wallet for mainnet', (() => { try { const o = JSON.parse(dat); return o.format === 'olesia-wallet' && o.network === 'mainnet' && o.kdf.N === 131072; } catch { return false; } })());
-  ok('the file contains none of the recovery words and not the password', !words24.some((w) => w.length > 4 && dat.includes(w)) && !dat.includes(password));
+  // Only the VALUES count: JSON field names such as "network", "version", "salt" are BIP-39 words too,
+  // and a phrase that happens to contain one must not fail the test (it did, about 5% of runs).
+  const jsonValues = (text) => { const out = []; const walk = (v) => { if (v && typeof v === 'object') Object.values(v).forEach(walk); else out.push(String(v)); }; try { walk(JSON.parse(text)); } catch { out.push(text); } return out.join('\n'); };
+  { const leaked = words24.filter((w) => w.length > 4 && jsonValues(dat).includes(w));
+    ok('the file contains none of the recovery words and not the password', leaked.length === 0 && !dat.includes(password));
+    if (leaked.length) console.log('   words found in the file values:', leaked.join(', ')); }
   await tap(page, '#s_open'); await onPane(page, 'wallet');
   await waitBalance(page, '0.00000000');
   ok('new wallet opens with a zero balance from the node', true);
@@ -255,6 +289,16 @@ try {
   await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
   ok('after funding + 1 block the balance is 0.87500000 (SegWit ×2 + Legacy)', await refreshUntil(page, '0.87500000'));
   ok('three coins are listed with type, address and derivation path', (await page.$$('#coins .coin')).length === 3 && /m\/84'\/0'\/0'\/0\/0/.test(await text(page, '#coins')) && /m\/44'\/0'\/0'\/0\/0/.test(await text(page, '#coins')));
+
+  // ================= PRIVACY CHECK on real coins (real /prevtx reads from the node) =================
+  await tab(page, 'settings'); await tap(page, '#set_privacy'); await onPane(page, 'privacy');
+  await tap(page, '#pr_go');
+  await page.waitForFunction(() => !document.querySelector('#pr_out').classList.contains('hide'), { timeout: 90000 });
+  const prText = await text(page, '#pr_findings');
+  ok('privacy: a clean 3-coin wallet gets the "no reuse" good mark and the SegWit+Legacy note', (await page.$$eval('#pr_findings .find.good', (e) => e.length)) === 1 && /Coins on both SegWit/.test(prText) && !/received more than one/.test(prText) && !/dust/.test(prText));
+  ok('privacy: all three creating transactions were read from the node', /3 of 3 creating transactions read/.test(await text(page, '#pr_status')));
+  ok('privacy: the report says what it cannot see', /no address index/.test(prText));
+  await tap(page, '#pr_back'); await onPane(page, 'settings'); await tab(page, 'wallet');
 
   // ================= SEND =================
   const destReg = cliw('getnewaddress', '', 'bech32'), dest = toMainnet(destReg);
@@ -379,7 +423,8 @@ try {
   // ================= nothing secret persisted; no third-party requests =================
   const stored = await page.evaluate(() => ({ local: Object.fromEntries(Object.entries(localStorage)), session: Object.fromEntries(Object.entries(sessionStorage)) }));
   const storedText = JSON.stringify(stored);
-  ok('browser storage holds only address counters — no words, no keys', !words24.some((w) => w.length > 4 && storedText.includes(w)) && Object.keys(stored.session).length === 0
+  const storedValues = Object.values(stored.local).map(jsonValues).join('\n');
+  ok('browser storage holds only address counters — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
     && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur')
     && !storedText.includes(curPw));
   // the open page holds no plaintext secret: not in the DOM, not on window.OM, not in any global
@@ -536,8 +581,8 @@ try {
   const uPriv = randomBytes(32);
   const wifMain = b58.encode(Uint8Array.of(0x80, ...uPriv));
   await tap(page, '#w_import'); await onPane(page, 'import');
-  await tap(page, '#i_mode button[data-mode="wif"]'); await page.type('#i_wif', wifMain); await tap(page, '#i_go');
-  curPw = await saveStep(page); await waitBalance(page, '0.00000000');
+  await tap(page, '#i_mode button[data-mode="wif"]'); shownKeys.add(wifMain); await page.type('#i_wif', wifMain); await tap(page, '#i_go');
+  curPw = await saveStep(page); await waitBalance(page, '0.00000000'); shownKeys.delete(wifMain); await sweep(page, 'WIF wallet saved and opened');
   ok('uncompressed "5…" private key imports', wifMain.startsWith('5') && /uncompressed/.test(await text(page, '#w_kind')));
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   const paperAddr = await text(page, '#r_addr');
@@ -572,8 +617,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 120000 });
   const vAddr = await text(page, '#v_addr');
   ok('vanity: the in-browser search finds a 1Jo… address', vAddr.startsWith('1Jo') && /Found after [\d,]+ keys/.test(await text(page, '#v_found_stats')));
-  await tap(page, '#v_showkey');
-  const vWif = await text(page, '#v_wif');
+  const vWif = await reveal(page, '#v_showkey', '#v_wif');
   const vKey = b58.decode(vWif);
   const vDerived = btc.p2pkh(secp256k1.getPublicKey(vKey.slice(1, 33), true)).address;
   ok('vanity: the shown private key (WIF) re-derives to the shown address', vKey[0] === 0x80 && vKey.length === 34 && vDerived === vAddr);
@@ -582,7 +626,7 @@ try {
   // "‹ Back" from the save screen must not lose the key
   await tap(page, '#v_save'); await onPane(page, 'save'); await tap(page, '#s_back'); await onPane(page, 'vanity');
   ok('vanity: backing out of the save screen returns to the same unsaved address', (await text(page, '#v_addr')) === vAddr && (await text(page, '#v_wif')) === vWif);
-  await tap(page, '#v_save'); curPw = await saveStep(page);
+  await tap(page, '#v_save'); curPw = await saveStep(page); shownKeys.delete(vWif); await sweep(page, 'vanity key saved');
   ok('vanity: once the wallet file is written the key is wiped from the vanity screen', (await text(page, '#v_wif')) === '' && (await text(page, '#v_addr')) === '');
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   await page.select('#r_type', 'p2pkh');
@@ -598,24 +642,89 @@ try {
   await tap(page, '#v_srv_start');
   await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 180000 });
   const sAddr = await text(page, '#v_addr');
-  await tap(page, '#v_showkey');
-  const sWif = await text(page, '#v_wif'); const sKey = b58.decode(sWif);
+  const sWif = await reveal(page, '#v_showkey', '#v_wif'); const sKey = b58.decode(sWif);
   ok('vanity/server: a bc1qjn… address came back and the key combined in the browser derives to it', sAddr.startsWith('bc1qjn') && btc.p2wpkh(secp256k1.getPublicKey(sKey.slice(1, 33), true)).address === sAddr);
   ok('vanity/server: the API never saw a private key (only the public point was posted)', !apiRequestBodies.some((b) => /"secret"|"wif"|"privKey"/.test(b)) && apiRequestBodies.some((b) => /"pubkey":"0[23][0-9a-f]{64}"/.test(b)));
   // ---- discard + make another: the earlier key must not survive anywhere on the page ----
   await tap(page, '#v_discard');
   ok('vanity: discard asks for a second click and keeps the key until it gets one', /Really discard/.test(await text(page, '#v_discard')) && (await text(page, '#v_wif')) === sWif);
+  shownKeys.delete(sWif);   // from the next click on, this key must be gone from the page
   await tap(page, '#v_discard');
   ok('vanity: the second click wipes the key and the address and unlocks a cleared form',
      (await text(page, '#v_wif')) === '' && (await text(page, '#v_addr')) === '' && !(await visible(page, '#v_result')) && await page.$eval('#v_text', (e) => !e.disabled && e.value === ''));
   await page.type('#v_text', 'q'); await tap(page, '#v_pick_browser'); await tap(page, '#v_start');
   await page.waitForFunction(() => !document.querySelector('#v_result').classList.contains('hide'), { timeout: 60000 });
   ok('vanity: a second search shows its own result with the key hidden again', (await text(page, '#v_addr')).startsWith('bc1qq') && !(await visible(page, '#v_wif')) && (await text(page, '#v_showkey')) === 'Show private key');
-  await tap(page, '#v_showkey');
-  const wif2 = await text(page, '#v_wif');
+  const wif2 = await reveal(page, '#v_showkey', '#v_wif');
   ok('vanity: the key shown for the second result is a new one, not the discarded one', wif2 !== sWif && wif2 !== vWif && btc.p2wpkh(secp256k1.getPublicKey(b58.decode(wif2).slice(1, 33), true)).address === await text(page, '#v_addr'));
   ok('vanity: the discarded keys appear nowhere in the page', await page.evaluate((a, b) => !document.body.innerHTML.includes(a) && !document.body.innerHTML.includes(b), sWif, vWif));
-  await tap(page, '#v_discard'); await tap(page, '#v_discard');
+  await tap(page, '#v_discard'); shownKeys.delete(wif2); await tap(page, '#v_discard');
+  await tab(page, 'wallet');
+
+  // ================= SIGNED MESSAGES — Bitcoin Core is the oracle for the legacy format =================
+  await tab(page, 'settings'); await tap(page, '#set_sign'); await onPane(page, 'sign');
+  const sgOpts = await page.$$eval('#sg_addr option', (os) => os.map((o) => o.value));
+  const legacyAddr = sgOpts.find((a) => a.startsWith('1')), segAddr = sgOpts.find((a) => a.startsWith('bc1q'));
+  ok('sign: the wallet\'s own addresses are offered (bc1q and 1…)', !!legacyAddr && !!segAddr);
+  const proofMsg = 'Olesia proof of ownership — e2e ' + Date.now();
+  await page.select('#sg_addr', legacyAddr); await page.type('#sg_msg', proofMsg); await tap(page, '#sg_go'); await enterPw(page, curPw);
+  await page.waitForFunction(() => !document.querySelector('#sg_out').classList.contains('hide'), { timeout: 60000 });
+  const am = /-----BEGIN BITCOIN SIGNATURE-----\n(\S+)\n(\S+)\n-----END BITCOIN SIGNATURE-----/.exec(await text(page, '#sg_proof'));
+  ok('sign: a Legacy address gives the classic format, in a standard signed-message block, with the Core command', !!am && am[1] === legacyAddr && /bitcoin-cli verifymessage/.test(await text(page, '#sg_core')));
+  ok('sign: BITCOIN CORE verifies the signature (verifymessage on the regtest node)', cli('verifymessage', toRegtest(legacyAddr), am[2], proofMsg).trim() === 'true');
+  ok('sign: Core rejects the same signature for a changed message', cli('verifymessage', toRegtest(legacyAddr), am[2], proofMsg + '!').trim() === 'false');
+  await tap(page, '#sg_selfcheck');
+  await page.waitForFunction(() => !document.querySelector('#vf_result').classList.contains('hide'));
+  ok('verify: the page verifies its own proof', /✓ Valid/.test(await text(page, '#vf_result')));
+  await page.type('#vf_msg', 'x'); await tap(page, '#vf_go');
+  ok('verify: one extra character makes it fail, with advice', /✗ Not valid/.test(await text(page, '#vf_result')));
+  await page.$$eval('#sg_mode button', (b) => b.find((x) => x.dataset.mode === 'sign').click());
+  await page.select('#sg_addr', segAddr); await tap(page, '#sg_go'); await enterPw(page, curPw);
+  await page.waitForFunction(() => /BIP-322/.test(document.querySelector('#sg_fmt').textContent), { timeout: 60000 });
+  const armour2 = await text(page, '#sg_proof');
+  ok('sign: a bc1q address gives a BIP-322 signature and the page says Core cannot check that one', (await text(page, '#sg_core')) === '');
+  await page.$$eval('#sg_mode button', (b) => b.find((x) => x.dataset.mode === 'verify').click());
+  await page.$eval('#vf_msg', (e) => { e.value = ''; }); await page.$eval('#vf_addr', (e) => { e.value = ''; }); await page.$eval('#vf_sig', (e) => { e.value = ''; });
+  await page.$eval('#vf_msg', (e, v) => { e.value = v; e.dispatchEvent(new Event('input')); }, armour2);
+  await tap(page, '#vf_go');
+  ok('verify: a pasted signed-message block is split into the three fields and verifies (BIP-322)', /✓ Valid.*BIP-322/.test(await text(page, '#vf_result')) && (await page.$eval('#vf_addr', (e) => e.value)) === segAddr);
+  await tap(page, '#sg_back'); await onPane(page, 'settings');
+
+  // ---- privacy check on a single-key wallet
+  await tap(page, '#set_privacy'); await onPane(page, 'privacy'); await tap(page, '#pr_go');
+  await page.waitForFunction(() => !document.querySelector('#pr_out').classList.contains('hide'), { timeout: 60000 });
+  ok('privacy: a single-key wallet is told, as the top item, that every payment lands on one address', (await page.$$eval('#pr_findings .find', (e) => e.map((x) => x.className))).join() === 'find high,find info' && /same address/.test(await text(page, '#pr_findings')));
+  await tap(page, '#pr_back'); await onPane(page, 'settings');
+
+  // ================= PAPER WALLET =================
+  await tap(page, '#set_paper'); await onPane(page, 'paper');
+  const callsBeforePaper = apiCalls.length;
+  ok('paper: nothing exists before "Make"', !(await visible(page, '#pp_sheetwrap')) && (await text(page, '#pp_sheet_wif')) === '');
+  await page.$eval('#pp_make', (e) => e.click());
+  await page.waitForFunction(() => !document.querySelector('#pp_sheetwrap').classList.contains('hide'));
+  const sheetAddr = await text(page, "#pp_sheet_addr"), ppWif = await text(page, "#pp_sheet_wif");
+  shownKeys.add(ppWif); await sweep(page, 'paper wallet made');
+  ok('paper: a fresh bc1q address and a compressed key are on the sheet with two QR codes', sheetAddr.startsWith("bc1q") && /^[KL]/.test(ppWif) && (await page.$eval('#pp_qr_wif', (i) => i.src)).startsWith('data:image/svg+xml') && (await page.$eval('#pp_qr_addr', (i) => i.src)).startsWith('data:image/svg+xml'));
+  ok('paper: the key on the sheet really controls the address on the sheet', btc.p2wpkh(secp256k1.getPublicKey(b58.decode(ppWif).slice(1, 33), true)).address === sheetAddr);
+  const typo = ppWif.slice(0, -2) + 'xx'; shownKeys.add(typo);   // what the user types into the check box is theirs to type
+  await page.type('#pp_check', typo); await tap(page, '#pp_verify'); shownKeys.delete(typo);
+  ok('paper: read-back with a mistyped key fails clearly', /✗/.test(await text(page, '#pp_checkout')));
+  await page.$eval('#pp_check', (e) => { e.value = ''; }); await page.type('#pp_check', ppWif); await tap(page, '#pp_verify');
+  ok('paper: making and checking a paper wallet made no network request at all', apiCalls.length === callsBeforePaper);
+  ok('paper: read-back with the exact key passes and clears the field', /✓/.test(await text(page, '#pp_checkout')) && (await page.$eval('#pp_check', (e) => e.value)) === '');
+  await page.emulateMediaType('print');
+  const printLook = await page.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('#pp_sheet_wif')).visibility, button: getComputedStyle(document.querySelector('#pp_print')).visibility, header: getComputedStyle(document.querySelector('header')).visibility }));
+  await page.emulateMediaType('screen');
+  ok('paper: when printing, only the sheet is visible (buttons and header are not)', printLook.sheet === 'visible' && printLook.button === 'hidden' && printLook.header === 'hidden');
+  shownKeys.delete(ppWif);
+  await tap(page, '#pp_done');
+  ok('paper: Done wipes the key, the address and the QR codes from the page', !(await page.evaluate((w) => document.body.innerHTML.includes(w), ppWif)) && (await text(page, '#pp_sheet_addr')) === '' && !(await page.$eval('#pp_qr_wif', (i) => i.hasAttribute('src'))));
+  // leaving the screen with a key on it wipes it too
+  await page.$eval('#pp_make', (e) => e.click());
+  await page.waitForFunction(() => !document.querySelector('#pp_sheetwrap').classList.contains('hide'));
+  const ppWif2 = await text(page, '#pp_sheet_wif'); shownKeys.add(ppWif2); await sweep(page, 'second paper wallet');
+  shownKeys.delete(ppWif2); await tap(page, '#pp_back'); await onPane(page, 'settings');
+  ok('paper: leaving the screen wipes an un-"Done" key', !(await page.evaluate((w) => document.body.innerHTML.includes(w), ppWif2)));
   await tab(page, 'wallet');
 
   // ---- phones: an explicit warning, and a long in-browser run needs an acknowledgement ----
@@ -639,6 +748,7 @@ try {
   ok('the page talked to exactly one remote host: api.olesia.io', [...hosts].sort().join(',') === ['127.0.0.1:' + WEBPORT, 'api.olesia.io'].sort().join(','));
   const realErrors = consoleErrors.filter((e) => !/favicon/.test(e));
   ok('no CSP violations or JavaScript errors in the console', realErrors.length === 0);
+  ok(`secret sweep: ${sweeps} sweeps after every click — no private key ever lingered in the page, a form field or storage`, sweeps > 150 && sweepFails === 0);
   if (realErrors.length) console.log(realErrors.slice(0, 6));
 } catch (e) {
   console.error('\nBROWSER E2E ABORTED:', e.stack || e.message); bad = true;

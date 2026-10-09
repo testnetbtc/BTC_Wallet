@@ -25,6 +25,9 @@ the page sends only a public point and refuses any answer that does not produce 
 by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIGN.md` and
 `docs/VANITY_OFFLINE_GUIDE.md`.
 
+**Signed messages, privacy check, paper wallet.** Settings → Tools (verify and paper wallet also on
+the welcome screen). See `docs/WALLET_TOOLS.md`; testing in `docs/TESTING.md`.
+
 ## Layout
 
 | File | Role |
@@ -42,6 +45,9 @@ by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIG
 | `../src/legacy_sign.js` | signer for uncompressed-key P2PKH and bare P2PK |
 | `../src/nodeapi.js` | client for the node API |
 | `../src/vanity.js` | vanity search: pattern analysis, exact difficulty, batch-inversion search, second-path verification |
+| `../src/message.js` | signed messages: legacy "Bitcoin Signed Message" (1…), BIP-322 (bc1q), verification of all common forms |
+| `../src/privacy.js` | privacy report from unspent coins + their creating transactions (reuse, dust, linked inputs) |
+| `../src/paper.js` | paper wallets: CSPRNG key, second-path check, read-back verification |
 | `vanity_worker.js` | the Web Worker wrapper (bundled into the page, started from a `blob:` URL) |
 | `../vanity/cli.mjs` | the offline script, bundled to `publish/olesia-vanity.mjs` |
 | `../../../infra/nodeapi/` | the node API server (`olesia-nodeapi.service`): coins, fees, prev-tx, broadcast, and the display-only price feed |

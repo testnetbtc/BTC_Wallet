@@ -46,6 +46,7 @@
     hideReveal(); closeConfirm(false); closePw(null);
     if (name !== 'open') resetOpen();   // a decrypted-but-not-yet-opened file is dropped when leaving that screen
     if (name !== 'vanity' && name !== 'save') vanityLeave();   // an unsaved vanity key is dropped when leaving that screen
+    if (name !== 'paper' && name !== 'save') paperLeave();     // same for a paper-wallet key
     window.scrollTo(0, 0);
   }
   $$('.back[data-go]').forEach((b) => b.addEventListener('click', () => pane(b.dataset.go)));
@@ -1013,6 +1014,11 @@
     $('#v_wif').textContent = on ? vanityResult.wif : ''; show($('#v_wif'), on); show($('#v_wifwarn'), on);
     $('#v_showkey').textContent = on ? 'Hide private key' : 'Show private key';
   });
+  $('#v_paper').addEventListener('click', () => {
+    if (!vanityResult) return;
+    const r = vanityResult; vanityForget();
+    paperShow({ wif: r.wif, address: r.address, type: r.address.startsWith('bc1q') ? 'p2wpkh' : 'p2pkh', source: 'vanity' });
+  });
   // Discard needs two clicks within a few seconds: one click must not throw away an hour of work.
   $('#v_discard').addEventListener('click', () => {
     if (!vanityResult) { vanityForget(); show($('#v_choose'), true); return; }
@@ -1024,4 +1030,132 @@
     vanityForget(); $('#v_text').value = ''; vanityRender(); $('#v_text').focus();
     toast('Discarded — nothing was saved.');
   });
+
+  // =====================================================================================
+  // SIGNED MESSAGES
+  // =====================================================================================
+  let sgLast = null;   // the last proof made: { address, message, signature, format, coreCommand }
+  const ARMOUR = (a, m, sig) => `-----BEGIN BITCOIN SIGNED MESSAGE-----\n${m}\n-----BEGIN BITCOIN SIGNATURE-----\n${a}\n${sig}\n-----END BITCOIN SIGNATURE-----`;
+  function signOpen(mode) {
+    sgLast = null; show($('#sg_out'), false); $('#sg_msg').value = ''; $('#sg_count').textContent = '';
+    $('#vf_result').textContent = ''; show($('#vf_result'), false);
+    const sel = $('#sg_addr'); sel.textContent = '';
+    show($('#sg_nowallet'), !session); show($('#sg_form'), !!session);
+    if (session) for (const a of session.signableAddresses()) { const o = el('option', null, `${a.address}  —  ${a.typeLabel}, ${a.note}`); o.value = a.address; sel.appendChild(o); }
+    signMode(mode || (session ? 'sign' : 'verify'));
+    pane('sign');
+  }
+  function signMode(m) {
+    $$('#sg_mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    show($('#sg_sign'), m === 'sign'); show($('#sg_verify'), m === 'verify');
+  }
+  $('#set_sign').addEventListener('click', () => signOpen('sign'));
+  $('#w_verify').addEventListener('click', () => signOpen('verify'));
+  $('#sg_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
+  $$('#sg_mode button').forEach((b) => b.addEventListener('click', () => signMode(b.dataset.mode)));
+  $('#sg_msg').addEventListener('input', () => { const n = OM.messageBytes($('#sg_msg').value); $('#sg_count').textContent = n ? `${n} / ${OM.message.max} bytes` : ''; });
+  $('#sg_go').addEventListener('click', async () => {
+    if (!session) return;
+    const address = $('#sg_addr').value, message = $('#sg_msg').value;
+    if (!message.trim()) { toast('Write the message first.', 'bad'); return; }
+    if (OM.messageBytes(message) > OM.message.max) { toast('The message is too long.', 'bad'); return; }
+    const r = await withPassword('Enter your wallet password', 'Needed to sign the message with this address\'s key. Nothing is sent anywhere.', (pw, prog) => wallet.signMessage(net, { address, message }, pw, prog));
+    if (!r.ok) { if (r.error) toast('✗ ' + r.error.message, 'bad'); return; }
+    sgLast = r.value;
+    $('#sg_fmt').textContent = sgLast.format === 'legacy'
+      ? 'Format: the classic "Bitcoin Signed Message" — verifiable in Bitcoin Core, Electrum, Sparrow and most tools.'
+      : 'Format: BIP-322 (the standard for bc1q addresses) — verifiable in Sparrow, BlueWallet, Ledger Live and bip322 libraries. Bitcoin Core cannot verify BIP-322 yet; for a Core-verifiable proof sign with a Legacy (1…) address instead.';
+    $('#sg_proof').textContent = ARMOUR(sgLast.address, sgLast.message, sgLast.signature);
+    $('#sg_core').textContent = sgLast.coreCommand ? 'A sceptic with a Bitcoin Core node can check it with: ' + sgLast.coreCommand : '';
+    show($('#sg_out'), true); $('#sg_out').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('Signed.', 'ok');
+  });
+  $('#sg_copy').addEventListener('click', () => { if (sgLast) navigator.clipboard.writeText($('#sg_proof').textContent).then(() => toast('Proof copied', 'ok')).catch(() => toast('Could not copy — select the text and copy it manually', 'bad')); });
+  $('#sg_selfcheck').addEventListener('click', () => {
+    if (!sgLast) return;
+    $('#vf_addr').value = sgLast.address; $('#vf_msg').value = sgLast.message; $('#vf_sig').value = sgLast.signature;
+    signMode('verify'); $('#vf_go').click();
+  });
+  // Verify: a pasted armour block fills the three fields itself
+  function unarmour(text) {
+    const m = /-----BEGIN BITCOIN SIGNED MESSAGE-----\r?\n([\s\S]*?)\r?\n-----BEGIN BITCOIN SIGNATURE-----\r?\n(\S+)\r?\n([\s\S]*?)\r?\n-----END BITCOIN SIGNATURE-----/.exec(text);
+    return m ? { message: m[1], address: m[2], signature: m[3].replace(/\s+/g, '') } : null;
+  }
+  $('#vf_msg').addEventListener('input', () => { const u = unarmour($('#vf_msg').value); if (u) { $('#vf_addr').value = u.address; $('#vf_msg').value = u.message; $('#vf_sig').value = u.signature; toast('Signed-message block recognised and split into the fields.'); } });
+  $('#vf_go').addEventListener('click', () => {
+    const out = $('#vf_result'); out.textContent = ''; out.className = '';
+    const r = OM.message.verify({ address: $('#vf_addr').value.trim(), message: $('#vf_msg').value, signature: $('#vf_sig').value });
+    out.className = r.ok ? 'hint ok' : 'danger';
+    out.textContent = r.ok ? `✓ Valid. The owner of ${$('#vf_addr').value.trim()} signed exactly this message (${r.format}).` : '✗ Not valid: ' + r.reason + '. A single changed character in the message, address or signature makes it fail — check for stray spaces or line breaks.';
+    show(out, true);
+  });
+
+  // =====================================================================================
+  // PRIVACY CHECK
+  // =====================================================================================
+  $('#set_privacy').addEventListener('click', () => { show($('#pr_out'), false); $('#pr_status').textContent = ''; $('#pr_findings').textContent = ''; pane('privacy'); });
+  $('#pr_back').addEventListener('click', () => pane('settings'));
+  $('#pr_go').addEventListener('click', async () => {
+    if (!session) return;
+    const go = $('#pr_go'); go.disabled = true; $('#pr_status').textContent = 'Looking at your coins…';
+    try {
+      let feeRate = 10; try { const f = await OM.fees(net); feeRate = Math.max(1, Math.round(f.normal || f.fast || f.slow || 10)); } catch { /* default */ }
+      const r = await session.privacy({ feeRate, onProgress: (d, n) => { $('#pr_status').textContent = `Reading the transactions that created your coins… ${d} / ${n}`; } });
+      $('#pr_status').textContent = `${r.coins} coin${r.coins === 1 ? '' : 's'} looked at` + (r.wanted ? `, ${r.fetched} of ${r.wanted} creating transactions read` : '') + `, fees judged at ${feeRate} sat/vB.`;
+      $('#pr_summary').textContent = r.summary;
+      const box = $('#pr_findings'); box.textContent = '';
+      for (const f of r.findings) {
+        const d = el('div', 'find ' + f.level);
+        d.appendChild(el('span', 'lv', { high: 'important', medium: 'worth fixing', low: 'minor', info: 'good to know', good: 'good' }[f.level]));
+        d.appendChild(el('b', 't', f.title)); d.appendChild(el('p', null, f.detail));
+        if (f.advice) d.appendChild(el('p', 'adv', '→ ' + f.advice));
+        box.appendChild(d);
+      }
+      show($('#pr_out'), true);
+    } catch (e) { toast('✗ ' + e.message, 'bad'); $('#pr_status').textContent = ''; }
+    finally { go.disabled = false; }
+  });
+
+  // =====================================================================================
+  // PAPER WALLET
+  // =====================================================================================
+  // The key lives in `paperKey` only until "Done", a save, or leaving the screen.
+  let paperKey = null, ppType = 'p2wpkh';
+  const paperOpen = () => { paperLeave(); show($('#pp_intro'), true); show($('#pp_sheetwrap'), false); $('#pp_offline').checked = false; $('#pp_legend2').textContent = OM.paper.lookalikes; pane('paper'); };
+  function paperLeave() {
+    paperKey = null;
+    ['#pp_sheet_addr', '#pp_sheet_wif', '#pp_checkout'].forEach((q) => { $(q).textContent = ''; });
+    ['#pp_qr_addr', '#pp_qr_wif'].forEach((q) => $(q).removeAttribute('src'));
+    $('#pp_check').value = ''; show($('#pp_checkout'), false);
+  }
+  async function paperShow({ wif, address, type, source }) {
+    paperLeave();
+    paperKey = { wif, address, type };
+    $('#pp_sheet_type').textContent = (type === 'p2wpkh' ? 'SegWit (bc1q)' : 'Legacy (1…)') + (source === 'vanity' ? ' · vanity' : '');
+    $('#pp_sheet_addr').textContent = address; $('#pp_sheet_wif').textContent = wif;
+    $('#pp_sheet_date').textContent = new Date().toISOString().slice(0, 10);
+    $('#pp_sheet_legend').textContent = OM.paper.lookalikes; $('#pp_legend2').textContent = OM.paper.lookalikes;
+    try { $('#pp_qr_addr').src = await OM.qr(address); $('#pp_qr_wif').src = await OM.qr(wif); } catch { /* text is on the sheet regardless */ }
+    show($('#pp_intro'), false); show($('#pp_sheetwrap'), true);
+    pane('paper'); $('#pp_sheetwrap').scrollIntoView({ block: 'start' });
+  }
+  $('#w_paper').addEventListener('click', paperOpen);
+  $('#set_paper').addEventListener('click', paperOpen);
+  $('#pp_back').addEventListener('click', () => pane(session ? 'settings' : 'welcome'));
+  $$('#pp_type button').forEach((b) => b.addEventListener('click', () => { ppType = b.dataset.type; $$('#pp_type button').forEach((x) => x.classList.toggle('on', x === b)); }));
+  $('#pp_make').addEventListener('click', () => {
+    try { const w = OM.paper.create(ppType); paperShow({ wif: w.wif, address: w.address, type: w.type, source: 'fresh' }); }
+    catch (e) { toast('✗ ' + e.message, 'bad'); }
+  });
+  $('#pp_print').addEventListener('click', () => { try { window.print(); } catch { toast('Printing is not available here — use your browser\'s Print menu.', 'bad'); } });
+  $('#pp_verify').addEventListener('click', () => {
+    if (!paperKey) return;
+    const r = OM.paper.check({ wif: $('#pp_check').value, expectAddress: paperKey.address, type: paperKey.type });
+    const out = $('#pp_checkout'); out.className = r.ok ? 'hint ok' : 'danger';
+    out.textContent = r.ok ? '✓ The key you typed gives exactly the printed address. Tick the "read-back check" box on the sheet.' : '✗ ' + r.reason + (r.address ? ` (that key would control ${r.address})` : '') + '. Compare character by character; ' + OM.paper.lookalikes;
+    show(out, true);
+    if (r.ok) $('#pp_check').value = '';
+  });
+  $('#pp_save').addEventListener('click', () => { if (!paperKey) return; pending = { kind: 'wif', wif: paperKey.wif }; openSave('import'); });
+  $('#pp_done').addEventListener('click', () => { paperLeave(); show($('#pp_sheetwrap'), false); show($('#pp_intro'), true); toast('Wiped from the screen. The paper is now the only copy.', 'ok'); });
 })();

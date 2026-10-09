@@ -24,6 +24,9 @@ const IC = {
   dl: svg('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/>'),
   cpu: svg('<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>'),
   cloud: svg('<path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z"/>'),
+  pen: svg('<path d="M4 20l4-1 10-10-3-3L5 16l-1 4z"/><path d="M13 7l3 3"/>'),
+  eye: svg('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  print: svg('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
 };
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -167,6 +170,26 @@ footer a{color:var(--muted)}
 .chips button small{display:block;font-family:var(--sans);font-size:11px;color:var(--muted);font-weight:400}
 .est{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 @media(max-width:460px){.est{grid-template-columns:1fr}}
+.find{border:1px solid var(--line);border-left-width:4px;border-radius:var(--r);padding:12px 14px;margin:10px 0;background:var(--surface)}
+.find .lv{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-bottom:6px}
+.find.high{border-left-color:#d9534f}.find.high .lv{background:#3a1a1a;color:#ffb0b0}
+.find.medium{border-left-color:#e8963a}.find.medium .lv{background:#3a2a12;color:#ffcf99}
+.find.low{border-left-color:#c9b14a}.find.low .lv{background:#33301a;color:#f0e2a0}
+.find.info{border-left-color:#5a7fb8}.find.info .lv{background:#1a2638;color:#b6cdf0}
+.find.good{border-left-color:#2f7a4b}.find.good .lv{background:#17301f;color:#9fe0b6}
+.find b.t{display:block;font-size:14.5px;margin:0 0 4px;color:var(--text)}.find p{margin:6px 0 0;font-size:13px;color:var(--muted)}.find p.adv{color:var(--text)}
+.proof{font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-all;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin:8px 0}
+.sheet{background:#fff;color:#111;border-radius:6px;padding:18px;margin:10px 0;font-family:Georgia,'Times New Roman',serif;border:1px solid #bbb}
+.sheet h4{margin:0 0 4px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#555;font-family:var(--mono)}
+.sheet .half{display:flex;gap:16px;align-items:flex-start;padding:12px 0}
+.sheet .half img{width:138px;height:138px;flex:0 0 auto;image-rendering:pixelated;border:1px solid #ddd}
+.sheet .txt{font-family:var(--mono);font-size:14.5px;word-break:break-all;line-height:1.5;color:#000}
+.sheet .fold{border-top:2px dashed #888;margin:6px 0;text-align:center;font-size:11px;color:#666;font-family:var(--mono);line-height:0}.sheet .fold span{background:#fff;padding:0 8px}
+.sheet .priv{background:#f6f0e2;border:2px solid #333;border-radius:6px;padding:12px}
+.sheet .meta{font-size:11px;color:#555;font-family:var(--mono);margin-top:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.sheet .warnline{font-size:12px;color:#7a1f1f;font-weight:700;margin:4px 0 0}
+@media(max-width:460px){.sheet .half{flex-direction:column}.sheet .half img{width:150px;height:150px}}
+@media print{body *{visibility:hidden}#paper_sheet,#paper_sheet *{visibility:visible}#paper_sheet{position:absolute;left:0;top:0;width:100%;margin:0;border:0}body{background:#fff}}
 .est div{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
 .est .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .est .v{font-family:var(--mono);font-size:17px;margin-top:2px}
@@ -196,6 +219,8 @@ footer a{color:var(--muted)}
   <button class="choice" id="w_open" type="button"><span class="ic">${IC.file}</span><span><b>Open a wallet file</b><span>Load your encrypted <code>.dat</code> file and enter its password</span></span></button>
   <button class="choice" id="w_import" type="button"><span class="ic">${IC.imp}</span><span><b>Import a wallet</b><span>Recovery phrase (12 or 24 words) or a private key (WIF)</span></span></button>
   <button class="choice" id="w_vanity" type="button"><span class="ic">${IC.star}</span><span><b>Create a vanity address</b><span>An address that starts with characters you choose · <code>bc1qjon…</code></span></span></button>
+  <button class="choice" id="w_paper" type="button"><span class="ic">${IC.print}</span><span><b>Make a paper wallet</b><span>One key, printed on paper — the classic cold storage, done carefully</span></span></button>
+  <button class="choice" id="w_verify" type="button"><span class="ic">${IC.pen}</span><span><b>Verify a signed message</b><span>Check that a message really was signed by the owner of an address</span></span></button>
   <div class="warn"><b>This is a hot wallet for real bitcoin.</b> Keep here only an amount you could afford to lose. Olesia cannot recover a lost password or recovery phrase — nobody can. No independent security firm has audited this software.</div>
 </section>
 
@@ -400,8 +425,11 @@ footer a{color:var(--muted)}
     <button class="sec wide" id="a_deeper" type="button">Search more addresses</button>
     <p class="hint">Use this if you restored a heavily used wallet and coins seem to be missing.</p>
   </div>
-  <h3>More</h3>
+  <h3>Tools</h3>
+  <button class="sec wide" id="set_sign" type="button" style="margin-bottom:10px">Sign a message · prove you own an address</button>
+  <button class="sec wide" id="set_privacy" type="button" style="margin-bottom:10px">Privacy check · what the chain shows about this wallet</button>
   <button class="sec wide" id="set_vanity" type="button" style="margin-bottom:10px">Create a vanity address</button>
+  <button class="sec wide" id="set_paper" type="button" style="margin-bottom:10px">Make a paper wallet</button>
   <button class="sec wide" id="set_lock" type="button">Lock wallet</button>
 </section>
 
@@ -497,10 +525,133 @@ footer a{color:var(--muted)}
       <p class="hint" id="v_found_stats"></p>
       <button class="wide" id="v_save" type="button">Save as an encrypted wallet file</button>
       <p class="hint" style="margin:10px 0 6px">The address becomes a normal Olesia wallet: you choose a password, the key is encrypted into a <code>.dat</code> file on this computer, and you can receive and send from it like any other.</p>
-      <div class="row"><button class="sec" id="v_showkey" type="button">Show private key</button><button class="sec" id="v_discard" type="button">Discard and start over</button></div>
+      <div class="row"><button class="sec" id="v_showkey" type="button">Show private key</button><button class="sec" id="v_paper" type="button">Print as a paper wallet</button><button class="sec" id="v_discard" type="button">Discard and start over</button></div>
       <p class="mono hide" id="v_wif" style="margin-top:10px"></p>
       <div class="danger hide" id="v_wifwarn">This is the private key. Anyone who sees it can spend everything the address ever receives. Nothing has been saved — if you leave this screen without saving, the address is gone for good.</div>
       <p class="hint" style="margin:10px 0 0">Discarding wipes the key from this page (two clicks, so a slip cannot throw away a long search) and clears the form for a new one. Leaving this screen does the same.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ===================== SIGN / VERIFY ===================== -->
+<section class="pane" id="pane-sign">
+  <button class="back" id="sg_back" type="button">‹ Back</button>
+  <h2>Signed messages</h2>
+  <p class="sub">A signature proves that whoever controls an address wrote a message — without moving any coins and without revealing a key. Used for proof of reserves, proof of ownership to an exchange or a buyer, and "yes, this address is really mine".</p>
+  <div class="seg" id="sg_mode"><button type="button" data-mode="sign" class="on">Sign</button><button type="button" data-mode="verify">Verify</button></div>
+
+  <div id="sg_sign">
+    <div class="card">
+      <div class="note hide" id="sg_nowallet">Open a wallet to sign. Verifying needs no wallet.</div>
+      <div id="sg_form">
+        <label>Address to sign with</label>
+        <select id="sg_addr"></select>
+        <p class="hint" id="sg_addrhint" style="margin-top:0">The current receive address, and any address holding coins. Everyone can see what the address holds — that is the point of a proof of reserves.</p>
+        <label>Message</label>
+        <textarea id="sg_msg" placeholder="e.g. I, Jon, control this address on 2026-10-09 for exchange account 12345"></textarea>
+        <p class="hint" style="margin-top:0">Put the date and who it is for in the text, so the proof cannot be reused elsewhere. <span id="sg_count"></span></p>
+        <button class="wide" id="sg_go" type="button">Sign with my password</button>
+      </div>
+    </div>
+    <div id="sg_out" class="hide">
+      <h3>Signed</h3>
+      <div class="card">
+        <p class="hint" style="margin-top:0" id="sg_fmt"></p>
+        <div class="proof" id="sg_proof"></div>
+        <div class="row"><button class="wide" id="sg_copy" type="button">Copy the proof</button><button class="sec" id="sg_selfcheck" type="button">Verify it here</button></div>
+        <p class="hint" id="sg_core"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="sg_verify" class="hide">
+    <div class="card">
+      <label>Address</label>
+      <input id="vf_addr" autocomplete="off" spellcheck="false" placeholder="bc1q… or 1…">
+      <label>Message</label>
+      <textarea id="vf_msg" placeholder="The exact text that was signed — or paste a whole -----BEGIN BITCOIN SIGNED MESSAGE----- block here"></textarea>
+      <label>Signature</label>
+      <textarea id="vf_sig" placeholder="base64 signature" style="min-height:56px"></textarea>
+      <button class="wide" id="vf_go" type="button">Verify</button>
+      <div id="vf_result" class="hide" style="margin-top:10px"></div>
+      <p class="hint">Accepted: the classic "Bitcoin Signed Message" format (what <code>bitcoin-cli verifymessage</code> checks), BIP-137 segwit variants (Electrum, Trezor), and BIP-322 simple/full for bc1q addresses (Sparrow, BlueWallet, Ledger). Taproot (bc1p) is not supported.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PRIVACY ===================== -->
+<section class="pane" id="pane-privacy">
+  <button class="back" id="pr_back" type="button">‹ Back</button>
+  <h2>Privacy check</h2>
+  <p class="sub">Every Bitcoin payment is public forever. This looks at what the blockchain shows about <i>this</i> wallet — the same things a chain-analysis company or a nosy payer would see — and says what to do about each.</p>
+  <div class="card">
+    <div class="steps">
+      <div class="step"><i>1</i><div><b>Address reuse</b>An address is meant to receive once. Reusing it lets everyone who paid you see each other's payments and your balance.</div></div>
+      <div class="step"><i>2</i><div><b>Dust attacks</b>Tiny unsolicited coins sent to many wallets, to see which get spent together and link them.</div></div>
+      <div class="step"><i>3</i><div><b>Linked addresses</b>Spending from several addresses in one payment proves they belong together.</div></div>
+    </div>
+    <button class="wide" id="pr_go" type="button">Check this wallet</button>
+    <p class="hint" id="pr_status"></p>
+  </div>
+  <div id="pr_out" class="hide">
+    <h3 id="pr_summary"></h3>
+    <div id="pr_findings"></div>
+  </div>
+</section>
+
+<!-- ===================== PAPER WALLET ===================== -->
+<section class="pane" id="pane-paper">
+  <button class="back" id="pp_back" type="button">‹ Back</button>
+  <h2>Paper wallet</h2>
+  <p class="sub">A paper wallet is a single private key and its address, printed. Nothing digital holds the key: no file, no phone, no cloud. It is the oldest kind of cold storage and still a sound one for a gift, a long-term stash or a bit of fun — if it is made and read back carefully.</p>
+
+  <div id="pp_intro">
+    <div class="card">
+      <div class="steps">
+        <div class="step"><i>1</i><div><b>Go offline, then make the key</b>Load this page, disconnect from the internet, and generate. The key is made here from your device's random generator and is never sent anywhere.</div></div>
+        <div class="step"><i>2</i><div><b>Print it</b>Use a printer you trust (not a shared office one: printers keep copies). Two parts: the public address to receive on, the private key to fold under and hide.</div></div>
+        <div class="step"><i>3</i><div><b>Read it back before funding it</b>Type the key from the paper and the page checks it gives the same address. Ink smudges, 0/O and I/l confusions — this step catches them. A key that cannot be read is money gone.</div></div>
+        <div class="step"><i>4</i><div><b>Fund it, keep it dry and dark, and spend it all at once</b>Receive on the address as often as you like. When you spend, import the key here and move <i>everything</i> — then never use the key again.</div></div>
+      </div>
+      <div class="danger"><b>Anyone who sees the private key can take everything.</b> Not a photo, not a scan, not a screenshot. The screen copy is wiped when you leave this page; the paper is the only copy.</div>
+      <label>Address type</label>
+      <div class="seg" id="pp_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1q…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
+      <p class="hint">SegWit has lower fees when you eventually spend. Legacy is what the old paper wallets used; every wallet can sweep both.</p>
+      <label class="inline"><input type="checkbox" id="pp_offline"><span>I have disconnected from the internet (airplane mode / Wi-Fi off). Recommended, not enforced — the page works either way.</span></label>
+      <button class="wide" id="pp_make" type="button">Make a paper wallet</button>
+    </div>
+  </div>
+
+  <div id="pp_sheetwrap" class="hide">
+    <h3>Your paper wallet</h3>
+    <div class="sheet" id="paper_sheet">
+      <h4>Bitcoin paper wallet · <span id="pp_sheet_type"></span></h4>
+      <div class="half">
+        <img id="pp_qr_addr" alt="address QR">
+        <div><h4>Public · address · receive here</h4><div class="txt" id="pp_sheet_addr"></div><p class="meta" style="margin-top:6px">Share freely. Anyone can look up its balance.</p></div>
+      </div>
+      <div class="fold"><span>✂ fold here · keep the part below hidden</span></div>
+      <div class="priv">
+        <div class="half" style="padding:4px 0">
+          <img id="pp_qr_wif" alt="private key QR">
+          <div><h4>Private key · secret · spend with this</h4><div class="txt" id="pp_sheet_wif"></div><p class="warnline">Whoever reads this can spend everything. Never photograph it.</p></div>
+        </div>
+      </div>
+      <div class="meta"><span>Made <span id="pp_sheet_date"></span> · olesia.io (open source)</span><span>Read-back check done: ☐</span></div>
+      <p class="meta" style="margin-top:4px" id="pp_sheet_legend"></p>
+    </div>
+    <div class="card">
+      <button class="wide" id="pp_print" type="button">${IC.print} Print</button>
+      <p class="hint">After printing: cover the private key, then do the read-back check below with the paper in your hand.</p>
+      <h3 style="margin-top:14px">Read-back check</h3>
+      <label>Type the private key exactly as printed (or scan its QR code and paste)</label>
+      <input id="pp_check" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="K… / L…">
+      <p class="hint" id="pp_legend2" style="margin-top:0"></p>
+      <button class="sec wide" id="pp_verify" type="button">Check it</button>
+      <div id="pp_checkout" class="hide" style="margin-top:10px"></div>
+      <div class="row" style="margin-top:14px"><button class="sec" id="pp_save" type="button">Also save an encrypted .dat copy</button><button class="sec" id="pp_done" type="button">Done — wipe the screen</button></div>
+      <p class="hint">"Done" wipes the key from this page. If you also want a digital backup, save the encrypted copy first; it needs a password like any Olesia wallet.</p>
     </div>
   </div>
 </section>

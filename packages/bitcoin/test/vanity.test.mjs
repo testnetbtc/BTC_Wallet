@@ -94,7 +94,8 @@ for (const [type, text, ic] of [['p2wpkh', 'q', false], ['p2pkh', 'A', false], [
   ok('split-key: a wrong reported address is refused', (() => { try { splitKeyFinish({ secret: client.secret, offsetHex: bytesToHex(r.found.offset), analysis: a, expectAddress: '1AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaB' }); return false; } catch (e) { return /different address/.test(e.message); } })());
   ok('split-key: a malformed offset is refused', (() => { try { splitKeyFinish({ secret: client.secret, offsetHex: 'zz', analysis: a }); return false; } catch { return true; } })());
   const other = splitKeyStart(randomBytes);
-  ok("split-key: someone else's secret with the same offset does NOT give the address", (() => { try { splitKeyFinish({ secret: other.secret, offsetHex: bytesToHex(r.found.offset), analysis: a }); return false; } catch { return true; } })());
+  // (expectAddress is passed: without it a stranger's key could still match a 1-in-29 pattern by luck — a flaky test, not a bug)
+  ok("split-key: someone else's secret with the same offset does NOT give the address", (() => { try { splitKeyFinish({ secret: other.secret, offsetHex: bytesToHex(r.found.offset), analysis: a, expectAddress: r.found.address }); return false; } catch { return true; } })());
 }
 ok('benchmark returns a sane per-thread rate', (() => { const r = benchmark({ randomBytes, ms: 400 }); return r > 1000 && r < 5e6; })());
 

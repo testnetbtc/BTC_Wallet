@@ -4,6 +4,7 @@
 // short-lived signer for the one transaction being built. The ONLY thing ever persisted is a
 // pair of non-secret counters (next receive / change index) so addresses are not reused.
 import { coinsFromScan, buildSpend, outpointOf, DEFAULT_RANGE, HD_TYPES, RECEIVE_TYPES, TYPE_LABEL } from './account.js';
+import { privacyReport, parseTx } from './privacy.js';
 
 // Address window per chain: the types this wallet creates addresses on are scanned deeper
 // than the two that are only scanned for an imported wallet's existing coins. The window
@@ -66,6 +67,7 @@ export class Session {
       this.coins = coinsFromScan(entries, scan);
       this.height = scan.height; this.scanned = true;
       this._applyLocalSpends();
+      this._rememberUsed();
       if (this.account.kind !== 'seed') break;
       const { margin, step, max } = this.win;
       const near = (types, range) => range > 0 && this.coins.some((c) => types.includes(c.entry.type) && c.entry.index >= range - margin);
@@ -136,6 +138,58 @@ export class Session {
     return this.receive(type);
   }
   changeIndex() { return this.account.kind === 'seed' ? Math.max(this.meta.change[this.pref] || 0, this._hi(this.pref, 1) + 1) : 0; }
+  // Once an address has held a coin it is used for good: record that, so the receive and change
+  // counters never fall back to it after the coin is spent (the node only reports UNSPENT coins,
+  // so without this the wallet would forget the address was ever used and hand it out again).
+  _rememberUsed() {
+    if (this.account.kind !== 'seed') return;
+    let changed = false;
+    for (const t of RECEIVE_TYPES) {
+      const r = Math.min(this.win.max - 1, this._hi(t, 0) + 1), c = Math.min(this.win.max - 1, this._hi(t, 1) + 1);
+      if (r > (this.meta.recv[t] || 0)) { this.meta.recv[t] = r; changed = true; }
+      if (c > (this.meta.change[t] || 0)) { this.meta.change[t] = c; changed = true; }
+    }
+    if (changed) this._saveMeta();
+  }
+
+  // ---- privacy report ----
+  // What the chain shows about this wallet: its unspent coins plus (fetched one by one from the
+  // node, bounded so the API's rate limit is never hit) the transactions that created them.
+  async privacy({ feeRate = 10, onProgress = () => {}, maxTx = 30 } = {}) {
+    const entries = await this._entries();
+    const ourHashes = new Set();
+    for (const e of entries) {
+      if (e.script.length === 44 && e.script.startsWith('0014')) ourHashes.add(e.script.slice(4));
+      else if (e.script.length === 50 && e.script.startsWith('76a914')) ourHashes.add(e.script.slice(6, 46));
+    }
+    const txs = new Map();
+    const byTx = new Map(); for (const c of this.coins) if (c.height != null && c.confirmations > 0 && !byTx.has(c.txid)) byTx.set(c.txid, c);
+    const want = this.api.prevTx ? [...byTx.values()].slice(0, maxTx) : [];
+    let done = 0;
+    for (const c of want) {
+      try { txs.set(c.txid, parseTx(await this.api.prevTx(c.txid, c.height))); } catch { /* reported as not looked at */ }
+      onProgress(++done, want.length);
+    }
+    return { ...privacyReport({ kind: this.account.kind, coins: this.coinList(), ourHashes, txs, feeRate }), fetched: txs.size, wanted: want.length, coins: this.coins.length };
+  }
+
+  // ---- addresses this wallet can prove it owns (signed messages) ----
+  // The entry behind one of this wallet's addresses, or null. Looks through the scanned window.
+  async findEntry(address) {
+    const a = String(address || '').trim();
+    if (!a) return null;
+    const entries = await this._entries();
+    return entries.find((e) => e.address === a) || null;
+  }
+  // Addresses worth offering for a signature: the current receive address of each type, and
+  // every address currently holding a coin (those are the ones an auditor can see funds on).
+  signableAddresses() {
+    const out = [], seen = new Set();
+    const add = (address, type, note) => { if (address && !seen.has(address)) { seen.add(address); out.push({ address, type, typeLabel: TYPE_LABEL[type] || type, note }); } };
+    for (const t of this.receiveTypes()) { const r = this.receive(t); add(r.address, t, this.account.kind === 'seed' ? 'current receive address' : 'this wallet\'s address'); }
+    for (const c of [...this.coins].sort((x, y) => y.value - x.value)) if (c.entry.address && c.entry.group !== 'raw') add(c.entry.address, c.entry.type, `holds ${c.value.toLocaleString('en-US')} sats`);
+    return out;
+  }
 
   // ---- sending ----
   // Which coins a spend draws from: the caller's selection, else every spendable standard
