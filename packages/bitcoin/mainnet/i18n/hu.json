@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "A jelmondatod NINCS a fájlban — a tárca minden megnyitásakor kérni fogjuk.",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "A szöveged a szerveren körülbelül {time} tartana — ez meghaladja a korlátját. Használd az offline szkriptet.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "A tárcád jelszóval titkosítva, .dat fájlként van elmentve erre a számítógépre. Töltsd be azt a fájlt, amikor használni szeretnéd a tárcát.",
- "Your wallets": "A tárcáid"
+ "Your wallets": "A tárcáid",
+ "click a figure or the Defender to open it on mempool.space": "kattints egy figurára vagy a Defenderre, hogy megnyisd a mempool.space-en"
 }

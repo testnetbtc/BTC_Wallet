@@ -533,7 +533,7 @@ export class StreetWatch {
       at: this.at, seq: this.seq, error: this.error,
       tip: this.tip, blocks: this.blocks.slice(1),
       mempool: this.mempool, next: this.next,
-      arrivals: this.arrivals.slice(0, this.keepArrivals).map(({ t, vsize, rate, sats, kinds, era }) => ({ t, vsize, rate: Math.round(rate * 10) / 10, sats, kinds, era: era === -1 ? null : era })),
+      arrivals: this.arrivals.slice(0, this.keepArrivals).map(({ txid, t, vsize, rate, sats, kinds, era }) => ({ txid, t, vsize, rate: Math.round(rate * 10) / 10, sats, kinds, era: era === -1 ? null : era })),   // txid: public; the page links the figure to a block explorer
     };
   }
 }

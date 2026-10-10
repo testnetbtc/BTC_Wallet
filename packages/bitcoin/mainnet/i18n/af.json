@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "Jou wagwoordfrase is NIE in die lêer nie — jy sal elke keer daarvoor gevra word wanneer jy die beursie oopmaak.",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Jou teks sou ongeveer {time} op die bediener neem — bo sy limiet. Gebruik die vanlynskrip.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Jou beursie word met 'n wagwoord geënkripteer en as 'n .dat-lêer op hierdie rekenaar gestoor. Laai daardie lêer wanneer jy ook al die beursie wil gebruik.",
- "Your wallets": "Jou beursies"
+ "Your wallets": "Jou beursies",
+ "click a figure or the Defender to open it on mempool.space": "klik op ’n figuur of die Defender om dit op mempool.space oop te maak"
 }

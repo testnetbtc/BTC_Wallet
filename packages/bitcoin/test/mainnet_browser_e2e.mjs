@@ -760,7 +760,7 @@ try {
 
   // ================= PAPER WALLET =================
   await tap(page, '#set_paper'); await onPane(page, 'paper');
-  const notStreet = () => apiCalls.filter((c) => c !== 'GET /street').length;   // the background scene polls on its own clock
+  const notStreet = () => apiCalls.filter((c) => !/^GET \/(street|status|price)$/.test(c)).length;   // the page's periodic polls (scene, node status, price) run on their own clocks
   const callsBeforePaper = notStreet();
   ok('paper: nothing exists before "Make"', !(await visible(page, '#pp_sheetwrap')) && (await text(page, '#pp_sheet_wif')) === '');
   await page.$eval('#pp_make', (e) => e.click());

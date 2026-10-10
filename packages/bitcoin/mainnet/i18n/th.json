@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "พาสเฟรสของคุณไม่ได้อยู่ในไฟล์ — ระบบจะถามทุกครั้งที่คุณเปิดกระเป๋าเงิน",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "ข้อความของคุณจะใช้เวลาประมาณ {time} บนเซิร์ฟเวอร์ — เกินขีดจำกัด ใช้สคริปต์ออฟไลน์แทน",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "กระเป๋าเงินของคุณถูกเข้ารหัสด้วยรหัสผ่านและบันทึกลงคอมพิวเตอร์เครื่องนี้เป็นไฟล์ .dat โหลดไฟล์นั้นทุกครั้งที่ต้องการใช้กระเป๋าเงิน",
- "Your wallets": "กระเป๋าเงินของคุณ"
+ "Your wallets": "กระเป๋าเงินของคุณ",
+ "click a figure or the Defender to open it on mempool.space": "คลิกที่ตัวละครหรือรถ Defender เพื่อเปิดดูบน mempool.space"
 }

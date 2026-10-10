@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "Jūsų slaptafrazės faile NĖRA — jos bus prašoma kaskart atidarant piniginę.",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Jūsų tekstas serveryje užtruktų apie {time} — daugiau nei jo riba. Naudokite scenarijų be interneto.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Jūsų piniginė užšifruota slaptažodžiu ir išsaugota šiame kompiuteryje kaip .dat failas. Įkelkite tą failą, kai tik norėsite naudotis pinigine.",
- "Your wallets": "Jūsų piniginės"
+ "Your wallets": "Jūsų piniginės",
+ "click a figure or the Defender to open it on mempool.space": "spustelėkite figūrą arba „Defender“, kad atidarytumėte mempool.space"
 }

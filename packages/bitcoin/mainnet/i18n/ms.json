@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "Frasa laluan anda TIDAK ada dalam fail — anda akan diminta memasukkannya setiap kali anda membuka dompet.",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Teks anda akan mengambil masa kira-kira {time} pada pelayan — melebihi hadnya. Gunakan skrip luar talian.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Dompet anda disulitkan dengan kata laluan dan disimpan ke komputer ini sebagai fail .dat. Muatkan fail itu setiap kali anda mahu menggunakan dompet.",
- "Your wallets": "Dompet anda"
+ "Your wallets": "Dompet anda",
+ "click a figure or the Defender to open it on mempool.space": "klik pada figura atau Defender untuk membukanya di mempool.space"
 }

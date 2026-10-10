@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "パスフレーズはファイルに含まれていません。ウォレットを開くたびに入力を求められます。",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "あなたの文字列はサーバーで約 {time} かかり、上限を超えています。オフラインスクリプトを使ってください。",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "ウォレットはパスワードで暗号化され、.dat ファイルとしてこのコンピューターに保存されます。ウォレットを使うときは、そのファイルを読み込んでください。",
- "Your wallets": "あなたのウォレット"
+ "Your wallets": "あなたのウォレット",
+ "click a figure or the Defender to open it on mempool.space": "人物や Defender をクリックすると mempool.space で開きます"
 }

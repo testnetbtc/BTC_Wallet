@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "A sua frase-senha NÃO está no arquivo — ela será pedida sempre que você abrir a carteira.",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "O seu texto levaria cerca de {time} no servidor — acima do limite dele. Use o script offline.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "A sua carteira é criptografada com uma senha e salva neste computador como um arquivo .dat. Carregue esse arquivo sempre que quiser usar a carteira.",
- "Your wallets": "As suas carteiras"
+ "Your wallets": "As suas carteiras",
+ "click a figure or the Defender to open it on mempool.space": "clique numa figura ou no Defender para abrir no mempool.space"
 }

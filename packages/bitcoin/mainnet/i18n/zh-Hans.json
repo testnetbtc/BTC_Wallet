@@ -709,5 +709,6 @@
  "Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.": "你的密码短语不在文件中——每次打开钱包时都会要求你输入它。",
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "你的文本在服务器上大约需要 {time}——超出了它的限制。请使用离线脚本。",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "你的钱包已用密码加密，并以 .dat 文件保存到这台电脑上。想使用钱包时载入那个文件即可。",
- "Your wallets": "你的钱包"
+ "Your wallets": "你的钱包",
+ "click a figure or the Defender to open it on mempool.space": "点击人物或 Defender，可在 mempool.space 上查看"
 }

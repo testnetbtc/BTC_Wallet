@@ -1524,6 +1524,8 @@
       else if (d.tip.height > streetHeight && car.mode === 'parked') {   // the block is mined: it leaves with the block's numbers on its side
         streetHeight = d.tip.height; car.label = { height: d.tip.height, txs: d.tip.txs, sats: d.tip.sats, mined: true }; car.fill = 1; car.mode = 'leaving'; car.t = 0;
       } else if (car.mode === 'parked') { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; }
+      // figures already walking learn their value once the node has read it
+      for (const p of punks) if (p.sats === null || p.sats === undefined) { const a = (d.arrivals || []).find((x) => x.txid === p.txid); if (a && a.sats !== null && a.sats !== undefined) p.sats = a.sats; }
       // the newest arrivals become figures (at most 8 per poll; the last one carries the overflow)
       const fresh = (d.arrivals || []).filter((a) => a.t > streetSeenT).sort((a, b) => a.t - b.t);
       if (fresh.length) streetSeenT = fresh[fresh.length - 1].t;
@@ -1563,7 +1565,7 @@
       glasses: f.gold ? 'none' : r() < 0.4 ? 'shades' : r() < 0.3 ? 'round' : 'none', mask: !f.gold && !f.suit && !f.coat && r() < 0.3, beard: r() < (f.beard || 0.15), tie: f.suit ? pick(['#ff6a00', '#8a2b2b', '#777', '#2f5d8a']) : null,
       coat: !!f.coat, suit: !!f.suit, gold: !!f.gold, neon: f.neon ? pick(f.neon) : null };
     const tag = famName === 'satoshi' ? tr('block {n} coin', { n: fmtN(a.era) }) : tr(f.tag);
-    return { x: W + 30 + i * L * 0.42, h: L * (0.46 + r() * 0.06), v: L * (0.52 + r() * 0.06), ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag };
+    return { x: W + 30 + i * L * 0.42, h: L * (0.46 + r() * 0.06), v: L * (0.52 + r() * 0.06), ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag, txid: a.txid };
   }
   // one figure, facing left, in local units (1 = its height), (0, 0) between its feet
   function punk(g, x, y, h, ph, s, walking, alpha = 1) {
@@ -1736,13 +1738,27 @@
       const w1 = line(`${fmtBtc(L1.sats)} BTC`, 60, `600 20px ${SANS}`, '#f4f4f4');
       const f = fiatShort(L1.sats); if (f) { g.font = `500 14px ${MONO}`; g.fillStyle = '#8f8f8f'; g.fillText(`≈ ${f}`, 18 + w1 + 10, 65); }
       line(mined ? tr('block {n} loading next', { n: fmtN(d.tip.height + 1) }) : tr('{n} waiting in the mempool', { n: fmtN(d.mempool.txs) }) + (d.next.valued < d.next.txs ? ' · ' + tr('value so far') : ''), 92, `11px ${MONO}`, '#8f8f8f');
-      if (H - tab >= 200) line(tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era'), Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
+      if (H - tab >= 200) line(tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era') + ' · ' + tr('click a figure or the Defender to open it on mempool.space'), Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
     }
   }
   function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }
   $('#set_street').addEventListener('change', (e) => streetSet(e.target.checked));
   $('#w_street').addEventListener('click', () => streetSet(!streetOn));
-  street.addEventListener('click', () => { if (isPhone()) { streetFull = !streetFull; streetLast = 0; } });   // a phone: the ticker opens into the scene and back
+  // what is under the pointer: a figure (its transaction) or the Defender (its block) — both open on mempool.space
+  function streetHit(ev) {
+    const r = street.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    const { Y, L, ticker } = streetLayout();
+    if (ticker) return null;
+    for (const p of punks) if (p.st !== 'board' && Math.abs(x - p.x) < p.h * 0.22 && y > Y - p.h * 1.1 && y < Y && /^[0-9a-f]{64}$/.test(p.txid || '')) return { url: 'https://mempool.space/tx/' + p.txid, what: 'tx' };
+    if (x > car.x && x < car.x + L && y > Y - L && y < Y && car.label) return { url: car.label.mined && streetData && /^[0-9a-f]{64}$/.test(streetData.tip.hash || '') ? 'https://mempool.space/block/' + streetData.tip.hash : 'https://mempool.space/mempool-block/0', what: 'block' };
+    return null;
+  }
+  street.addEventListener('click', (ev) => {
+    const hit = streetHit(ev);
+    if (hit) { window.open(hit.url, '_blank', 'noopener,noreferrer'); return; }
+    if (isPhone()) { streetFull = !streetFull; streetLast = 0; }   // a phone: the ticker opens into the scene and back
+  });
+  street.addEventListener('mousemove', (ev) => { street.style.cursor = streetHit(ev) ? 'pointer' : isPhone() ? 'pointer' : 'default'; });
   window.addEventListener('resize', () => { if (!isPhone()) streetFull = false; });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && streetOn) { streetLast = performance.now(); streetPoll(); } });
   show(street, streetOn); document.body.classList.toggle('street', streetOn); $('#set_street').checked = streetOn; $('#w_street').textContent = streetOn ? 'Hide the street' : 'Show the street';
