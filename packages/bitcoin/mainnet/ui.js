@@ -1195,7 +1195,7 @@
   $('#pp_done').addEventListener('click', () => { paperLeave(); show($('#pp_sheetwrap'), false); show($('#pp_intro'), true); toast(tr('Wiped from the screen. The paper is now the only copy.'), 'ok'); });
 
   // ================= THE OPENING =================
-  // A half-minute animated sequence shown the first time a browser opens the page: randomness,
+  // A minute-long animated sequence shown the first time a browser opens the page: randomness,
   // the money of 1971 and 2008, the genesis block, the 21 million, your keys, Olesia. It is drawn
   // on a canvas by the code below — no video file, no image, nothing fetched — so the page stays
   // one self-contained file with one hash. Skip at any time; tap to jump a chapter ahead; Enter
@@ -1204,12 +1204,12 @@
   const INTRO_KEY = 'olesia:mainnet:opening';
   const intro = $('#intro'), canvas = $('#intro_c'), bcanvas = $('#intro_b');   // the scene, and the badger's own layer above it
   const CHAPTERS = [
-    { dur: 5.5, k: 'I · Randomness', t: 'It begins with a number nobody can guess', p: 'A Bitcoin wallet is a secret number: 256 bits, chosen at random. There are more of them than atoms in the known universe. Olesia makes yours on your own device, and never sees it.' },
-    { dur: 6, k: 'II · 1971 — 2008', t: 'Money came loose', p: 'In 1971 the dollar was cut from gold and every currency on Earth became a promise. In 2008 the promise was tested: banks fell, and the printing began.' },
-    { dur: 6.5, k: 'III · 3 January 2009', t: 'A block with a headline inside it', p: '“The Times 03/Jan/2009 Chancellor on brink of second bailout for banks.” Satoshi Nakamoto wrote the day’s news into the first block, and the answer to 2008 was running.' },
-    { dur: 6, k: 'IV · Hard money', t: '21,000,000 — and never more', p: 'New coins are issued on a schedule that halves every four years. The supply is fixed by mathematics, not by a committee. Nobody can print more. Not even Satoshi.' },
-    { dur: 5.5, k: 'V · Self-reliance', t: 'Your keys. Your money.', p: 'No bank, no account, no permission needed. The key is made here, kept by you, and backed up in twelve or twenty-four words. With that comes the responsibility: nobody can reset it for you.' },
-    { dur: 4.5, k: 'VI', t: 'Olesia.', p: 'A wallet you hold yourself. One page, your device, your keys.', logo: true },
+    { dur: 11, k: 'I · Randomness', t: 'It begins with a number nobody can guess', p: 'A Bitcoin wallet is a secret number: 256 bits, chosen at random. There are more of them than atoms in the known universe. Olesia makes yours on your own device, and never sees it.' },
+    { dur: 12, k: 'II · 1971 — 2008', t: 'Money came loose', p: 'In 1971 the dollar was cut from gold and every currency on Earth became a promise. In 2008 the promise was tested: banks fell, and the printing began.' },
+    { dur: 13, k: 'III · 3 January 2009', t: 'A block with a headline inside it', p: '“The Times 03/Jan/2009 Chancellor on brink of second bailout for banks.” Satoshi Nakamoto wrote the day’s news into the first block, and the answer to 2008 was running.' },
+    { dur: 12, k: 'IV · Hard money', t: '21,000,000 — and never more', p: 'New coins are issued on a schedule that halves every four years. The supply is fixed by mathematics, not by a committee. Nobody can print more. Not even Satoshi.' },
+    { dur: 11, k: 'V · Self-reliance', t: 'Your keys. Your money.', p: 'No bank, no account, no permission needed. The key is made here, kept by you, and backed up in twelve or twenty-four words. With that comes the responsibility: nobody can reset it for you.' },
+    { dur: 9, k: 'VI', t: 'Olesia.', p: 'A wallet you hold yourself. One page, your device, your keys.', logo: true },
   ];
   let introRaf = 0, introT = 0, introLast = 0, introCh = -1, introState = null, introOn = false;
   const introSeen = () => { try { return localStorage.getItem(INTRO_KEY) === 'seen'; } catch { return false; } };
@@ -1635,7 +1635,7 @@
     g.moveTo(0.01, -0.19); g.lineTo(0.01, -0.5); g.lineTo(0.42, -0.5); g.lineTo(0.45, -0.52); g.lineTo(0.48, -0.78); g.lineTo(0.98, -0.78); g.lineTo(0.985, -0.19); g.closePath(); g.fill();
     g.fillStyle = ROOF; g.fillRect(0.47, -0.81, 0.515, 0.04);                                         // the white roof
     g.strokeStyle = '#8f8468'; g.lineWidth = 0.011; g.beginPath(); g.moveTo(0.42, -0.5); g.lineTo(0.42, -0.21); g.moveTo(0.46, -0.52); g.lineTo(0.985, -0.52);   // the bonnet's edge, the belt line
-    for (const sx of [0.6, 0.78]) { g.moveTo(sx, -0.76); g.lineTo(sx, -0.21); } g.stroke();        // door seams
+    for (const sx of [0.6, 0.78]) { g.moveTo(sx, -0.76); g.lineTo(sx, -0.52); g.moveTo(sx, -0.31); g.lineTo(sx, -0.21); } g.stroke();   // door seams, leaving the band for the block number
     g.fillStyle = '#8f8468'; g.fillRect(0.62, -0.47, 0.04, 0.012);                                     // handle
     // windows: dark glass that lights up, from the back forward, as the block fills
     const wins = [[0.485, 0.58, true], [0.605, 0.765, false], [0.785, 0.965, false]];
@@ -1653,18 +1653,16 @@
     g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(0.055, -0.4, 0.028, 0, Math.PI * 2); g.fill();
     g.fillStyle = TYRE; g.beginPath(); g.ellipse(1.0, -0.56, 0.028, 0.1, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = RIM; g.beginPath(); g.ellipse(1.0, -0.56, 0.011, 0.045, 0, 0, Math.PI * 2); g.fill();
-    // roof rack: the block-number board at the front, then the load — one crate per fifth of a block
+    // roof rack with the load — one crate per seventh of a block
     g.strokeStyle = '#555'; g.lineWidth = 0.013; g.beginPath(); g.moveTo(0.5, -0.88); g.lineTo(0.97, -0.88);
     for (const rx of [0.52, 0.74, 0.95]) { g.moveTo(rx, -0.88); g.lineTo(rx, -0.81); } g.stroke();
-    const crates = Math.min(5, Math.floor(fill * 5 + 1e-9));
-    for (let i = 0; i < crates; i++) { g.fillStyle = i % 2 ? '#d9661a' : ORANGE; g.fillRect(0.735 + i * 0.047, -0.935, 0.043, 0.05); }
-    if (label) {
-      const k = L * scale, txt = (str, ux, uy, size, color, align, weight = 600) => { g.save(); g.scale(1 / k, 1 / k); g.fillStyle = color; g.font = `${weight} ${Math.max(6, Math.round(size * k))}px ${MONO}`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, ux * k, uy * k); g.restore(); };   // text in real pixels
-      g.fillStyle = '#1a1a1a'; g.fillRect(0.51, -0.97, 0.21, 0.08); g.strokeStyle = '#6a6a6a'; g.lineWidth = 0.008; g.strokeRect(0.51, -0.97, 0.21, 0.08);
-      txt('#' + fmtN(label.height), 0.615, -0.93, 0.048, label.mined ? ORANGE : '#f2f2f2', 'center');
-      const ink = label.mined ? '#9a2f00' : '#2b2518';                                                  // the numbers on the bonnet
-      txt(fmtN(label.txs) + ' tx', 0.225, -0.45, 0.068, ink, 'center');
-      txt(fmtBtc(label.sats) + ' ₿', 0.225, -0.375, 0.068, ink, 'center');
+    const crates = Math.min(7, Math.floor(fill * 7 + 1e-9));
+    for (let i = 0; i < crates; i++) { g.fillStyle = i % 2 ? '#d9661a' : ORANGE; g.fillRect(0.535 + i * 0.058, -0.935, 0.052, 0.05); }
+    if (label) {   // BLOCK and its number, large, across the whole side (the count and value are on the panel)
+      const k = L * scale, txt = (str, ux, uy, size, color, align, weight = 700) => { g.save(); g.scale(1 / k, 1 / k); g.fillStyle = color; g.font = `${weight} ${Math.max(6, Math.round(size * k))}px ${MONO}`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, ux * k, uy * k); g.restore(); };   // text in real pixels
+      const ink = label.mined ? '#9a2f00' : '#2b2518';
+      txt(tr('BLOCK'), 0.5, -0.455, 0.075, ink, 'center');
+      txt(fmtN(label.height), 0.5, -0.37, 0.095, ink, 'center');
     }
     g.restore();
   }
@@ -1738,7 +1736,14 @@
       const w1 = line(`${fmtBtc(L1.sats)} BTC`, 60, `600 20px ${SANS}`, '#f4f4f4');
       const f = fiatShort(L1.sats); if (f) { g.font = `500 14px ${MONO}`; g.fillStyle = '#8f8f8f'; g.fillText(`≈ ${f}`, 18 + w1 + 10, 65); }
       line(mined ? tr('block {n} loading next', { n: fmtN(d.tip.height + 1) }) : tr('{n} waiting in the mempool', { n: fmtN(d.mempool.txs) }) + (d.next.valued < d.next.txs ? ' · ' + tr('value so far') : ''), 92, `11px ${MONO}`, '#8f8f8f');
-      if (H - tab >= 200) line(tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era') + ' · ' + tr('click a figure or the Defender to open it on mempool.space'), Y - L * 0.06 - 22, `10px ${MONO}`, '#5f5f5f');
+      if (H - tab >= 200) {   // the legend, wrapped into as many lines as the room left of the vehicle needs
+        g.font = `10px ${MONO}`; const maxW = Math.max(160, park - 34), lines = [];
+        for (const seg of (tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era') + ' · ' + tr('click a figure or the Defender to open it on mempool.space')).split(' · ')) {
+          const cand = lines.length ? lines[lines.length - 1] + ' · ' + seg : seg;
+          if (lines.length && g.measureText(cand).width <= maxW) lines[lines.length - 1] = cand; else lines.push(seg);
+        }
+        lines.forEach((l, i) => line(l, Y - L * 0.06 - 22 - (lines.length - 1 - i) * 13, `10px ${MONO}`, '#5f5f5f'));
+      }
     }
   }
   function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }

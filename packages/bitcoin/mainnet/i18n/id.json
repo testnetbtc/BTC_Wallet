@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Teks Anda akan memakan sekitar {time} di server — melebihi batasnya. Gunakan skrip offline.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Dompet Anda dienkripsi dengan kata sandi dan disimpan di komputer ini sebagai berkas .dat. Muat berkas itu setiap kali Anda ingin memakai dompet.",
  "Your wallets": "Dompet Anda",
- "click a figure or the Defender to open it on mempool.space": "klik sebuah sosok atau Defender untuk membukanya di mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "klik sebuah sosok atau Defender untuk membukanya di mempool.space",
+ "BLOCK": "BLOK"
 }

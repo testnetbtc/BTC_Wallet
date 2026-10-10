@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Chuỗi của bạn sẽ mất khoảng {time} trên máy chủ — vượt quá giới hạn. Hãy dùng tập lệnh ngoại tuyến.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Ví của bạn được mã hóa bằng mật khẩu và lưu vào máy tính này dưới dạng tệp .dat. Hãy tải tệp đó lên mỗi khi bạn muốn dùng ví.",
  "Your wallets": "Các ví của bạn",
- "click a figure or the Defender to open it on mempool.space": "nhấp vào một nhân vật hoặc chiếc Defender để mở trên mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "nhấp vào một nhân vật hoặc chiếc Defender để mở trên mempool.space",
+ "BLOCK": "KHỐI"
 }

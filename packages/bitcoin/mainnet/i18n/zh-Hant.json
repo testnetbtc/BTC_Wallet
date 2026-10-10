@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "你的文字在伺服器上約需 {time} — 超出了它的上限。請使用離線腳本。",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "你的錢包已用密碼加密，並以 .dat 檔案儲存到這台電腦。想使用錢包時，載入那個檔案即可。",
  "Your wallets": "你的錢包",
- "click a figure or the Defender to open it on mempool.space": "點擊人物或 Defender，即可在 mempool.space 上查看"
+ "click a figure or the Defender to open it on mempool.space": "點擊人物或 Defender，即可在 mempool.space 上查看",
+ "BLOCK": "區塊"
 }

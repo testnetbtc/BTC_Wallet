@@ -28,7 +28,7 @@ by a second path before it is shown; difficulty is exact. See `docs/VANITY_DESIG
 **Signed messages, privacy check, paper wallet.** Settings → Tools (verify and paper wallet also on
 the welcome screen). See `docs/WALLET_TOOLS.md`; testing in `docs/TESTING.md`.
 
-**The opening.** A half-minute animated sequence (randomness → 1971/2008 → the genesis block → the
+**The opening.** A minute-long animated sequence (randomness → 1971/2008 → the genesis block → the
 21 million → your keys → Olesia) shown the first time a browser opens the page, then remembered
 (`localStorage` `olesia:mainnet:opening`). Skip button from the first frame, Esc/Enter keys, tap to
 jump a chapter; Enter at the end; "Watch the opening again" on Welcome and in Settings;

@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Din tekst ville tage cirka {time} på serveren — over dens grænse. Brug offline-scriptet.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Din tegnebog krypteres med en adgangskode og gemmes på denne computer som en .dat-fil. Indlæs den fil, når du vil bruge tegnebogen.",
  "Your wallets": "Dine tegnebøger",
- "click a figure or the Defender to open it on mempool.space": "klik på en figur eller på Defenderen for at åbne den på mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "klik på en figur eller på Defenderen for at åbne den på mempool.space",
+ "BLOCK": "BLOK"
 }

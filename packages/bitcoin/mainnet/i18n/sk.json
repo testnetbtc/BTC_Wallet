@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Váš text by na serveri trval asi {time} — to je nad jeho limit. Použite offline skript.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Vaša peňaženka je zašifrovaná heslom a uložená v tomto počítači ako súbor .dat. Kedykoľvek budete chcieť peňaženku použiť, načítajte tento súbor.",
  "Your wallets": "Vaše peňaženky",
- "click a figure or the Defender to open it on mempool.space": "kliknutím na postavu alebo na Defender ju otvoríte na mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "kliknutím na postavu alebo na Defender ju otvoríte na mempool.space",
+ "BLOCK": "BLOK"
 }

@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Metniniz sunucuda yaklaşık {time} sürerdi — sınırının üzerinde. Çevrimdışı betiği kullanın.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Cüzdanınız bir parolayla şifrelenir ve bu bilgisayara .dat dosyası olarak kaydedilir. Cüzdanı kullanmak istediğinizde o dosyayı yükleyin.",
  "Your wallets": "Cüzdanlarınız",
- "click a figure or the Defender to open it on mempool.space": "bir figüre veya Defender’a tıklayarak mempool.space’te açın"
+ "click a figure or the Defender to open it on mempool.space": "bir figüre veya Defender’a tıklayarak mempool.space’te açın",
+ "BLOCK": "BLOK"
 }

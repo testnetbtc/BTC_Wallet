@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Vaš tekst bi na serveru trajao oko {time} — preko njegovog ograničenja. Koristite oflajn skriptu.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Vaš novčanik je šifrovan lozinkom i sačuvan na ovom računaru kao .dat datoteka. Učitajte tu datoteku kad god želite da koristite novčanik.",
  "Your wallets": "Vaši novčanici",
- "click a figure or the Defender to open it on mempool.space": "kliknite na figuru ili na Defender da biste ga otvorili na mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "kliknite na figuru ili na Defender da biste ga otvorili na mempool.space",
+ "BLOCK": "BLOK"
 }

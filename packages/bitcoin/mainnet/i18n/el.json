@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Το κείμενό σας θα χρειαζόταν περίπου {time} στον διακομιστή — πάνω από το όριό του. Χρησιμοποιήστε το script εκτός σύνδεσης.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Το πορτοφόλι σας κρυπτογραφείται με κωδικό πρόσβασης και αποθηκεύεται σε αυτόν τον υπολογιστή ως αρχείο .dat. Φορτώστε αυτό το αρχείο όποτε θέλετε να χρησιμοποιήσετε το πορτοφόλι.",
  "Your wallets": "Τα πορτοφόλια σας",
- "click a figure or the Defender to open it on mempool.space": "κάντε κλικ σε μια φιγούρα ή στο Defender για να το ανοίξετε στο mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "κάντε κλικ σε μια φιγούρα ή στο Defender για να το ανοίξετε στο mempool.space",
+ "BLOCK": "ΜΠΛΟΚ"
 }

@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "आपके टेक्स्ट में सर्वर पर लगभग {time} लगेगा — उसकी सीमा से ज़्यादा। ऑफ़लाइन स्क्रिप्ट इस्तेमाल करें।",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "आपका वॉलेट पासवर्ड से एन्क्रिप्ट होकर इस कंप्यूटर पर .dat फ़ाइल के रूप में सहेजा गया है। जब भी वॉलेट इस्तेमाल करना हो, वह फ़ाइल लोड करें।",
  "Your wallets": "आपके वॉलेट",
- "click a figure or the Defender to open it on mempool.space": "किसी आकृति या Defender पर क्लिक करके उसे mempool.space पर खोलें"
+ "click a figure or the Defender to open it on mempool.space": "किसी आकृति या Defender पर क्लिक करके उसे mempool.space पर खोलें",
+ "BLOCK": "ब्लॉक"
 }

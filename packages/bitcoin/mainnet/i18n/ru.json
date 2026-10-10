@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "На сервере поиск вашего текста занял бы {time} — больше его лимита. Используйте офлайн-скрипт.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Ваш кошелёк зашифрован паролем и сохранён на этом компьютере как файл .dat. Загружайте этот файл, когда захотите воспользоваться кошельком.",
  "Your wallets": "Ваши кошельки",
- "click a figure or the Defender to open it on mempool.space": "нажмите на фигуру или на Defender, чтобы открыть их на mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "нажмите на фигуру или на Defender, чтобы открыть их на mempool.space",
+ "BLOCK": "БЛОК"
 }

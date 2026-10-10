@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Teie tekst võtaks serveris umbes {time} — üle selle piirangu. Kasutage võrguühenduseta skripti.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Teie rahakott on parooliga krüpteeritud ja salvestatud sellesse arvutisse .dat-failina. Laadige see fail alati, kui soovite rahakotti kasutada.",
  "Your wallets": "Teie rahakotid",
- "click a figure or the Defender to open it on mempool.space": "klõpsa kujul või Defenderil, et avada see mempool.space’is"
+ "click a figure or the Defender to open it on mempool.space": "klõpsa kujul või Defenderil, et avada see mempool.space’is",
+ "BLOCK": "PLOKK"
 }

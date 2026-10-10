@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Votre texte prendrait environ {time} sur le serveur — au-delà de sa limite. Utilisez le script hors ligne.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Votre portefeuille est chiffré avec un mot de passe et enregistré sur cet ordinateur sous forme de fichier .dat. Chargez ce fichier chaque fois que vous voulez utiliser le portefeuille.",
  "Your wallets": "Vos portefeuilles",
- "click a figure or the Defender to open it on mempool.space": "cliquez sur un personnage ou sur le Defender pour l’ouvrir sur mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "cliquez sur un personnage ou sur le Defender pour l’ouvrir sur mempool.space",
+ "BLOCK": "BLOC"
 }

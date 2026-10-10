@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Jūsu teksts serverī prasītu aptuveni {time} — tas pārsniedz tā ierobežojumu. Lietojiet bezsaistes skriptu.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Jūsu maks ir šifrēts ar paroli un saglabāts šajā datorā kā .dat fails. Ielādējiet šo failu ikreiz, kad vēlaties lietot maku.",
  "Your wallets": "Jūsu maki",
- "click a figure or the Defender to open it on mempool.space": "noklikšķiniet uz figūras vai Defender, lai to atvērtu mempool.space"
+ "click a figure or the Defender to open it on mempool.space": "noklikšķiniet uz figūras vai Defender, lai to atvērtu mempool.space",
+ "BLOCK": "BLOKS"
 }

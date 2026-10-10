@@ -710,5 +710,6 @@
  "Your text would take about {time} on the server — over its limit. Use the offline script.": "Tekstisi veisi palvelimella noin {time} — yli sen rajan. Käytä offline-skriptiä.",
  "Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.": "Lompakkosi salataan salasanalla ja tallennetaan tälle tietokoneelle .dat-tiedostona. Lataa se tiedosto aina, kun haluat käyttää lompakkoa.",
  "Your wallets": "Lompakkosi",
- "click a figure or the Defender to open it on mempool.space": "avaa hahmo tai Defender mempool.spacessa napsauttamalla sitä"
+ "click a figure or the Defender to open it on mempool.space": "avaa hahmo tai Defender mempool.spacessa napsauttamalla sitä",
+ "BLOCK": "LOHKO"
 }
