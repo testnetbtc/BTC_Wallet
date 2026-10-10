@@ -1717,7 +1717,7 @@
       if (p.x - lastLabel > 80) {   // one label per figure, unless they bunch up
         lastLabel = p.x;
         g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
-        const amount = p.sats !== null && p.sats !== undefined ? fmtBtc(p.sats) + ' ₿' : '';
+        const amount = p.sats === null || p.sats === undefined ? '' : p.sats < 100000 ? tr('{n} sats', { n: fmtN(p.sats) }) : fmtBtc(p.sats) + ' ₿';   // small ones in sats, so dust reads as dust rather than 0.0000
         g.fillStyle = p.s.gold ? '#e2b84a' : '#8f8f8f'; g.fillText(p.tag + (p.more ? ` +${p.more}` : ''), p.x, Y - p.h - 6);
         if (amount) { g.fillStyle = '#b3b3b3'; g.fillText(amount, p.x, Y - p.h - 18); }
       }
