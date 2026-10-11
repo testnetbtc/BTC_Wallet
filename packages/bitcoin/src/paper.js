@@ -11,7 +11,7 @@ import { bytesToHex } from '@noble/hashes/utils';
 import { addressOf, wifOf } from './vanity.js';
 import { parseWifAny } from './account.js';
 
-export const PAPER_TYPES = ['p2wpkh', 'p2pkh'];
+export const PAPER_TYPES = ['p2wpkh', 'p2tr', 'p2pkh'];
 
 function randomPrivKey(randomBytes) {
   for (;;) { const k = randomBytes(32); if (secp256k1.utils.isValidPrivateKey(k)) return k; }
@@ -21,7 +21,7 @@ function randomPrivKey(randomBytes) {
 // prove what is used (the page passes crypto.getRandomValues; nothing else is ever accepted).
 export function createPaperWallet({ randomBytes, type = 'p2wpkh', network = 'mainnet' }) {
   if (typeof randomBytes !== 'function') throw new Error('a random source is required');
-  if (!PAPER_TYPES.includes(type)) throw new Error('paper wallets are bc1q or 1… addresses');
+  if (!PAPER_TYPES.includes(type)) throw new Error('paper wallets are bc1q, bc1p or 1… addresses');
   const privKey = randomPrivKey(randomBytes);
   const pubkey = secp256k1.getPublicKey(privKey, true);
   const wif = wifOf(privKey, network);

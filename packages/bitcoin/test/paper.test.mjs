@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import * as btc from '@scure/btc-signer';
 import { createPaperWallet, checkPaperWallet, PAPER_TYPES } from '../src/paper.js';
+import { parseWifAny } from '../src/account.js';
 
 let bad = false;
 const ok = (l, c) => { console.log(l.padEnd(84), c ? '✓' : '✗ FAIL'); if (!c) bad = true; };
@@ -16,7 +17,10 @@ const l = createPaperWallet({ randomBytes: rb, type: 'p2pkh' });
 ok('a Legacy paper wallet gives a 1… address from the same construction', l.address.startsWith('1') && btc.p2pkh(secp256k1.getPublicKey(btc.WIF().decode(l.wif), true)).address === l.address);
 ok('two wallets never share a key', createPaperWallet({ randomBytes: rb }).wif !== createPaperWallet({ randomBytes: rb }).wif);
 ok('the random source is mandatory and must be a function', (() => { try { createPaperWallet({}); return false; } catch (e) { return /random source/.test(e.message); } })());
-ok('only the two address types the wallet issues', PAPER_TYPES.join() === 'p2wpkh,p2pkh' && (() => { try { createPaperWallet({ randomBytes: rb, type: 'p2tr' }); return false; } catch { return true; } })());
+ok('only the three address types the wallet issues', PAPER_TYPES.join() === 'p2wpkh,p2tr,p2pkh' && (() => { try { createPaperWallet({ randomBytes: rb, type: 'p2sh-p2wpkh' }); return false; } catch { return true; } })());
+{ const w = createPaperWallet({ randomBytes: rb, type: 'p2tr' });
+  const back = parseWifAny(w.wif), tr = btc.p2tr(back.pubkey.slice(1)).address;
+  ok('Taproot paper wallet: bc1p address = BIP-86 key path of the printed key, read-back check agrees', w.address.startsWith('bc1p') && w.address === tr && checkPaperWallet({ wif: w.wif, expectAddress: w.address, type: 'p2tr' }).ok && !checkPaperWallet({ wif: w.wif, expectAddress: w.address, type: 'p2wpkh' }).ok); }
 // the only randomness used is the injected source: a fixed source gives a fixed key
 const fixed = (n) => new Uint8Array(n).fill(7);
 ok('keys are a pure function of the random source (no hidden entropy, no time)', createPaperWallet({ randomBytes: fixed }).wif === createPaperWallet({ randomBytes: fixed }).wif);

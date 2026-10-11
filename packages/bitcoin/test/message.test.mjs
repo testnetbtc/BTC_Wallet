@@ -3,6 +3,7 @@
 // format against a long-known reference signature and round trips, and the refusals.
 // Bitcoin Core itself is the oracle for the legacy format in mainnet_e2e_regtest.mjs.
 import { readFileSync } from 'node:fs';
+import { createBase58check } from '@scure/base';
 import { randomBytes } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
@@ -30,9 +31,26 @@ for (const t of V.simple.filter((x) => x.type === 'p2wpkh')) {
     ok('BIP-322 p2wpkh: the same signature without the "smp" prefix verifies too', verifyMessage({ address: t.address, message: t.message, signature: s.slice(3) }).ok);
   }
 }
-for (const t of V.simple.filter((x) => x.type !== 'p2wpkh')) {
+for (const t of V.simple.filter((x) => x.type !== 'p2wpkh' && x.type !== 'p2tr')) {
   const r = verifyMessage({ address: t.address, message: t.message, signature: t.bip322_signatures[0] });
   ok(`unsupported script type is refused cleanly, never accepted: ${t.type}`, !r.ok && typeof r.reason === 'string');
+}
+// Taproot (bc1p): every published simple and full vector verifies; a round trip with the vector's key
+{
+  const G = JSON.parse(readFileSync(new URL('./fixtures/bip322_generated_test_vectors.json', import.meta.url), 'utf8'));
+  const b58 = createBase58check(sha256);
+  let n = 0, good = 0;
+  for (const [k, arr] of [['basic', V.simple], ['simple', G.simple], ['full', G.full]]) for (const t of arr) {
+    if (t.type !== 'p2tr' && t.type !== 'p2wpkh') continue;
+    for (const s of t.bip322_signatures) { n++; const r = verifyMessage({ address: t.address, message: t.message, signature: s }); if (r.ok) good++; else console.log('   ', k, t.type, t.address, r.reason); }
+    if (t.type === 'p2tr' && t.private_keys.length === 1) {
+      const key = b58.decode(t.private_keys[0]).slice(1, 33);
+      const mine = signMessage({ privKey: key, address: t.address, message: t.message });
+      ok(`Taproot round trip for ${t.address.slice(0, 14)}… (BIP-86 key path, SIGHASH_DEFAULT, 64-byte witness)`, mine.format === 'BIP-322 simple' && verifyMessage({ address: t.address, message: t.message, signature: mine.signature }).ok
+        && !verifyMessage({ address: t.address, message: t.message + '!', signature: mine.signature }).ok);
+    }
+  }
+  ok(`all published p2wpkh and p2tr BIP-322 vectors verify (${good}/${n}, simple and full, with and without the smp/ful prefix)`, good === n && n >= 9);
 }
 for (const e of V.error) {
   const r = verifyMessage({ address: e.address, message: e.message, signature: e.signature });

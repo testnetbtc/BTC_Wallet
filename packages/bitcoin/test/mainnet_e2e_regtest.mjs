@@ -153,6 +153,35 @@ try {
   mine(1); sm = await sess.refresh();
   ok('after a block the watch-only session sees its change (nothing lost)', sm.confirmed === 40000000 - 1000000 - lkBuilt.fee && sess.sent[0].status === 'confirmed');
 
+  // ---------- Taproot as a receive/change type, through the same locked session ----------
+  sess.setPref('p2tr');
+  const trBuilt = await locked.withSigner(lkPw, (signer) => sess.prepare({ to: dest, amount: 500000, feeRate: 2, signer }));
+  ok('with Taproot preferred, change goes to m/86h/1h/0h/1/0 (a bc1p… address)', trBuilt.changePath === "m/86'/1'/0'/1/0" && trBuilt.changeAddress.startsWith('bcrt1p') && (await sess.broadcast(trBuilt)).txid === trBuilt.txid);
+  mine(1); sm = await sess.refresh();
+  const trCoin = sess.coinList().find((c) => c.type === 'p2tr');
+  ok('the Taproot change coin is found and spendable', !!trCoin && trCoin.spendable && trCoin.value === trBuilt.change);
+
+  // ---------- P2PK from a recovery phrase: move coins into the wallet's own bare public key, then spend them ----------
+  const pkT = sess.p2pkTarget();
+  ok('the next P2PK output is index 0 on the BIP-44 keys, no address, <push pubkey> OP_CHECKSIG', pkT.index === 0 && pkT.path === "m/44'/1'/0'/0/0" && /^21(02|03)[0-9a-f]{64}ac$/.test(pkT.script) && pkT.script === '21' + pkT.pubkey + 'ac');
+  ok('a sweep into P2PK is refused; so is a script that is not P2PK', await rejects(locked.withSigner(lkPw, (signer) => sess.prepare({ toScript: pkT.script, sweep: true, feeRate: 2, signer })), /amount/) && await rejects(locked.withSigner(lkPw, (signer) => sess.prepare({ toScript: '0014' + '11'.repeat(20), amount: 100000, feeRate: 2, signer })), /P2PK/));
+  const pkBuilt = await locked.withSigner(lkPw, (signer) => sess.prepare({ toScript: pkT.script, amount: 2000000, feeRate: 2, signer }));
+  const pkDec = JSON.parse(cli('decoderawtransaction', pkBuilt.txHex));
+  ok('Core decodes the destination as a pubkey output carrying exactly the amount', pkDec.vout.some((o) => o.scriptPubKey.type === 'pubkey' && o.scriptPubKey.hex === pkT.script && Math.round(o.value * 1e8) === 2000000) && pkBuilt.to === null && pkBuilt.toScript === pkT.script && pkBuilt.p2pkIndex === 0);
+  ok('Core accepts it; the audit saw the raw-script recipient once', JSON.parse(cli('testmempoolaccept', JSON.stringify([pkBuilt.txHex])))[0].allowed === true && pkBuilt.sent === 2000000 && (await sess.broadcast(pkBuilt)).txid === pkBuilt.txid);
+  ok('after funding, the next P2PK key moves on to index 1', sess.p2pkTarget().index === 1);
+  mine(1); sm = await sess.refresh();
+  const pkCoin = sess.coinList().find((c) => c.type === 'p2pk');
+  ok('the P2PK coin is found by script (no address), in the old-format group, spendable', !!pkCoin && pkCoin.group === 'raw' && pkCoin.address === null && pkCoin.value === 2000000 && pkCoin.spendable && sm.oldFormat === 2000000);
+  ok('a fresh device (no stored counters) still moves on past the used P2PK key', new Session({ account: openWatchAccount(lk.pub), api: fastApi }).p2pkIndex() === 0 && sess.p2pkIndex() === 1);
+  const stdCoin = sess.coinList().find((c) => c.spendable && c.group === 'std');
+  ok('old-format coins are spent on their own: mixing them with normal coins is refused', await rejects(locked.withSigner(lkPw, (signer) => sess.prepare({ to: dest, amount: 100000, feeRate: 2, coinIds: [pkCoin.id, stdCoin.id], signer })), /separately/));
+  const pkSpend = await locked.withSigner(lkPw, (signer) => sess.prepare({ to: dest, amount: 1500000, feeRate: 2, coinIds: [pkCoin.id], signer }));
+  const pkAcc = JSON.parse(cli('testmempoolaccept', JSON.stringify([pkSpend.txHex])))[0];
+  ok('the P2PK coin is spent with the legacy signer (previous tx verified): Core ACCEPTS the signature', pkAcc.allowed === true && pkAcc.txid === pkSpend.txid && pkSpend.group === 'raw' && (await sess.broadcast(pkSpend)).txid === pkSpend.txid);
+  mine(1); sm = await sess.refresh();
+  ok('the P2PK spend\'s change went to the normal (Taproot) change chain, not back into P2PK, and is found again', /^m\/86'\/1'\/0'\/1\/\d+$/.test(pkSpend.changePath || '') && sess.coinList().some((c) => c.type === 'p2tr' && c.value === pkSpend.change && c.spendable) && !sess.coinList().some((c) => c.id === pkCoin.id));
+
   // ---------- audit M2: a restored wallet whose coins sit deep in the address chain ----------
   const deepM = createMnemonic({ words: 12 }).mnemonic;
   const deepFull = openSeedAccount({ mnemonic: deepM, network: NET });
@@ -178,7 +207,7 @@ try {
   // ---------- WIF, compressed key: 4 address types + bare P2PK ----------
   const wifC = btc.WIF(REG).encode(randomBytes(32));
   const wc = openWifAccount({ wif: wifC, network: NET });
-  for (const t of HD_TYPES) cliw('sendtoaddress', wc.entry(t).address, 0.1);
+  for (const t of HD_TYPES.filter((x) => x !== 'p2pk')) cliw('sendtoaddress', wc.entry(t).address, 0.1);
   mine(1);
   let wcCoins = coinsFromScan(wc.entries(), await api.scan(wc.entries().map((e) => e.script), { pollMs: 200 }));
   ok('compressed WIF: coins found on all 4 address types', wcCoins.length === 4 && total(wcCoins) === 40000000);

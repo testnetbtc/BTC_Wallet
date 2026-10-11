@@ -216,7 +216,8 @@ try {
   const drawing = () => page.evaluate(() => { const c = document.querySelector('#intro_c'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit > 20; });
   ok('opening: plays on a first visit — Skip offered from the start, Enter not yet', await visible(page, '#intro') && await visible(page, '#intro_skip') && !(await visible(page, '#intro_enter')));
   await sleep(1500);
-  ok('opening: chapter I is captioned and the canvas is really drawing', /number nobody can guess/.test(await text(page, '#intro_t')) && await drawing());
+  { let drew = false; for (let i = 0; i < 12 && !drew; i++) { drew = await drawing(); if (!drew) await sleep(250); }   // the chapter fades in; give it a moment
+    ok('opening: chapter I is captioned and the canvas is really drawing', /number nobody can guess/.test(await text(page, '#intro_t')) && drew); }
   await page.$eval('#intro_c', (c) => c.click()); await sleep(800);
   ok('opening: a tap jumps to the next chapter', /Money came loose/.test(await text(page, '#intro_t')));
   for (let i = 0; i < 4; i++) { await page.$eval('#intro_c', (c) => c.click()); await sleep(700); }
@@ -332,10 +333,17 @@ try {
   curPw = password;
   const fp = await text(page, '#w_fp');
 
-  // ================= RECEIVE (SegWit + Legacy only) =================
+  // ================= RECEIVE (SegWit, Taproot, Legacy — and the P2PK museum piece) =================
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   const typeOpts = await page.$$eval('#r_type option', (os) => os.map((o) => o.value));
-  ok('exactly two address types are offered: SegWit and Legacy', JSON.stringify(typeOpts) === JSON.stringify(['p2wpkh', 'p2pkh']));
+  ok('three address types are offered — SegWit, Taproot, Legacy — plus the bare public key (P2PK)', JSON.stringify(typeOpts) === JSON.stringify(['p2wpkh', 'p2tr', 'p2pkh', 'p2pk']));
+  await page.select('#r_type', 'p2tr');
+  await page.waitForFunction(() => document.querySelector('#r_addr').textContent.startsWith('bc1p'));
+  ok('Taproot receive address is bc1p… (BIP-86) with a QR code', /^bc1p[0-9a-z]{58}$/.test(await text(page, '#r_addr')) && /m\/86'\/0'\/0'\/0\/0/.test(await text(page, '#r_path')) && (await page.$eval('#r_qr', (i) => i.src)).startsWith('data:image/svg+xml'));
+  await page.select('#r_type', 'p2pk'); await sleep(100);
+  ok('P2PK shows the public key, no address, and cannot be funded before the wallet has a coin', await visible(page, '#r_pkbox') && !(await visible(page, '#r_addrbox')) && /^0[23][0-9a-f]{64}$/.test(await text(page, '#r_pk')) && await page.$eval('#r_pkgo', (b) => b.disabled) && /needs an ordinary coin first/.test(await text(page, '#r_pkmsg')));
+  await page.select('#r_type', 'p2wpkh'); await sleep(100);
+  ok('back to SegWit: the address box is back and the preference is unchanged', await visible(page, '#r_addrbox') && (await page.$eval('#r_type', (e) => e.value)) === 'p2wpkh');
   const addrSeg = await text(page, '#r_addr');
   ok('SegWit receive address is bc1q… with a QR code', /^bc1q[0-9a-z]{38}$/.test(addrSeg) && (await page.$eval('#r_qr', (i) => i.src)).startsWith('data:image/svg+xml'));
   await tap(page, '#r_next');
@@ -441,13 +449,72 @@ try {
   const after3 = after2 - feeSelf;
   ok('message-only: the coins come back to the wallet, only the fee is spent', await refreshUntil(page, fmt(after3)));
 
+  // ================= P2PK: move coins into this wallet's own bare public key, then spend them =================
+  await tap(page, '#a_recv'); await onPane(page, 'receive');
+  await page.select('#r_type', 'p2pk'); await sleep(100);
+  const pkKey = await text(page, '#r_pk');
+  ok('with coins in the wallet, "Move coins into this P2PK output" is enabled (P2PK #0 on the BIP-44 keys)', !(await page.$eval('#r_pkgo', (b) => b.disabled)) && /m\/44'\/0'\/0'\/0\/0 · P2PK #0/.test(await text(page, '#r_pkpath')));
+  await tap(page, '#r_pkgo'); await onPane(page, 'send');
+  ok('the Send screen pays the P2PK output: no address field, no "send everything", the public key shown', !(await visible(page, '#t_tobox')) && await visible(page, '#t_pkbox') && (await text(page, '#t_pkkey')) === pkKey && !(await visible(page, '#t_allrow')));
+  await page.type('#t_amt', '0.01'); await page.type('#t_fee', '2');
+  await review(page, curPw);
+  ok('the confirmation names the destination as this wallet\'s own P2PK output', /own P2PK output/.test(await text(page, '#c_rows')) && /0\.01000000 BTC/.test(await text(page, '#c_rows')));
+  await tap(page, '#c_go');
+  await page.waitForFunction(() => !document.querySelector('#t_result').classList.contains('hide'), { timeout: 60000 });
+  const pkTxid = await text(page, '#t_result p.mono');
+  const pkRaw = JSON.parse(cli('getrawtransaction', pkTxid, 1));
+  ok('Core has the transaction with one "pubkey" output of 0.01 locked to exactly that key', pkRaw.vout.filter((o) => o.scriptPubKey.type === 'pubkey').length === 1 && pkRaw.vout.find((o) => o.scriptPubKey.type === 'pubkey').scriptPubKey.hex === '21' + pkKey + 'ac' && Math.round(pkRaw.vout.find((o) => o.scriptPubKey.type === 'pubkey').value * 1e8) === 1000000);
+  const feePk = Math.round(JSON.parse(cli('getmempoolentry', pkTxid)).fees.base * 1e8);
+  mine(1);
+  await tap(page, '#pane-send .back'); await onPane(page, 'wallet');
+  const after4 = after3 - feePk;
+  ok('the coins are still ours: balance = before − fee, and a P2PK coin is listed with no address', await refreshUntil(page, fmt(after4)) && /bare public key \(no address\)/.test(await text(page, '#coins')) && /P2PK/.test(await text(page, '#coins')) && /held as bare public keys/.test(await text(page, '#oldfmt')) === false);
+  ok('the next P2PK key has moved on to #1', await (async () => { await tap(page, '#a_recv'); await onPane(page, 'receive'); await page.select('#r_type', 'p2pk'); await sleep(100); const r = /P2PK #1/.test(await text(page, '#r_pkpath')); await tap(page, '#pane-receive .back'); await onPane(page, 'wallet'); return r; })());
+  // spend it: the coin's own "Spend this P2PK coin" button ticks it and opens Send
+  await page.$$eval('#coins .coin button', (bs) => bs.find((b) => /Spend this P2PK coin/.test(b.textContent)).click()); await onPane(page, 'send');
+  ok('Send opens for only the ticked P2PK coin', /Spending only the 1 ticked coin: 0\.01000000 BTC/.test(await text(page, '#t_avail')));
+  await page.type('#t_to', addrSeg2); await tap(page, '#t_all'); await page.type('#t_fee', '2');
+  await review(page, curPw);
+  await tap(page, '#c_go');
+  await page.waitForFunction(() => !document.querySelector('#t_result').classList.contains('hide'), { timeout: 60000 });
+  const pkSpendTxid = await text(page, '#t_result p.mono');
+  const pkSpendRaw = JSON.parse(cli('getrawtransaction', pkSpendTxid, 1));
+  ok('Core accepted the P2PK spend: one input (scriptSig = the signature alone), paid to our SegWit address', pkSpendRaw.vin.length === 1 && pkSpendRaw.vin[0].txid === pkTxid && !pkSpendRaw.vin[0].txinwitness && pkSpendRaw.vout.some((o) => o.scriptPubKey.address === toRegtest(addrSeg2)));
+  const feePkSpend = Math.round(JSON.parse(cli('getmempoolentry', pkSpendTxid)).fees.base * 1e8);
+  mine(1);
+  await tap(page, '#pane-send .back'); await onPane(page, 'wallet');
+  const after5 = after4 - feePkSpend;
+  ok('the P2PK coin is back in SegWit form; balance = before − fee', await refreshUntil(page, fmt(after5)) && !/bare public key/.test(await text(page, '#coins')));
+  // Taproot as the wallet's working type: change lands on m/86'/0'/0'/1/…
+  await tap(page, '#a_recv'); await onPane(page, 'receive'); await page.select('#r_type', 'p2tr'); await sleep(100); await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
+  await tap(page, '#a_send'); await onPane(page, 'send');
+  await page.type('#t_to', dest); await page.type('#t_amt', '0.005'); await page.type('#t_fee', '2');
+  await review(page, curPw);
+  ok('with Taproot chosen, the change goes to a bc1p… address on the BIP-86 change chain', /bc1p[0-9a-z]{58}/.test(await text(page, '#c_rows')) && /m\/86'\/0'\/0'\/1\//.test(await text(page, '#c_rows')));
+  await tap(page, '#c_go');
+  await page.waitForFunction(() => !document.querySelector('#t_result').classList.contains('hide'), { timeout: 60000 });
+  const trTxid = await text(page, '#t_result p.mono');
+  const feeTr = Math.round(JSON.parse(cli('getmempoolentry', trTxid)).fees.base * 1e8);
+  mine(1);
+  await tap(page, '#pane-send .back'); await onPane(page, 'wallet');
+  const after6 = after5 - 500000 - feeTr;
+  ok('after a block the Taproot change coin is found (balance exact)', await refreshUntil(page, fmt(after6)) && /m\/86'\/0'\/0'\/1\//.test(await text(page, '#coins')));
+  await tap(page, '#a_recv'); await onPane(page, 'receive'); await page.select('#r_type', 'p2wpkh'); await sleep(100); await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
+
   // ================= PRACTICE NETWORKS: same words, separate keys, worthless coins =================
-  const mainnetBalance = fmt(after3);
+  const mainnetBalance = fmt(after6);
   await tab(page, 'networks');
-  const netRows = await page.$$eval('#netlist .netrow', (rs) => rs.map((r) => r.dataset.net));
-  ok('Networks lists four wallets: Bitcoin, Testnet 4, Signet, Testnet 3', netRows.join() === 'mainnet,testnet4,signet,testnet3');
-  ok('Bitcoin is tagged "real bitcoin"; the others "no value"', /Bitcoin\s*real bitcoin/i.test(await page.$eval('#netlist .netrow[data-net="mainnet"]', (e) => e.textContent)) && /no value/i.test(await page.$eval('#netlist .netrow[data-net="signet"]', (e) => e.textContent)));
+  let netRows = await page.$$eval('#netlist .netrow', (rs) => rs.map((r) => r.dataset.net));
+  ok('Networks lists two wallets by default: Bitcoin and Testnet 4', netRows.join() === 'mainnet,testnet4');
+  ok('the same-words warning is shown: one secret, two networks', await visible(page, '#net_warn') && /same recovery phrase/i.test(await text(page, '#net_warn')));
+  ok('Bitcoin is tagged "real bitcoin"; Testnet 4 "no value"', /Bitcoin\s*real bitcoin/i.test(await page.$eval('#netlist .netrow[data-net="mainnet"]', (e) => e.textContent)) && /no value/i.test(await page.$eval('#netlist .netrow[data-net="testnet4"]', (e) => e.textContent)));
+  await tab(page, 'settings'); await page.$eval('#set_morenets', (e) => e.scrollIntoView({ block: 'center' })); await tap(page, '#set_morenets'); await tab(page, 'networks');
+  netRows = await page.$$eval('#netlist .netrow', (rs) => rs.map((r) => r.dataset.net));
+  ok('Settings → "Also show Signet and Testnet 3" lists all four', netRows.join() === 'mainnet,testnet4,signet,testnet3' && await page.evaluate(() => localStorage.getItem('olesia:mainnet:morenets') === 'on'));
+  await tab(page, 'settings'); await page.$eval('#set_morenets', (e) => e.scrollIntoView({ block: 'center' })); await tap(page, '#set_morenets'); await tab(page, 'networks');
+  ok('and off again', (await page.$$eval('#netlist .netrow', (rs) => rs.map((r) => r.dataset.net))).join() === 'mainnet,testnet4');
   await tab(page, 'faucet');
+  ok('the Faucet tab shows the same-words warning and no network choice (Testnet 4 only)', await visible(page, '#f_same') && !(await visible(page, '#f_nets')));
   const tAddr = await text(page, '#f_addr');
   const fHref = await page.$eval('#f_go', (a) => a.href);
   ok('Faucet shows this wallet\'s Testnet 4 address (tb1…) — different from every mainnet address', /^tb1q[0-9a-z]{38}$/.test(tAddr) && tAddr !== addrSeg);
@@ -487,12 +554,12 @@ try {
   const storedText = JSON.stringify(stored);
   const storedValues = Object.values(stored.local).map(jsonValues).join('\n');
   ok('browser storage holds only address counters, the currency, the "opening seen" and street flags — no words, no keys', !words24.some((w) => w.length > 4 && storedValues.includes(w)) && Object.keys(stored.session).length === 0
-    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || k === 'olesia:mainnet:cur' || k === 'olesia:mainnet:opening' || k === 'olesia:mainnet:street' || k === 'olesia:mainnet:lang')
+    && Object.keys(stored.local).length >= 1 && Object.keys(stored.local).every((k) => /^olesia:(mainnet|testnet4|signet|testnet3):idx:[0-9a-f]+$/.test(k) || ['olesia:mainnet:cur', 'olesia:mainnet:opening', 'olesia:mainnet:street', 'olesia:mainnet:street:band', 'olesia:mainnet:lang', 'olesia:mainnet:morenets'].includes(k))
     && !storedText.includes(curPw));
   // the open page holds no plaintext secret: not in the DOM, not on window.OM, not in any global
   const leak = await page.evaluate((w) => { const hay = document.documentElement.outerHTML; const fields = [...document.querySelectorAll('input,textarea')].map((e) => ' ' + e.value + ' ').join('|'); return w.filter((x) => x.length > 5 && (hay.includes('>' + x + '<') || fields.includes(' ' + x + ' '))).length; }, words24);
   ok('no recovery word is present anywhere in the page (text or form fields) while the wallet is open', leak === 0);
-  ok('a tab bar (Wallet / Networks / Faucet / Settings) appears once a wallet is open', await visible(page, '#tabbar') && (await page.$$('#tabbar button')).length === 4);
+  ok('a tab bar (Wallet / Networks / Faucet / Street / Settings) appears once a wallet is open', await visible(page, '#tabbar') && (await page.$$('#tabbar button')).length === 5);
   await tab(page, 'settings');
   ok('the recovery phrase is hidden by default', !(await visible(page, '#reveal_box')));
   await tap(page, '#a_reveal'); await pwOn(page); await page.type('#p_pw', 'wrong-wrong-wrong'); await tap(page, '#p_go');
@@ -517,7 +584,7 @@ try {
   await page.waitForFunction(() => /wrong password/.test(document.querySelector('#o_msg').textContent), { timeout: 120000 });
   ok('wrong password is rejected', true);
   await page.$eval('#o_pw', (e) => { e.value = ''; }); await page.type('#o_pw', password); await tap(page, '#o_go');
-  await onPane(page, 'wallet'); await waitBalance(page, fmt(after3));
+  await onPane(page, 'wallet'); await waitBalance(page, fmt(after6));
   ok('the .dat file + password reopens the SAME wallet (fingerprint + balance)', (await text(page, '#w_fp')) === fp);
 
   // ================= send everything (incl. the Legacy coin -> previous-tx path) =================
@@ -606,6 +673,61 @@ try {
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   ok('imported phrase derives the published BIP-84 address', (await text(page, '#r_addr')) === 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu');
 
+  // ================= THE STREET tab: the full scene, numbers and legend (open to everyone) =================
+  await tab(page, 'street'); await onPane(page, 'street');
+  await page.waitForFunction(() => { const c = document.querySelector('#st_canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i] + d[i + 1] + d[i + 2] > 300) lit++; return lit > 20 && document.querySelectorAll('#st_stats .st').length >= 4; }, { timeout: 15000 });
+  ok('Street tab: the scene is drawn large, with live numbers (last block, loading, waiting, reward)', (await page.$$eval('#st_stats .st .k', (es) => es.map((e) => e.textContent))).join('|') === 'Last block|Loading now|Waiting|Last reward');
+  ok('Street tab: the last blocks are listed, each opening its block', (await page.$$('#st_blocks .st.blk')).length >= 1 && /Block \d/.test(await text(page, '#st_blocks')));
+  ok('Street tab: the legend shows every family with its own drawing and explanation', (await page.$$('#st_legend .fam')).length === 8 && (await page.$$eval('#st_legend .fam b', (es) => es.map((e) => e.textContent))).join('|') === 'Native SegWit|Taproot|Legacy|Script (P2SH)|Wrapped SegWit|SegWit script|Bare public key (P2PK)|Satoshi-era coin');
+  ok('Street tab: the page widens for the scene, the band is folded away under it, and it can be switched from here too', await page.$eval('body', (b) => b.classList.contains('wide')) && await page.$eval('#st_band', (e) => e.checked) && (await page.$eval('#street', (c) => c.clientHeight)) === 0);
+  await tap(page, '#st_band'); await sleep(150);
+  ok('unticking hides the band everywhere and Settings agrees', !(await visible(page, '#street')) && !(await page.$eval('#set_street', (e) => e.checked)));
+  await tap(page, '#st_band'); await sleep(150);
+  await tab(page, 'wallet'); await onPane(page, 'wallet'); await sleep(300);
+  ok('leaving the Street tab narrows the page again', !(await page.$eval('body', (b) => b.classList.contains('wide'))));
+  ok('ticking brought the band back — as a one-line ticker while a wallet is open', await visible(page, '#street') && (await page.$eval('#street', (c) => c.clientHeight)) < 120);
+  await page.$eval('#street', (c) => { const r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('click', { clientX: r.right - 34, clientY: r.top + 15, bubbles: true })); }); await sleep(250);
+  ok('▴ on the ticker opens the full band; the choice is remembered', (await page.$eval('#street', (c) => c.clientHeight)) > 150 && await page.evaluate(() => localStorage.getItem('olesia:mainnet:street:band') === 'full'));
+  await page.$eval('#street', (c) => { const r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('click', { clientX: r.right - 14, clientY: r.top + 15, bubbles: true })); }); await sleep(250);
+  ok('× on the band hides it', !(await visible(page, '#street')));
+  await page.evaluate(() => { localStorage.removeItem('olesia:mainnet:street:band'); }); await tab(page, 'settings'); await page.$eval('#set_street', (e) => e.scrollIntoView({ block: 'center' })); await tap(page, '#set_street'); await sleep(150);
+  ok('Settings brings the band back', await visible(page, '#street'));
+  await tab(page, 'wallet'); await onPane(page, 'wallet');
+
+  // ================= PRACTICE-ONLY wallet: the same words, Testnet 4 and nowhere else =================
+  await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), tap(page, '#lockbtn')]);
+  ok('Welcome offers a practice wallet and the street', await visible(page, '#w_practice') && await visible(page, '#w_streetpage'));
+  await tap(page, '#w_import'); await onPane(page, 'import');
+  await tap(page, '#i_net button[data-net="testnet4"]');
+  await page.type('#i_phrase', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'); await tap(page, '#i_go');
+  await onPane(page, 'save');
+  { const before = downloads().length; await tap(page, '#s_gen'); const pw = await page.$eval('#s_pw', (e) => e.value); await tap(page, '#s_go');
+    await page.waitForFunction(() => !document.querySelector('#s_done').classList.contains('hide'), { timeout: 180000 });
+    for (let i = 0; i < 40 && downloads().length === before; i++) await sleep(250);
+    const pName = downloads().sort().filter((f) => /^olesia-practice-/.test(f)).pop(), pDat = pName ? readFileSync(join(DL, pName), 'utf8') : '';
+    ok('a practice wallet file is named olesia-practice-… and marked testnet4 inside', /^olesia-practice-\d{8}-\d{6}\.dat$/.test(pName || '') && (() => { try { return JSON.parse(pDat).network === 'testnet4'; } catch { return false; } })());
+    ok('the save note says the file opens on Testnet 4 only', /Testnet 4 only/.test(await text(page, '#s_done')));
+    await tap(page, '#s_open'); await onPane(page, 'wallet'); curPw = pw;
+    ok('the practice wallet opens on Testnet 4 (unit tBTC, no mainnet)', (await text(page, '#netname')) === 'Testnet 4' && (await text(page, '#bal_unit')) === 'tBTC' && /practice wallet \(Testnet 4 only\)/.test(await text(page, '#w_kind')));
+    await tab(page, 'networks');
+    ok('Networks: Testnet 4 only — no real wallet, no same-words warning', (await page.$$eval('#netlist .netrow', (rs) => rs.map((r) => r.dataset.net))).join() === 'testnet4' && !(await visible(page, '#net_warn')));
+    await tab(page, 'faucet');
+    ok('Faucet: a tb1q address, no same-words warning', /^tb1q/.test(await text(page, '#f_addr')) && !(await visible(page, '#f_same')));
+    await tap(page, '#f_open'); await onPane(page, 'wallet');
+    // the file reopens on Testnet 4 as well
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), tap(page, '#lockbtn')]);
+    await tap(page, '#w_open'); await onPane(page, 'open');
+    await (await page.$('#o_file')).uploadFile(join(DL, pName));
+    await page.waitForFunction(() => /practice wallet/.test(document.querySelector('#o_info').textContent));
+    ok('Open: the file is recognised as a practice wallet (Testnet 4 only)', /Olesia practice wallet file · Testnet 4 only/.test(await text(page, '#o_info')));
+    await page.type('#o_pw', pw); await tap(page, '#o_go'); await onPane(page, 'wallet');
+    ok('…and opens on Testnet 4 with the BIP-84 testnet address', (await text(page, '#netname')) === 'Testnet 4' && await (async () => { await tap(page, '#a_recv'); await onPane(page, 'receive'); const a = await text(page, '#r_addr'); await tap(page, '#pane-receive .back'); return /^tb1q/.test(a); })());
+  }
+  await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), tap(page, '#lockbtn')]);
+  await tap(page, '#w_import'); await onPane(page, 'import');
+  await page.type('#i_phrase', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'); await tap(page, '#i_go');
+  curPw = await saveStep(page);
+
   // ================= OPEN an OLD cold-generator backup (.json) =================
   await page.goto(ORIGIN + '/', { waitUntil: 'load' });
   const M = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -648,7 +770,7 @@ try {
   ok('uncompressed "5…" private key imports', wifMain.startsWith('5') && /uncompressed/.test(await text(page, '#w_kind')));
   await tap(page, '#a_recv'); await onPane(page, 'receive');
   const paperAddr = await text(page, '#r_addr');
-  ok('a single key offers only its Legacy address', paperAddr.startsWith('1') && !(await visible(page, '#r_typebox')));
+  ok('a single uncompressed key offers only its Legacy address (plus its bare P2PK form)', paperAddr.startsWith('1') && (await page.$$eval('#r_type option', (os) => os.map((o) => o.value))).join() === 'p2pkh,p2pk');
   cliw('sendtoaddress', toRegtest(paperAddr), 0.2); mine(1);
   await tap(page, '#pane-receive .back'); await onPane(page, 'wallet');
   ok('paper-wallet balance appears', await refreshUntil(page, '0.20000000'));

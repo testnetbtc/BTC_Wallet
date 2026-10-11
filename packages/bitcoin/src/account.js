@@ -20,18 +20,28 @@ import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from '@noble/hashes/
 import { net } from './networks.js';
 import { normalizeMnemonic } from './wallet.js';
 import { SCRIPT_TYPES } from './scripts.js';
-import { buildSignedTxMulti, buildSweepTxMulti, assertAddressNetwork, assertFeeRate, assertRecipientAmount, opReturnScript, OP_RETURN_MAX, MAX_FEERATE } from './tx.js';
+import { buildSignedTxMulti, buildSweepTxMulti, buildRawScriptTx, assertAddressNetwork, assertFeeRate, assertRecipientAmount, opReturnScript, OP_RETURN_MAX, MAX_FEERATE } from './tx.js';
 import { buildLegacyTx } from './legacy_sign.js';
 
 const hash160 = (b) => ripemd160(sha256(b));
 const b58check = createBase58check(sha256);
 
-// Address types a recovery phrase is scanned for (BIP-84, 86, 49, 44), in display order.
-export const HD_TYPES = ['p2wpkh', 'p2tr', 'p2sh-p2wpkh', 'p2pkh'];
-// Address types the wallet OFFERS for receiving and change: native SegWit (bc1q…) or Legacy
-// (1…). The other two are still scanned so an imported wallet's existing coins are found.
-export const RECEIVE_TYPES = ['p2wpkh', 'p2pkh'];
+// Address types a recovery phrase is scanned for (BIP-84, 86, 49, 44), in display order, plus
+// bare P2PK on the BIP-44 keys (the previous wallet's "P2PK lab" path, so its coins are found).
+export const HD_TYPES = ['p2wpkh', 'p2tr', 'p2sh-p2wpkh', 'p2pkh', 'p2pk'];
+// Address types the wallet OFFERS for receiving and change: native SegWit (bc1q…), Taproot
+// (bc1p…) or Legacy (1…). Nested SegWit is still scanned so an imported wallet's coins are found.
+export const RECEIVE_TYPES = ['p2wpkh', 'p2tr', 'p2pkh'];
+const STD_TYPES = HD_TYPES.filter((t) => t !== 'p2pk');   // the ones with an address
+// P2PK has no address: only this wallet can put coins into one of its own P2PK outputs
+// (Receive → P2PK → "move coins in"), spending from the normal coins to the raw script.
 export const TYPE_LABEL = { p2wpkh: 'Native SegWit', p2tr: 'Taproot', 'p2sh-p2wpkh': 'Nested SegWit', p2pkh: 'Legacy', p2pk: 'P2PK' };
+const p2pkScript = (pubkey) => concatBytes(Uint8Array.of(pubkey.length), pubkey, Uint8Array.of(0xac));
+const chainsOf = (type) => (type === 'p2pk' ? [0] : [0, 1]);   // nothing ever returns change to a bare public key
+const P2PK_SCRIPT = /^(21(02|03)[0-9a-f]{64}|4104[0-9a-f]{128})ac$/;
+// how deep each type is scanned: the types the wallet issues addresses on, the ones only looked
+// at for an imported wallet's coins, and the bare-public-key outputs
+const rangeOf = (type, range, otherRange, rawRange) => (type === 'p2pk' ? rawRange : RECEIVE_TYPES.includes(type) ? range : otherRange);
 export const DEFAULT_RANGE = 100;       // addresses scanned per chain, per type
 export const COINBASE_MATURITY = 100;
 export const MESSAGE_MAX_BYTES = OP_RETURN_MAX;   // 80: relayed and mined everywhere
@@ -71,9 +81,10 @@ export function openSeedAccount({ mnemonic, passphrase = '', network = 'mainnet'
     if (cache.has(k)) return cache.get(k);
     const child = chainNode(type, chain).deriveChild(index);
     if (!child.privateKey) throw new Error('no private key derived');
-    const key = stdKey(type, child.privateKey, child.publicKey, n.btc);
-    const e = { group: 'std', type, chain, index, path: `m/${SCRIPT_TYPES[type].purpose}'/${n.coin}'/0'/${chain}/${index}`,
-                address: key.address, script: key.scriptHex, key };
+    const path = `m/${SCRIPT_TYPES[type].purpose}'/${n.coin}'/0'/${chain}/${index}`;
+    let e;
+    if (type === 'p2pk') e = { group: 'raw', type, rawKind: 'p2pk', chain, index, path, address: null, script: bytesToHex(p2pkScript(child.publicKey)), key: { privKey: child.privateKey, pubkey: child.publicKey } };
+    else { const key = stdKey(type, child.privateKey, child.publicKey, n.btc); e = { group: 'std', type, chain, index, path, address: key.address, script: key.scriptHex, key }; }
     cache.set(k, e);
     return e;
   }
@@ -84,9 +95,9 @@ export function openSeedAccount({ mnemonic, passphrase = '', network = 'mainnet'
     id: walletIdOf(entry('p2wpkh', 0, 0).script),
     entry,
     // every script to look up: all types × receive+change × [0, range)
-    entries(range = DEFAULT_RANGE, otherRange = range) {
+    entries(range = DEFAULT_RANGE, otherRange = range, rawRange = otherRange) {
       const out = [];
-      for (const type of HD_TYPES) for (const chain of [0, 1]) for (let i = 0; i < (RECEIVE_TYPES.includes(type) ? range : otherRange); i++) out.push(entry(type, chain, i));
+      for (const type of HD_TYPES) for (const chain of chainsOf(type)) for (let i = 0; i < rangeOf(type, range, otherRange, rawRange); i++) out.push(entry(type, chain, i));
       return out;
     },
     receiveTypes: () => RECEIVE_TYPES.slice(),
@@ -119,7 +130,7 @@ export function openWifAccount({ wif, network = 'mainnet' }) {
   const { privKey, compressed, pubkey } = parseWifAny(wif, network);
   const list = [];
   if (compressed) {
-    for (const type of HD_TYPES) {
+    for (const type of STD_TYPES) {
       const key = stdKey(type, privKey, pubkey, n.btc);
       list.push({ group: 'std', type, chain: 0, index: 0, path: 'single key', address: key.address, script: key.scriptHex, key });
     }
@@ -130,8 +141,7 @@ export function openWifAccount({ wif, network = 'mainnet' }) {
                 address: btc.Address(n.btc).encode({ type: 'pkh', hash: pkh }), script: bytesToHex(script), key: { privKey, pubkey } });
   }
   // bare pay-to-pubkey for this key (no address) — spendable through the legacy signer
-  const pk = concatBytes(Uint8Array.of(pubkey.length), pubkey, Uint8Array.of(0xac));
-  list.push({ group: 'raw', type: 'p2pk', rawKind: 'p2pk', chain: 0, index: 0, path: 'single key (P2PK)', address: null, script: bytesToHex(pk), key: { privKey, pubkey } });
+  list.push({ group: 'raw', type: 'p2pk', rawKind: 'p2pk', chain: 0, index: 0, path: 'single key (P2PK)', address: null, script: bytesToHex(p2pkScript(pubkey)), key: { privKey, pubkey } });
   const primary = list[0];
   return {
     kind: 'wif', network, compressed,
@@ -190,19 +200,20 @@ export function openWatchAccount(pub) {
       if (!Number.isInteger(index) || index < 0 || index >= 0x80000000) throw new Error('bad address index');
       const k = `${type}/${chain}/${index}`;
       if (cache.has(k)) return cache.get(k);
-      const spend = spendFor(type, chainNode(type, chain).deriveChild(index).publicKey, n.btc);
-      const e = { group: 'std', type, chain, index, path: `m/${SCRIPT_TYPES[type].purpose}'/${n.coin}'/0'/${chain}/${index}`,
-                  address: spend.address, script: bytesToHex(spend.script) };
+      const pubkey = chainNode(type, chain).deriveChild(index).publicKey, path = `m/${SCRIPT_TYPES[type].purpose}'/${n.coin}'/0'/${chain}/${index}`;
+      let e;
+      if (type === 'p2pk') e = { group: 'raw', type, rawKind: 'p2pk', chain, index, path, address: null, script: bytesToHex(p2pkScript(pubkey)), pubkey: bytesToHex(pubkey) };
+      else { const spend = spendFor(type, pubkey, n.btc); e = { group: 'std', type, chain, index, path, address: spend.address, script: bytesToHex(spend.script) }; }
       cache.set(k, e);
       return e;
     };
-    const plan = (range, otherRange) => { const out = []; for (const type of HD_TYPES) for (const chain of [0, 1]) for (let i = 0; i < (RECEIVE_TYPES.includes(type) ? range : otherRange); i++) out.push([type, chain, i]); return out; };
+    const plan = (range, otherRange, rawRange) => { const out = []; for (const type of HD_TYPES) for (const chain of chainsOf(type)) for (let i = 0; i < rangeOf(type, range, otherRange, rawRange); i++) out.push([type, chain, i]); return out; };
     return { ...base, words: pub.words, hasPassphrase: !!pub.hasPassphrase, entry,
-      entries: (range = DEFAULT_RANGE, otherRange = range) => plan(range, otherRange).map((a) => entry(...a)),
+      entries: (range = DEFAULT_RANGE, otherRange = range, rawRange = otherRange) => plan(range, otherRange, rawRange).map((a) => entry(...a)),
       // same as entries(), but yields to the browser between batches so the page stays responsive
-      async entriesAsync(range = DEFAULT_RANGE, otherRange = range) {
+      async entriesAsync(range = DEFAULT_RANGE, otherRange = range, rawRange = otherRange) {
         const out = []; let fresh = 0;
-        for (const a of plan(range, otherRange)) { if (!cache.has(a.join('/')) && ++fresh % 48 === 0) await yieldToUi(); out.push(entry(...a)); }
+        for (const a of plan(range, otherRange, rawRange)) { if (!cache.has(a.join('/')) && ++fresh % 48 === 0) await yieldToUi(); out.push(entry(...a)); }
         return out;
       },
       receiveTypes: () => RECEIVE_TYPES.slice(),
@@ -213,9 +224,9 @@ export function openWatchAccount(pub) {
   const compressed = pubkey.length === 33;
   if (compressed !== !!pub.compressed || (pubkey.length !== 33 && pubkey.length !== 65)) throw new Error('unknown wallet description');
   const list = [];
-  if (compressed) for (const type of HD_TYPES) { const sp = spendFor(type, pubkey, n.btc); list.push({ group: 'std', type, chain: 0, index: 0, path: 'single key', address: sp.address, script: bytesToHex(sp.script) }); }
+  if (compressed) for (const type of STD_TYPES) { const sp = spendFor(type, pubkey, n.btc); list.push({ group: 'std', type, chain: 0, index: 0, path: 'single key', address: sp.address, script: bytesToHex(sp.script) }); }
   else { const pkh = hash160(pubkey); list.push({ group: 'raw', type: 'p2pkh', rawKind: 'p2pkh', chain: 0, index: 0, path: 'single key (uncompressed)', address: btc.Address(n.btc).encode({ type: 'pkh', hash: pkh }), script: bytesToHex(concatBytes(hexToBytes('76a914'), pkh, hexToBytes('88ac'))) }); }
-  list.push({ group: 'raw', type: 'p2pk', rawKind: 'p2pk', chain: 0, index: 0, path: 'single key (P2PK)', address: null, script: bytesToHex(concatBytes(Uint8Array.of(pubkey.length), pubkey, Uint8Array.of(0xac))) });
+  list.push({ group: 'raw', type: 'p2pk', rawKind: 'p2pk', chain: 0, index: 0, path: 'single key (P2PK)', address: null, script: bytesToHex(p2pkScript(pubkey)), pubkey: bytesToHex(pubkey) });
   return { ...base, compressed,
     entry: (type) => { const e = list.find((x) => x.type === type); if (!e) throw new Error('this key has no ' + type + ' address'); return e; },
     entries: () => list.slice(),
@@ -279,14 +290,21 @@ export function verifyPrevout(prevHex, coin) {
 // { account, coins (the coins to spend from — all one group), to, amount (sats) | sweep,
 //   feeRate (sat/vB), changeEntry, fetchPrevTx(txid,height) -> hex,
 //   message: optional short public note, written as one OP_RETURN output (<= 80 bytes UTF-8) }
-export async function buildSpend({ account, coins, to, amount = null, sweep = false, feeRate, changeEntry, fetchPrevTx, message = null, signer = null }) {
+// `toScript` instead of `to`: pay a raw P2PK script (hex) — the only address-less destination the
+// wallet knows, used to move coins into one of its OWN bare-public-key outputs. Never a sweep.
+export async function buildSpend({ account, coins, to, toScript = null, amount = null, sweep = false, feeRate, changeEntry, fetchPrevTx, message = null, signer = null }) {
   // keys come from the short-lived signer (normal case) or from a full account (tests)
   const keyOf = (c) => (signer ? signer.keyFor(c.entry) : c.entry.key);
   const network = account.network;
   const note = message == null || String(message) === '' ? null : String(message);
   const dataScript = note == null ? null : opReturnScript(note);   // throws if > 80 bytes
   feeRate = assertFeeRate(feeRate);
-  const dest = assertAddressNetwork(to, network);
+  if (toScript != null) {
+    toScript = String(toScript).toLowerCase();
+    if (!P2PK_SCRIPT.test(toScript)) throw new Error('only a bare public key (P2PK) script can be paid without an address');
+    if (sweep) throw new Error('choose an amount to move into the P2PK output — the rest stays as it is');
+  }
+  const dest = toScript != null ? null : assertAddressNetwork(to, network);
   if (!coins?.length) throw new Error('no spendable coins selected');
   if (coins.some((c) => !c.spendable)) throw new Error('a selected coin is not spendable yet');
   const group = coins[0].entry.group;
@@ -308,27 +326,27 @@ export async function buildSpend({ account, coins, to, amount = null, sweep = fa
   let built;
   if (group === 'std') {
     const keyedUtxos = coins.map((c) => ({ txid: c.txid, vout: c.vout, value: c.value, key: keyOf(c), prevTxHex: prev.get(outpointOf(c)) }));
-    built = sweep
-      ? buildSweepTxMulti({ keyedUtxos, toAddress: dest, feeRate, networkName: network, message: note })
+    built = toScript != null ? buildRawScriptTx({ keyedUtxos, script: hexToBytes(toScript), amount, changeAddress: change.address, feeRate, networkName: network, message: note })
+      : sweep ? buildSweepTxMulti({ keyedUtxos, toAddress: dest, feeRate, networkName: network, message: note })
       : buildSignedTxMulti({ keyedUtxos, recipients: [{ address: dest, amount }], message: note, changeAddress: change.address, feeRate, networkName: network });
   } else {
-    const destScript = btc.OutScript.encode(btc.Address(net(network).btc).decode(dest));
+    const destScript = toScript != null ? hexToBytes(toScript) : btc.OutScript.encode(btc.Address(net(network).btc).decode(dest));
     const inputs = coins.map((c) => { const k = keyOf(c); return { txid: c.txid, vout: c.vout, value: c.value, script: hexToBytes(c.entry.script), kind: c.entry.rawKind, privKey: k.privKey, pubkey: k.pubkey }; });
     // change for an old-format key goes back to the first input's own script
     built = buildLegacyTx({ inputs, destScript, recipientAmount: sweep ? null : amount, changeScript: sweep ? null : hexToBytes(change.script), feeRate, dataScript });
   }
-  const audit = auditBuiltTx({ hex: built.txHex, network, coins, to: dest, amount: sweep ? null : amount, changeScript: sweep ? null : change.script, message: note });
+  const audit = auditBuiltTx({ hex: built.txHex, network, coins, to: dest, toScript, amount: sweep ? null : amount, changeScript: sweep ? null : change.script, message: note });
   if (audit.txid !== built.txid) throw new Error('internal error: transaction id mismatch after build — nothing was sent');
   return { txHex: built.txHex, txid: built.txid, vsize: built.vsize ?? audit.vsize, feeRate, sweep, group,
            fee: audit.fee, sent: audit.sent, change: audit.change, changeAddress: audit.change ? change.address : null,
            changeScript: audit.change ? change.script : null, changeVout: audit.changeVout,
-           to: dest, inputs: audit.inputs, effectiveFeeRate: audit.fee / (built.vsize ?? audit.vsize),
+           to: dest, toScript: toScript ?? null, inputs: audit.inputs, effectiveFeeRate: audit.fee / (built.vsize ?? audit.vsize),
            message: audit.message, messageBytes: audit.message == null ? 0 : utf8ToBytes(audit.message).length };
 }
 
 // Decode the FINAL signed bytes and check them against what the user asked for. This — not
 // the form fields, and not the builder's own bookkeeping — is what the confirmation shows.
-export function auditBuiltTx({ hex, network, coins, to, amount, changeScript, message = null }) {
+export function auditBuiltTx({ hex, network, coins, to, toScript = null, amount, changeScript, message = null }) {
   const n = net(network);
   const tx = btc.Transaction.fromRaw(hexToBytes(hex), { allowUnknownOutputs: true, allowUnknownInputs: true, disableScriptCheck: true });
   const selected = new Map(coins.map((c) => [outpointOf(c), c]));
@@ -341,7 +359,7 @@ export function auditBuiltTx({ hex, network, coins, to, amount, changeScript, me
     inSum += BigInt(c.value); inputs.push(op);
   }
   if (new Set(inputs).size !== inputs.length) throw new Error('built transaction spends the same coin twice — refusing');
-  const destScript = bytesToHex(btc.OutScript.encode(btc.Address(n.btc).decode(to)));
+  const destScript = toScript != null ? String(toScript).toLowerCase() : bytesToHex(btc.OutScript.encode(btc.Address(n.btc).decode(to)));
   let outSum = 0n, sent = 0n, change = 0n, changeVout = null, destCount = 0, dataCount = 0;
   const sameScript = changeScript === destScript;   // paying your own change address
   // the ONLY data output allowed is the exact OP_RETURN the user asked for, carrying no value

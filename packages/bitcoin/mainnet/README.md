@@ -11,11 +11,32 @@ encrypted form; the password is asked for every time a payment is signed or the 
 are shown. Nothing secret is written to browser storage. A wallet cannot be used until it has a
 password and a saved file.
 
-**Practice networks.** A recovery-phrase wallet also has Testnet 4, Signet and Testnet 3 wallets:
-the same words on the coin-type-1 path (different keys), worthless coins. No nodes are run for
-them — the node API relays a public Esplora API under `/n/<network>/…`. Mainnet never uses that
-relay. The faucet's claim page is on a separate origin (`app.olesia.io/faucet/`,
-`infra/faucet-page/`) because it runs a third-party human check; the wallet only links to it.
+**Practice networks.** A recovery-phrase wallet also has a Testnet 4 wallet (and, behind the
+Settings switch "Also show Signet and Testnet 3", two more): the same words on the coin-type-1
+path (different keys), worthless coins. Because the words are ONE secret, the Networks and
+Faucet tabs, the save note and Welcome all say so plainly. Alternatively a **practice wallet**
+("Create a practice wallet" on Welcome, or "Open it as: Testnet 4 · practice only" on Import)
+is a `.dat` file whose header network is `testnet4`: it opens on Testnet 4 and nowhere else
+(`OM.lock({ network })`, `wallet.home`, `wallet.practiceOnly`; file name `olesia-practice-…`).
+An old cold-generator backup made for a test network converts into a practice wallet. No nodes
+are run for the practice networks — the node API relays a public Esplora API under
+`/n/<network>/…`. Mainnet never uses that relay. The faucet's claim page is on a separate origin
+(`app.olesia.io/faucet/`, `infra/faucet-page/`) because it runs a third-party human check; the
+wallet only links to it.
+
+**Address types.** Receive and change: native SegWit (`bc1q`), Taproot (`bc1p`, BIP-86 key path,
+Schnorr) or Legacy (`1…`); nested SegWit is scanned for an imported wallet's coins. **P2PK** —
+Satoshi's bare public key, no address — is a destination only the wallet itself can pay: Receive
+→ P2PK shows the next unused key (BIP-44 keys, index rotated once used, the same path as the
+earlier wallet's "P2PK lab" so its coins are found) and "Move coins into this P2PK output" opens
+Send with a fixed raw-script destination (`prepare({ toScript })`, `buildRawScriptTx` — the
+library's coin selector refuses a bare-pk output, so selection and the final-size fee are done
+there; the audit checks the raw script like any address). A P2PK coin is listed with its tag and
+spent through the legacy signer; "Spend this P2PK coin" ticks it and opens Send. Message signing
+and verification cover `bc1p` too (BIP-322 simple, key path, SIGHASH_DEFAULT; verification also
+accepts the "full" form and the 2025 `smp`/`ful` prefixes — all published vectors pass). Paper
+wallets can be Taproot. Vanity search stays `bc1q` / `1…` (a Taproot vanity needs a point
+multiplication per key, which defeats the batch-inversion search).
 
 **Vanity addresses.** "Create a vanity address" (welcome screen / Settings) searches for an address
 starting with chosen characters. The search runs in Web Workers inside the page or — recommended —
@@ -40,8 +61,16 @@ the bottom through the chapters and stops under the name at the end. It has its 
 (`#intro_b`) and its own clock, so chapter swaps never blank it; a tap that jumps the story ahead
 makes it hurry rather than teleport.
 
-**The street.** A band along the bottom of the page (after txstreet): the Olesia node watching the
-next block being loaded. An old Land Rover Defender waits on the road; every transaction that
+**The street.** The Olesia node watching the next block being loaded (after txstreet), drawn in
+two views from one world: a band along the bottom of every page (full scene, or a one-line
+ticker — its own ▾ ▴ × controls; a phone starts as the ticker; once a wallet is open it starts as
+the ticker unless the person chose otherwise, `localStorage` `olesia:mainnet:street:band`) and
+the **Street tab** (`#pane-street`, also "Watch the street" on Welcome, no wallet needed): a
+wide scene with a sky that follows the local clock, a lit skyline, lamps, the last six blocks
+driving away on the far lane, a tooltip per figure (kind, amount, fee rate, size, coin age), the
+live numbers (last block, loading now, waiting, last reward), a card per recent block, the legend
+of figure families with two drawings each, and "How to read it". Figures walk faster the higher
+their fee rate. An old Land Rover Defender waits on the road; every transaction that
 reaches the node's mempool is a figure who walks up and climbs in the back, dressed for the kind of
 coin it spends — hoodie and laptop for `bc1q`, long coat and fedora for `1…` legacy, suit and
 briefcase for `3…` script, neon visor for `bc1p` Taproot, and a gold hooded Satoshi (after the
@@ -68,9 +97,11 @@ the page for "units" (an element whose children are text and simple inline eleme
 the English with the children numbered, `Load your encrypted <1>.dat</1> file`), a translation is
 placed as text nodes plus the unit's *own* child elements moved back in — never as HTML — and
 units the script has since written to are left alone. Script text goes through `tr('…', { n })`.
-`mainnet/i18n/extract.mjs` builds `en.json` (711 strings: the page's markup walked in headless
-Chrome, `tr()` keys, the engine's messages) and checks every dictionary; `validate.mjs` /
-`merge.mjs` are the translators' tools (`TRANSLATING.md` is their brief). The browser test loads
+`mainnet/i18n/extract.mjs` builds `en.json` (814 strings: the page's markup walked in headless
+Chrome, `tr()` keys, the street's family names and explanations, the engine's messages) and
+checks every dictionary; `validate.mjs` / `merge.mjs` / `checkpart.mjs` / `addpart.mjs` are the
+translators' tools (`TRANSLATING.md` is their brief; a new batch of strings goes out as one part
+per language and `addpart.mjs` folds it in and prunes keys that left the catalogue). The browser test loads
 every shipped dictionary and asserts nothing reachable is left untranslated. The saved choice
 (`localStorage` `olesia:mainnet:lang`) or the browser's language is used on load; the offline copy
 (opened from a file) stays English because it cannot fetch a dictionary.

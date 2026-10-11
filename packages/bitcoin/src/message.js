@@ -5,8 +5,9 @@
 // other software:
 //   * Legacy `1…` (p2pkh): the original "Bitcoin Signed Message" recoverable-ECDSA format that
 //     Bitcoin Core's `signmessage` / `verifymessage` and every wallet since 2011 understand.
-//   * SegWit `bc1q…` (p2wpkh): BIP-322 "simple" — the signature is the witness of a virtual
-//     transaction (to_sign) that spends a virtual output (to_spend) committing to the message.
+//   * SegWit `bc1q…` (p2wpkh) and Taproot `bc1p…` (p2tr): BIP-322 "simple" — the signature is the
+//     witness of a virtual transaction (to_sign) that spends a virtual output (to_spend) committing
+//     to the message; for Taproot a key-path Schnorr signature with the BIP-86 tweak.
 //     Sparrow, BlueWallet, Ledger, bip322-js and others verify it; Bitcoin Core cannot yet.
 //
 // Verification accepts both of the above, plus the BIP-137 variants (Electrum/Trezor sign a
@@ -17,7 +18,7 @@
 // All arithmetic is @noble/curves; transaction serialisation and the BIP-143 sighash are
 // @scure/btc-signer, exactly as the wallet's spends use them.
 import * as btc from '@scure/btc-signer';
-import { secp256k1 } from '@noble/curves/secp256k1';
+import { secp256k1, schnorr } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { utf8ToBytes, concatBytes, bytesToHex, hexToBytes } from '@noble/hashes/utils';
@@ -56,10 +57,12 @@ export function decodeAddress(address, network = 'mainnet') {
 }
 function scriptOf(address, network) { return btc.OutScript.encode(btc.Address(net(network).btc).decode(String(address).trim())); }
 
-// Does this public key produce this address? (p2pkh, p2wpkh, p2sh-p2wpkh)
+// Does this public key produce this address? (p2pkh, p2wpkh, p2sh-p2wpkh; p2tr: as the BIP-86
+// internal key — the address is the tweaked output key)
 function pubkeyMatches(pub, dec) {
   if (dec.type === 'p2pkh' || dec.type === 'p2wpkh') return eq(hash160(pub), dec.hash);
   if (dec.type === 'p2sh') { if (pub.length !== 33) return false; const redeem = concatBytes(Uint8Array.of(0x00, 0x14), hash160(pub)); return eq(hash160(redeem), dec.hash); }
+  if (dec.type === 'p2tr') { if (pub.length !== 33) return false; return eq(btc.p2tr(pub.slice(1)).tweakedPubkey, dec.hash); }
   return false;
 }
 
@@ -103,49 +106,78 @@ function toSpend(message, scriptPubKey) {
     outputs: [{ amount: 0n, script: scriptPubKey }],
   });
 }
-function toSign(toSpendBytes, scriptPubKey) {
+// A "full" signature carries its own to_sign, which may use another version, lock time and
+// sequence (the BIP's generated vectors do); those fields are part of what was signed.
+function toSign(toSpendBytes, scriptPubKey, { version = 0, lockTime = 0, sequence = 0 } = {}) {
   const spendId = dsha(toSpendBytes).slice().reverse();   // txid as displayed (big-endian)
-  const tx = new btc.Transaction({ version: 0, lockTime: 0, allowUnknownOutputs: true, allowUnknownInputs: true, disableScriptCheck: true });   // plain RFC-6979: byte-identical to the BIP-322 reference vectors
-  tx.addInput({ txid: bytesToHex(spendId), index: 0, sequence: 0, witnessUtxo: { amount: 0n, script: scriptPubKey } });
+  const tx = new btc.Transaction({ version, lockTime, allowUnknownOutputs: true, allowUnknownInputs: true, disableScriptCheck: true });   // plain RFC-6979: byte-identical to the BIP-322 reference vectors
+  tx.addInput({ txid: bytesToHex(spendId), index: 0, sequence, witnessUtxo: { amount: 0n, script: scriptPubKey } });
   tx.addOutput({ amount: 0n, script: Uint8Array.of(0x6a) });
   return { tx, spendId };
 }
 
 export function signBip322({ privKey, address, message, network = 'mainnet' }) {
   const dec = decodeAddress(address, network);
-  if (dec.type !== 'p2wpkh') throw new Error('BIP-322 signing here is for bc1q (p2wpkh) addresses');
+  if (dec.type !== 'p2wpkh' && dec.type !== 'p2tr') throw new Error('BIP-322 signing here is for bc1q (p2wpkh) and bc1p (p2tr) addresses');
   const pub = secp256k1.getPublicKey(privKey, true);
   if (!pubkeyMatches(pub, dec)) throw new Error('that key does not belong to this address');
   const spk = scriptOf(address, network);
   const { tx } = toSign(toSpend(message, spk), spk);
-  tx.signIdx(privKey, 0, [btc.SigHash.ALL]);
+  if (dec.type === 'p2tr') {
+    // key-path spend with the BIP-86 tweak, SIGHASH_DEFAULT: the witness is one 64-byte Schnorr signature
+    tx.updateInput(0, { tapInternalKey: pub.slice(1) });
+    tx.signIdx(privKey, 0, [btc.SigHash.DEFAULT]);
+  } else tx.signIdx(privKey, 0, [btc.SigHash.ALL]);
   tx.finalizeIdx(0);
   const witness = tx.inputs[0].finalScriptWitness;
-  if (!witness || witness.length !== 2) throw new Error('unexpected witness');
+  if (!witness || witness.length !== (dec.type === 'p2tr' ? 1 : 2)) throw new Error('unexpected witness');
   return base64.encode(btc.RawWitness.encode(witness));
 }
 
-// Verify a BIP-322 simple (witness stack) or full (whole to_sign tx) signature for p2wpkh.
-function verifyBip322Bytes(raw, message, address, network, dec) {
-  if (dec.type !== 'p2wpkh') return { ok: false, reason: 'BIP-322 verification here covers bc1q (p2wpkh) addresses' };
-  let witness = null, format = 'BIP-322 simple';
-  try { witness = btc.RawWitness.decode(raw); } catch { /* maybe the full form */ }
+// Verify a BIP-322 simple (witness stack) or full (whole to_sign tx) signature for p2wpkh or p2tr.
+// `prefix`: the 2025 revision's "smp" / "ful" tag, when the signature carried one — it then
+// has to decode as that form.
+function verifyBip322Bytes(raw, message, address, network, dec, prefix = null) {
+  if (dec.type !== 'p2wpkh' && dec.type !== 'p2tr') return { ok: false, reason: 'BIP-322 verification here covers bc1q (p2wpkh) and bc1p (p2tr) addresses' };
+  let witness = null, format = 'BIP-322 simple', fields = {};
+  if (prefix !== 'ful') { try { witness = btc.RawWitness.decode(raw); } catch { /* maybe the full form */ } }
+  if (witness && prefix === 'smp' && raw.length !== btc.RawWitness.encode(witness).length) witness = null;
+  if (!witness && prefix === 'smp') return { ok: false, reason: 'an "smp" signature must be a witness stack' };
   if (!witness) {
-    try { const full = btc.RawTx.decode(raw); if (full.witnesses && full.witnesses.length === 1) { witness = full.witnesses[0]; format = 'BIP-322 full'; } }
-    catch { return { ok: false, reason: 'this is neither a legacy signature nor a BIP-322 one' }; }
+    try {
+      const full = btc.RawTx.decode(raw);
+      if (full.witnesses && full.witnesses.length === 1 && full.inputs.length === 1) { witness = full.witnesses[0]; format = 'BIP-322 full'; fields = { version: full.version, lockTime: full.lockTime, sequence: full.inputs[0].sequence }; }
+    } catch { return { ok: false, reason: 'this is neither a legacy signature nor a BIP-322 one' }; }
   }
+  if (dec.type === 'p2tr') return verifyBip322Taproot(witness, format, fields, message, address, network, dec);
   if (!witness || witness.length !== 2) return { ok: false, reason: 'a p2wpkh BIP-322 witness has two items (signature, public key)' };
   const [sigAll, pub] = witness;
   if (pub.length !== 33) return { ok: false, reason: 'the public key in the signature is not compressed' };
   if (!pubkeyMatches(pub, dec)) return { ok: false, reason: 'the signature was made by a different key — it does not belong to this address' };
   if (sigAll.length < 9 || sigAll[sigAll.length - 1] !== 0x01) return { ok: false, reason: 'the signature must use SIGHASH_ALL' };
   const spk = scriptOf(address, network);
-  const { tx } = toSign(toSpend(message, spk), spk);
+  const { tx } = toSign(toSpend(message, spk), spk, fields);
   const scriptCode = btc.OutScript.encode({ type: 'pkh', hash: hash160(pub) });
   const hash = tx.preimageWitnessV0(0, scriptCode, btc.SigHash.ALL, 0n);
   let ok = false;
   try { ok = secp256k1.verify(secp256k1.Signature.fromDER(sigAll.slice(0, -1)), hash, pub); } catch { ok = false; }
   return ok ? { ok: true, format, pubkey: bytesToHex(pub) } : { ok: false, reason: 'the signature does not verify for this message' };
+}
+
+// Taproot key path: one Schnorr signature over the BIP-341 sighash, verified against the OUTPUT
+// key in the address (so it holds whatever internal key and tweak produced it). 64 bytes means
+// SIGHASH_DEFAULT; a 65th byte names another sighash type (ALL is accepted, as the BIP allows).
+function verifyBip322Taproot(witness, format, fields, message, address, network, dec) {
+  if (!witness || witness.length !== 1) return { ok: false, reason: 'a Taproot BIP-322 witness is one item (the Schnorr signature)' };
+  const sig = witness[0];
+  let hashType = btc.SigHash.DEFAULT;
+  if (sig.length === 65) { hashType = sig[64]; if (hashType !== btc.SigHash.ALL && hashType !== btc.SigHash.DEFAULT) return { ok: false, reason: 'the signature must use SIGHASH_DEFAULT or SIGHASH_ALL' }; }
+  else if (sig.length !== 64) return { ok: false, reason: 'a Schnorr signature is 64 bytes' };
+  const spk = scriptOf(address, network);
+  const { tx } = toSign(toSpend(message, spk), spk, fields);
+  let ok = false;
+  try { const hash = tx.preimageWitnessV1(0, [spk], hashType, [0n]); ok = schnorr.verify(sig.slice(0, 64), hash, dec.hash); } catch { ok = false; }
+  return ok ? { ok: true, format, pubkey: bytesToHex(dec.hash) } : { ok: false, reason: 'the signature does not verify for this message' };
 }
 
 // ------------------------------------------------------------------ public API
@@ -155,8 +187,8 @@ export function signMessage({ privKey, compressed = true, address, message, netw
   const pub = secp256k1.getPublicKey(privKey, compressed);
   if (!pubkeyMatches(pub, dec)) throw new Error('that key does not belong to this address');
   if (dec.type === 'p2pkh') return { signature: signLegacy({ privKey, compressed, message }), format: 'legacy' };
-  if (dec.type === 'p2wpkh') return { signature: signBip322({ privKey, address, message, network }), format: 'BIP-322 simple' };
-  throw new Error('signing is available for 1… and bc1q… addresses');
+  if (dec.type === 'p2wpkh' || dec.type === 'p2tr') return { signature: signBip322({ privKey, address, message, network }), format: 'BIP-322 simple' };
+  throw new Error('signing is available for 1…, bc1q… and bc1p… addresses');
 }
 
 // Verify any supported signature for (address, message). Never throws for bad input: returns
@@ -164,16 +196,15 @@ export function signMessage({ privKey, compressed = true, address, message, netw
 export function verifyMessage({ address, message, signature, network = 'mainnet' }) {
   let dec;
   try { dec = decodeAddress(address, network); messageBytes(message); } catch (e) { return { ok: false, reason: e.message }; }
-  if (dec.type === 'p2tr') return { ok: false, reason: 'Taproot (bc1p…) signatures are not supported here' };
   let raw;
   // the 2025 revision of BIP-322 prefixes signatures with "smp" (simple) or "ful" (full); both are accepted
   let text = String(signature || '').replace(/\s+/g, '');
-  const prefixed = /^(smp|ful)/.test(text); if (prefixed) text = text.slice(3);
+  const prefix = (text.match(/^(smp|ful)/) || [])[1] || null; if (prefix) text = text.slice(3);
   try { raw = base64.decode(text); } catch { return { ok: false, reason: 'the signature is not valid base64' }; }
   if (!raw.length) return { ok: false, reason: 'the signature is empty' };
-  if (raw.length === 65 && raw[0] >= 27 && raw[0] <= 42) return verifyLegacyBytes(raw, message, dec);
+  if (!prefix && raw.length === 65 && raw[0] >= 27 && raw[0] <= 42) return verifyLegacyBytes(raw, message, dec);
   if (dec.type === 'p2pkh' || dec.type === 'p2sh') return { ok: false, reason: 'for this address type the signature must be the 65-byte legacy format' };
-  return verifyBip322Bytes(raw, message, address, network, dec);
+  return verifyBip322Bytes(raw, message, address, network, dec, prefix);
 }
 
 // The command a sceptic can run against their own Bitcoin Core node (legacy format only).

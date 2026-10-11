@@ -101,13 +101,17 @@ try {
 
   // practice networks: relayed public data, same single host
   await tap('#tabbar button[data-tab="networks"]');
-  ok('Networks tab lists Bitcoin + three practice networks', (await page.$$eval('#netlist .netrow', (r) => r.map((x) => x.dataset.net))).join() === 'mainnet,testnet4,signet,testnet3');
-  await tap('#netlist .netrow[data-net="signet"]'); await onPane('wallet');
+  ok('Networks tab lists Bitcoin + Testnet 4 (Signet and Testnet 3 behind the Settings switch) with the same-words warning', (await page.$$eval('#netlist .netrow', (r) => r.map((x) => x.dataset.net))).join() === 'mainnet,testnet4' && await page.$eval('#net_warn', (e) => !e.classList.contains('hide')));
+  await tap('#netlist .netrow[data-net="testnet4"]'); await onPane('wallet');
   await page.waitForFunction(() => document.querySelector('#scanbox').classList.contains('hide') && document.querySelector('#bal').textContent === '0.00000000', { timeout: 60000 });
-  ok('a Signet practice wallet opens and its (empty) balance loads through the relay', (await text('#netname')) === 'Signet' && (await text('#bal_unit')) === 'sBTC');
+  ok('a Testnet 4 practice wallet opens and its (empty) balance loads through the relay', (await text('#netname')) === 'Testnet 4' && (await text('#bal_unit')) === 'tBTC');
   await tap('#tabbar button[data-tab="faucet"]');
   const fh = await page.$eval('#f_go', (a) => a.href);
-  ok('Faucet tab links to the faucet page with the practice address filled in', /^https:\/\/app\.olesia\.io\/faucet\/\?network=signet&address=tb1q[0-9a-z]{38}$/.test(fh));
+  ok('Faucet tab links to the faucet page with the practice address filled in', /^https:\/\/app\.olesia\.io\/faucet\/\?network=testnet4&address=tb1q[0-9a-z]{38}$/.test(fh));
+  // the Street tab: the scene and the live numbers from the node
+  await tap('#tabbar button[data-tab="street"]'); await onPane('street');
+  await page.waitForFunction(() => document.querySelectorAll('#st_stats .st').length >= 4 && document.querySelectorAll('#st_legend .fam').length === 8, { timeout: 20000 });
+  ok('Street tab: live numbers, the last blocks and the legend of figures', (await page.$$('#st_blocks .st.blk')).length >= 3);
 
   // public test phrase: its addresses hold real dust on mainnet -> exercises coin display (read-only)
   await page.goto(URL_, { waitUntil: 'load' });
@@ -133,7 +137,9 @@ try {
   const st = await (await fetch('https://api.olesia.io/street')).json();
   const chipHeight = Number(((await text('#chip_node_t')).match(/[\d,]+$/) || [''])[0].replace(/,/g, ''));
   ok('street feed: the last block\'s height, tx count and value, and the next block being loaded', Number.isInteger(st.tip?.height) && Math.abs(st.tip.height - chipHeight) <= 1 && st.tip.txs > 0 && st.tip.sats > 0 && st.next.txs > 0 && st.mempool.txs >= st.next.txs);
-  ok('street: drawn on its band along the bottom of the live page', await page.evaluate(() => { const c = document.querySelector('#street'); if (!c || c.classList.contains('hide')) return false; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 89) if (d[i] + d[i + 1] + d[i + 2] > 450) lit++; return lit > 10; }));
+  { const probe = await page.evaluate(() => { const c = document.querySelector('#street'); if (!c) return { why: 'no canvas' }; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4 * 23) if (d[i] + d[i + 1] + d[i + 2] > 300) lit++; return { hidden: c.classList.contains('hide'), h: c.clientHeight, w: c.clientWidth, cw: c.width, ch: c.height, lit, ticker: getComputedStyle(c).display }; });
+    console.log('   street band:', JSON.stringify(probe));
+    ok('street: drawn on its band along the bottom of the live page (the one-line ticker while a wallet is open)', !probe.hidden && probe.h > 0 && probe.h < 130 && probe.lit > 5); }
   ok('page contacted only its own origin and api.olesia.io', [...hosts].every((h) => h === new URL(URL_).host || h === 'api.olesia.io'));
   ok('no console errors / CSP violations', errors.length === 0);
   if (errors.length) console.log(errors.slice(0, 5));

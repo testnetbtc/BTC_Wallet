@@ -28,8 +28,11 @@ const NETWORK = 'mainnet';
 const API_BASE = (typeof __OLESIA_API__ === 'string' && __OLESIA_API__) || DEFAULT_API;
 const api = makeNodeApi({ base: API_BASE });
 // Practice networks: the SAME recovery phrase on a separate derivation path (different keys),
-// with worthless coins. Their chain data is public data relayed by the Olesia server.
+// with worthless coins. Their chain data is public data relayed by the Olesia server. Testnet 4
+// is the one shown by default; a wallet file can also be made for Testnet 4 ONLY (a practice
+// wallet: its words were never meant for real coins).
 const PRACTICE = ['testnet4', 'signet', 'testnet3'];
+const PRACTICE_HOME = 'testnet4';
 const NET_INFO = {
   mainnet:  { label: 'Bitcoin',   long: 'Bitcoin mainnet', unit: 'BTC',  test: false, hint: 'bc1…, 3… or 1…' },
   testnet4: { label: 'Testnet 4', long: 'Testnet 4',       unit: 'tBTC', test: true,  hint: 'tb1…, 2…, m… or n…' },
@@ -58,6 +61,7 @@ function selfCheck() {
   t('BIP-86 address', () => a.entry('p2tr', 0, 0).address === 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr');
   t('BIP-49 address', () => a.entry('p2sh-p2wpkh', 0, 0).address === '37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf');
   t('BIP-44 address', () => a.entry('p2pkh', 0, 0).address === '1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA');
+  t('P2PK script', () => a.entry('p2pk', 0, 0).script === '21' + bytesToHex(a.entry('p2pkh', 0, 0).key.pubkey) + 'ac' && a.entry('p2pk', 0, 0).address === null);
   t('WIF (compressed)', () => openWifAccount({ wif: 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn' }).entry('p2pkh').address === '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH');
   t('WIF (uncompressed)', () => openWifAccount({ wif: '5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf' }).entry('p2pkh').address === '1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm');
   // the watch-only (public-key) derivation the open wallet uses must agree with the private one
@@ -86,8 +90,8 @@ async function openFile(text, password, onProgress) {
              payload: { kind: 'seed', mnemonic: r.mnemonic, passphrase: null, passphraseUsed: !!r.passphraseUsed, fingerprint: null } };
   }
   const o = await openWallet(text, password, { onProgress });
-  if (o.network !== NETWORK) throw new Error(`this wallet file is for ${o.network}, not mainnet`);
-  return { legacy: null, payload: o.payload, createdAt: o.createdAt };
+  if (o.network !== NETWORK && o.network !== PRACTICE_HOME) throw new Error(`this wallet file is for ${o.network}, not mainnet`);
+  return { legacy: null, payload: o.payload, createdAt: o.createdAt, network: o.network };
 }
 
 // An old backup file has no fingerprint, but it does record (a hash of) the wallet's first
@@ -112,23 +116,24 @@ function describeFile(text) {
 // the password and goes through the locked wallet.
 function openLocked({ pubs, vaultText, scriptType = null }) {
   const networks = ['mainnet', ...PRACTICE].filter((n) => pubs[n]);
+  const home = networks[0];   // mainnet, or Testnet 4 for a practice-only wallet
   const sessions = {};
   // one watch-only session per network, created the first time that network is opened
-  const session = (network = NETWORK) => {
+  const session = (network = home) => {
     if (!pubs[network]) throw new Error('this wallet has no ' + network + ' wallet');
     if (!sessions[network]) sessions[network] = new Session({
       account: openWatchAccount(pubs[network]), api: apis[network], store: safeStore,
-      scriptType: network === NETWORK ? scriptType : null, explorer: NETWORKS[network].explorer,
+      scriptType: network === home ? scriptType : null, explorer: NETWORKS[network].explorer,
       window: network === NETWORK ? MAINNET_WINDOW : TEST_WINDOW });
     return sessions[network];
   };
   const lockedFor = (network) => new LockedWallet({ pub: pubs[network], vaultText });
   return {
-    networks, session,
+    networks, home, practiceOnly: home !== NETWORK, session,
     opened: (network) => !!sessions[network],
     prepare: (network, args, password, onProgress) => lockedFor(network).withSigner(password, (signer) => session(network).prepare({ ...args, signer }), { onProgress }),
     reveal: async (password, onProgress) => {
-      const { secret } = await lockedFor(NETWORK).unlock(password, { onProgress });
+      const { secret } = await lockedFor(home).unlock(password, { onProgress });
       return secret.kind === 'wif' ? { kind: 'wif', wif: secret.wif } : { kind: 'seed', mnemonic: normalizeMnemonic(secret.mnemonic), hasPassphrase: !!secret.passphrase };
     },
     // Sign a message with the key behind one of this wallet's addresses (proof of ownership /
@@ -264,15 +269,19 @@ window.OM = {
   validPhrase: (m) => { try { return validateMnemonic(normalizeMnemonic(m), wordlist); } catch { return false; } },
   diagnose,
   wifInfo: (wif) => { const k = parseWifAny(wif, NETWORK); return { compressed: k.compressed }; },
-  describe: (secret) => { const d = describeSecret(secret, NETWORK); return { kind: d.kind, fingerprint: d.fingerprint, words: d.words || null, hasPassphrase: !!d.hasPassphrase, compressed: d.kind === 'wif' ? d.compressed : null }; },
+  describe: (secret, network = NETWORK) => { const d = describeSecret(secret, network === PRACTICE_HOME ? PRACTICE_HOME : NETWORK); return { kind: d.kind, fingerprint: d.fingerprint, words: d.words || null, hasPassphrase: !!d.hasPassphrase, compressed: d.kind === 'wif' ? d.compressed : null }; },
 
   // wallet file
   passwordPolicy, generatePassword: () => generatePassword(6),
-  seal: (payload, password, onProgress) => sealWallet(payload, password, { network: NETWORK, onProgress }),
+  // `network`: mainnet (default) or testnet4 for a practice-only wallet file
+  seal: (payload, password, onProgress, network = NETWORK) => sealWallet(payload, password, { network: network === PRACTICE_HOME ? PRACTICE_HOME : NETWORK, onProgress }),
   openFile, describeFile, legacyPassphraseCheck,
+  practiceHome: PRACTICE_HOME,
 
-  // locking + opening
-  lock: (args, onProgress) => lockWallet({ ...args, network: NETWORK, practiceNetworks: PRACTICE, onProgress }),
+  // locking + opening (a practice-only wallet has no mainnet side at all)
+  lock: ({ network = NETWORK, ...args }, onProgress) => (network === PRACTICE_HOME
+    ? lockWallet({ ...args, network: PRACTICE_HOME, practiceNetworks: [], onProgress })
+    : lockWallet({ ...args, network: NETWORK, practiceNetworks: PRACTICE, onProgress })),
   open: openLocked,
 
   // node

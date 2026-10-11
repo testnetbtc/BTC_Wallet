@@ -17,8 +17,13 @@
   const tr = window.OI18N.t;   // every string a person reads goes through here (see i18n.js)
 
   // ---------- state ----------
-  let wallet = null;      // the open wallet: { networks, session(network) (watch-only), prepare(network, args, password), reveal(password) }
+  let wallet = null;      // the open wallet: { networks, home, practiceOnly, session(network) (watch-only), prepare(network, args, password), reveal(password) }
   let net = 'mainnet';    // the network being shown
+  let makeNet = 'mainnet';   // the network a wallet being created / imported is for: mainnet, or testnet4 for a practice-only wallet
+  // Practice networks shown by default: Testnet 4 only. Signet and Testnet 3 stay behind a Settings switch.
+  const MORE_NETS_KEY = 'olesia:mainnet:morenets';
+  const moreNets = () => { try { return localStorage.getItem(MORE_NETS_KEY) === 'on'; } catch { return false; } };
+  const visibleNets = () => (wallet ? wallet.networks.filter((n) => n === 'mainnet' || n === 'testnet4' || moreNets()) : []);
   let session = null;     // = wallet.session(net)
   const info = () => OM.netInfo[net];
   let draft = null;       // wallet being created: { mnemonic, words, sources }
@@ -48,23 +53,28 @@
   });
   I18N.onChange(() => { langSel.value = I18N.code; rewordAll(); });
   function rewordAll() {
-    for (const f of [rngRender, nodeRender, priceRender, sessionRender, networkRender, padRender, diceRender, genRender, saveRender, renderFees, noteRender, introReword]) { try { f(); } catch { /* a screen that is not set up yet has nothing to re-word */ } }
+    for (const f of [rngRender, nodeRender, priceRender, sessionRender, networkRender, padRender, diceRender, genRender, saveRender, renderFees, noteRender, introReword, streetReword]) { try { f(); } catch { /* a screen that is not set up yet has nothing to re-word */ } }
     try { if (session && session.scanned) renderWallet(); } catch { /* same */ }
     try { if (wallet) { renderNetworks(); renderFaucet(); } } catch { /* same */ }
+    try { createRender(); } catch { /* same */ }
     try { if ($('#pane-vanity').classList.contains('on')) vanityRender(); } catch { /* same */ }
   }
 
   // ---------- panes ----------
-  const TAB_OF = { wallet: 'wallet', receive: 'wallet', send: 'wallet', networks: 'networks', faucet: 'faucet', settings: 'settings' };
+  const TAB_OF = { wallet: 'wallet', receive: 'wallet', send: 'wallet', networks: 'networks', faucet: 'faucet', street: 'street', settings: 'settings' };
   function pane(name) {
-    if (TAB_OF[name] && !session) name = 'welcome';
+    if (TAB_OF[name] && name !== 'street' && !session) name = 'welcome';   // the street is open to everyone
     $$('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + name));
     show($('#tabbar'), !!session && !!TAB_OF[name]);
     $$('#tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === TAB_OF[name]));
+    document.body.classList.toggle('wide', name === 'street');
+    show($('#st_back'), name === 'street' && !session);
+    if (name === 'street') streetPaneOpen(); else streetPaneClose();
     hideReveal(); closeConfirm(false); closePw(null);
     if (name !== 'open') resetOpen();   // a decrypted-but-not-yet-opened file is dropped when leaving that screen
     if (name !== 'vanity' && name !== 'save') vanityLeave();   // an unsaved vanity key is dropped when leaving that screen
     if (name !== 'paper' && name !== 'save') paperLeave();     // same for a paper-wallet key
+    if (name !== 'send') p2pkFund = null;                        // a P2PK destination lives only on the Send screen
     window.scrollTo(0, 0);
   }
   $$('.back[data-go]').forEach((b) => b.addEventListener('click', () => pane(b.dataset.go)));
@@ -73,6 +83,8 @@
     if (b.dataset.tab === 'faucet') renderFaucet();
     pane(b.dataset.tab);
   }));
+  $('#w_streetpage').addEventListener('click', () => pane('street'));
+  $('#st_back').addEventListener('click', () => pane('welcome'));
   $('#netbtn').addEventListener('click', () => { if (session) { renderNetworks(); pane('networks'); } });
 
   // ---------- startup: self-check + node status ----------
@@ -181,11 +193,14 @@
   // =====================================================================================
   let words = 24, addrType = 'p2wpkh', mouse = [], samples = 0;
   const SAMPLE_TARGET = 256, SAMPLE_MAX = 4096;
-  $('#w_create').addEventListener('click', () => { resetCreate(); pane('create1'); });
-  function resetCreate() {
-    draft = null; mouse = []; samples = 0; words = 24; addrType = 'p2wpkh';
+  $('#w_create').addEventListener('click', () => { resetCreate('mainnet'); pane('create1'); });
+  $('#w_practice').addEventListener('click', () => { resetCreate('testnet4'); pane('create1'); });
+  function resetCreate(forNet = 'mainnet') {
+    draft = null; mouse = []; samples = 0; words = 24; addrType = 'p2wpkh'; makeNet = forNet;
     $$('#c_len button').forEach((b) => b.classList.toggle('on', b.dataset.words === '24'));
     $$('#c_type button').forEach((b) => b.classList.toggle('on', b.dataset.type === 'p2wpkh'));
+    $$('#c_net button').forEach((b) => b.classList.toggle('on', b.dataset.net === makeNet));
+    createRender();
     $('#dice').value = ''; $('#diceonly').checked = false; $('#padskip').checked = false;
     $('#c_words').textContent = ''; $('#c_wrote').checked = false; $('#c_next2').disabled = true;
     $('#pad').classList.remove('done'); $('#padhint').textContent = tr('move your mouse in here');
@@ -200,6 +215,21 @@
     addrType = b.dataset.type;
     $$('#c_type button').forEach((x) => x.classList.toggle('on', x === b));
   }));
+  $$('#c_net button').forEach((b) => b.addEventListener('click', () => {
+    makeNet = b.dataset.net;
+    $$('#c_net button').forEach((x) => x.classList.toggle('on', x === b));
+    createRender();
+  }));
+  // the words that change with the network a wallet is being made for
+  function createRender() {
+    const practice = makeNet === 'testnet4';
+    $('#c_title').textContent = practice ? tr('Create a practice wallet') : tr('Create a wallet');
+    $('#c_nethint').textContent = practice
+      ? tr('A practice wallet lives on Testnet 4 only: free coins from the faucet, nothing at stake, and words that were never used for real money. Pick this to learn.')
+      : tr('A real wallet also gets a Testnet 4 practice side from the same words — handy, but those words then guard real coins while you practise. If you would rather keep the two apart, make a separate practice wallet.');
+    $('#c_type').classList.toggle('hide', practice && false);
+    $$('#c_type button').forEach((b) => { const t = b.dataset.type; b.textContent = practice ? ({ p2wpkh: tr('SegWit · tb1q…'), p2tr: tr('Taproot · tb1p…'), p2pkh: tr('Legacy · m…/n…') })[t] : ({ p2wpkh: tr('SegWit · bc1q…'), p2tr: tr('Taproot · bc1p…'), p2pkh: tr('Legacy · 1…') })[t]; });
+  }
   // movement entropy: pointer position + sub-millisecond timing, 8 bytes per sample
   function sample(e) {
     if (samples >= SAMPLE_MAX) return;
@@ -291,7 +321,7 @@
   function openSave(mode) {
     saveMode = mode; lastFile = null; ready = null; lastGenerated = '';
     const creating = mode === 'create';
-    $('#s_title').textContent = creating ? tr('Save your wallet file') : mode === 'convert' ? tr('Save as a new wallet file') : tr('Protect this wallet');
+    $('#s_title').textContent = creating ? (makeNet === 'testnet4' ? tr('Save your practice wallet file') : tr('Save your wallet file')) : mode === 'convert' ? tr('Save as a new wallet file') : tr('Protect this wallet');
     $('#s_sub').textContent = creating
       ? tr('Your wallet is encrypted with a password and saved to this computer as a .dat file. Load that file whenever you want to use the wallet.')
       : mode === 'convert'
@@ -364,16 +394,17 @@
                     fingerprint: OM.describe(sec).fingerprint, scriptType };
       } else payload = { kind: 'wif', wif: sec.wif, scriptType };
       await tick();
-      const text = await OM.seal(payload, password, bar(0, 40));
+      const forNet = sec.kind === 'seed' ? makeNet : 'mainnet';   // a single key is mainnet-only
+      const text = await OM.seal(payload, password, bar(0, 40), forNet);
       // Never hand out a file that cannot be opened: decrypt what we just made and compare.
       const back = await OM.openFile(text, password, bar(40, 80));
-      const same = sec.kind === 'seed' ? back.payload.mnemonic === sec.mnemonic : back.payload.wif === sec.wif;
+      const same = (sec.kind === 'seed' ? back.payload.mnemonic === sec.mnemonic : back.payload.wif === sec.wif) && back.network === forNet;
       if (!same) throw new Error(tr('the encrypted file failed its own verification — nothing was saved, please try again'));
       // the form this wallet is held in while open: encrypted, under the same password
-      const lk = await OM.lock({ secret: sec, password, fileText: text, filePayload: payload, scriptType }, bar(80, 100));
+      const lk = await OM.lock({ secret: sec, password, fileText: text, filePayload: payload, scriptType, network: forNet }, bar(80, 100));
       ready = { pubs: lk.pubs, vaultText: lk.vaultText, scriptType };
       const d = new Date(), z = (n) => String(n).padStart(2, '0');
-      const name = `olesia-wallet-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.dat`;
+      const name = `olesia-${forNet === 'testnet4' ? 'practice' : 'wallet'}-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.dat`;
       lastFile = { name, text };
       download(name, text);
       // the plain secret and the password are no longer needed by this page
@@ -382,10 +413,12 @@
       ['#s_pw', '#s_pw2', '#s_pass', '#s_pass2'].forEach((s) => { $(s).value = ''; $(s).type = 'password'; });
       $('#c_words').textContent = ''; $('#s_policy').textContent = '';
       const done = $('#s_done'); done.textContent = '';
-      done.append(el('b', null, tr('✓ Wallet file created and verified: ')), name);
+      done.append(el('b', null, forNet === 'testnet4' ? tr('✓ Practice wallet file created and verified: ') : tr('✓ Wallet file created and verified: ')), name);
       done.appendChild(el('p', 'hint', tr('It was decrypted again with your password to prove it opens. Find it in your Downloads folder and keep a second copy somewhere safe (a USB stick). The file plus its password is everything needed to spend the funds.')));
       done.appendChild(el('p', 'hint', tr('You will be asked for this password each time you send a payment or show your recovery words.')));
       if (sec.kind === 'seed' && sec.passphrase && !storePass) done.appendChild(el('p', 'hint', tr('Your passphrase is NOT in the file — you will be asked for it each time you open the wallet.')));
+      if (sec.kind === 'seed' && forNet === 'mainnet') { const w = el('p', 'warn'); w.append(el('b', null, tr('Practice side included.')), ' ' + tr('The same words also give you a Testnet 4 wallet (Networks tab) with free coins from the Faucet tab. They are ONE secret: whoever learns your words while you practise can take your real bitcoin. Never type them into a test site, a "testnet" app or a chat.')); done.appendChild(w); }
+      if (forNet === 'testnet4') done.appendChild(el('p', 'hint', tr('This file opens on Testnet 4 only. Its words were never used for real bitcoin — practise freely.')));
       show(done); show($('#s_go'), false); show($('#s_progbar'), false); show($('#s_again')); show($('#s_open')); show($('#s_back'), false);
     } catch (e) { toast('✗ ' + tr(e.message), 'bad'); $('#s_go').disabled = false; show($('#s_progbar'), false); }
   });
@@ -410,9 +443,10 @@
     if (!f) { info.textContent = ''; return; }
     try {
       const d = OM.describeFile(await readFile(f));
-      info.className = 'hint ' + (d.network === 'mainnet' ? 'ok' : 'bad');
+      info.className = 'hint ' + (d.network === 'mainnet' || d.network === OM.practiceHome ? 'ok' : 'bad');
       info.textContent = d.kind === 'legacy-backup'
-        ? tr('Olesia backup file ({network})', { network: d.network }) + (d.network === 'mainnet' ? '' : ' ' + tr('— it was made for a test network; opening it here uses the same words on mainnet'))
+        ? tr('Olesia backup file ({network})', { network: d.network }) + (d.network === 'mainnet' ? '' : ' ' + tr('— it was made for a test network; it will be saved again as a Testnet 4 practice wallet'))
+        : d.network === OM.practiceHome ? tr('Olesia practice wallet file · Testnet 4 only · created {date}', { date: d.createdAt.slice(0, 10) })
         : tr('Olesia wallet file · {network} · created {date}', { network: d.network, date: d.createdAt.slice(0, 10) });
     } catch (e) { info.className = 'hint bad'; info.textContent = '✗ ' + tr(e.message); }
   });
@@ -450,13 +484,13 @@
         }
         secret = { kind: 'seed', mnemonic: p.mnemonic, passphrase: pp };
       }
-      if (res.legacy) {   // an old backup must be re-saved in the current format before use
-        pending = secret; resetOpen();
+      if (res.legacy) {   // an old backup must be re-saved in the current format before use (a test-network one becomes a practice wallet)
+        pending = secret; makeNet = res.legacy.network === 'mainnet' ? 'mainnet' : 'testnet4'; resetOpen();
         return openSave('convert');
       }
       // hold the wallet ENCRYPTED from here on (re-encrypted with the passphrase only if the file lacks it)
       show($('#o_progbar')); prog(0); msg.textContent = tr('Opening…'); await tick();
-      const r = await OM.lock({ secret, password: pw, fileText: text, filePayload: p, scriptType: p.scriptType }, prog);
+      const r = await OM.lock({ secret, password: pw, fileText: text, filePayload: p, scriptType: p.scriptType, network: res.network }, prog);
       lastFile = { name, text };
       resetOpen();
       startSession(OM.open({ pubs: r.pubs, vaultText: r.vaultText, scriptType: p.scriptType }));
@@ -468,7 +502,8 @@
   // IMPORT
   // =====================================================================================
   let importMode = 'seed';
-  $('#w_import').addEventListener('click', () => { $('#i_phrase').value = ''; $('#i_pass').value = ''; $('#i_wif').value = ''; $('#i_msg').textContent = ''; pane('import'); });
+  $('#w_import').addEventListener('click', () => { $('#i_phrase').value = ''; $('#i_pass').value = ''; $('#i_wif').value = ''; $('#i_msg').textContent = ''; makeNet = 'mainnet'; $$('#i_net button').forEach((x) => x.classList.toggle('on', x.dataset.net === 'mainnet')); pane('import'); });
+  $$('#i_net button').forEach((b) => b.addEventListener('click', () => { makeNet = b.dataset.net; $$('#i_net button').forEach((x) => x.classList.toggle('on', x === b)); }));
   $$('#i_mode button').forEach((b) => b.addEventListener('click', () => {
     importMode = b.dataset.mode;
     $$('#i_mode button').forEach((x) => x.classList.toggle('on', x === b));
@@ -481,7 +516,7 @@
         const m = $('#i_phrase').value;
         if (!OM.validPhrase(m)) throw new Error(OM.diagnose(m));
         const sec = { kind: 'seed', mnemonic: m.trim().toLowerCase().replace(/\s+/g, ' '), passphrase: $('#i_pass').value };
-        const d = OM.describe(sec);
+        const d = OM.describe(sec, makeNet);
         pending = sec; $('#i_phrase').value = ''; $('#i_pass').value = '';
         openSave('import');
         if (sec.passphrase) toast(tr('Wallet fingerprint {fp}. The same words and passphrase always give this code — a different code means a different passphrase.', { fp: d.fingerprint }), 'ok');
@@ -502,15 +537,16 @@
   function startSession(w) {
     wallet = w; picked.clear(); draft = null; pending = null;
     show($('#lockbtn'));
-    const i = w.session('mainnet').info;
     sessionRender();
-    armIdle(); setNetwork('mainnet');
+    armIdle(); setNetwork(w.home);
+    if (w.practiceOnly) toast(tr('Practice wallet open: Testnet 4 only. Get free coins from the Faucet tab.'), 'ok');
     clearInterval(autoT); autoT = setInterval(() => { if (!document.hidden && session && !busy.has(session)) refresh(false, true); }, 120000);
   }
   function sessionRender() {   // the wallet's own lines in Settings (re-worded when the language changes)
     if (!wallet) return;
-    const i = wallet.session('mainnet').info;
-    $('#w_kind').textContent = i.kind === 'seed' ? (i.hasPassphrase ? tr('{n}-word recovery phrase + passphrase', { n: i.words }) : tr('{n}-word recovery phrase', { n: i.words })) : (i.compressed ? tr('Single private key (compressed)') : tr('Single private key (uncompressed)'));
+    const i = wallet.session(wallet.home).info;
+    $('#w_kind').textContent = (i.kind === 'seed' ? (i.hasPassphrase ? tr('{n}-word recovery phrase + passphrase', { n: i.words }) : tr('{n}-word recovery phrase', { n: i.words })) : (i.compressed ? tr('Single private key (compressed)') : tr('Single private key (uncompressed)'))) + (wallet.practiceOnly ? ' · ' + tr('practice wallet (Testnet 4 only)') : '');
+    $('#set_morenets').checked = moreNets(); show($('#morenets_row'), !wallet.practiceOnly && wallet.networks.length > 1);
     $('#w_fp').textContent = i.fingerprint;
     show($('#a_savefile'), !!lastFile);
     $('#a_reveal').textContent = i.kind === 'seed' ? tr('Show recovery phrase') : tr('Show private key');
@@ -518,7 +554,7 @@
   // Show one of this wallet's networks. Mainnet is real bitcoin on the Olesia node; the others
   // are practice networks (same words, separate keys, worthless coins, public relayed data).
   function setNetwork(n) {
-    net = n; session = wallet.session(n); picked.clear();
+    net = n; session = wallet.session(n); picked.clear(); p2pkFund = null;
     networkRender();
     show($('#deeper_row'), session.info.kind === 'seed');
     $('#bal').textContent = '—'; $('#bal_sub').textContent = ''; $('#bal_fiat').textContent = ''; $('#coins').textContent = ''; $('#coins').appendChild(el('p', 'hint', tr('Loading…')));
@@ -534,7 +570,7 @@
     $('#hero').classList.toggle('test', inf.test); show($('#testtag'), inf.test);
     $('#bal_unit').textContent = inf.unit; $('#t_unit_coin').textContent = inf.unit; $('#t_to').placeholder = tr(inf.hint);
     $('#w_hint').textContent = inf.test
-      ? tr('{network} is a practice network: these coins have no value. Balances are looked up through a public data service relayed by the Olesia server.', { network: tr(inf.long) })
+      ? tr('{network} is a practice network: these coins have no value. Balances are looked up through a public data service relayed by the Olesia server.', { network: tr(inf.long) }) + (wallet.practiceOnly ? '' : ' ' + tr('Remember: this practice wallet and your real one share the same recovery phrase.'))
       : tr('Balances, confirmations and fee estimates all come from one source: the Olesia Bitcoin node. This page cannot check them against a second source, so before treating a large incoming payment as final, confirm it independently. An incoming payment appears here after its first confirmation (about 10 minutes). The price shown is for information only.');
     $('#t_feehint').textContent = inf.test ? tr('Fee estimates come from the public data service. On practice networks almost any fee confirms.') : tr('Fee estimates come from the Olesia node. A higher rate confirms sooner.');
     $('#c_note').textContent = inf.test ? tr('Shown from the signed transaction itself. This is {network}: practice coins, no value.', { network: tr(inf.long) }) : tr('Shown from the signed transaction itself. Bitcoin payments cannot be reversed.');
@@ -575,6 +611,7 @@
     $('#w_height').textContent = s.height == null ? '—' : Number(s.height).toLocaleString('en-US');
     const of = $('#oldfmt');
     if (s.oldFormat && session.coinList().some((c) => c.spendable && c.group === 'std')) { show(of); of.textContent = tr('{amount} {unit} is held in very old formats (P2PK / uncompressed key). These coins are spent separately: tick them below, then Send.', { amount: btc(s.oldFormat), unit: inf.unit }); }
+    else if (s.oldFormat) { show(of); of.textContent = tr('{amount} {unit} is held as bare public keys (P2PK). Send spends them with the original 2009-style signature.', { amount: btc(s.oldFormat), unit: inf.unit }); }
     else show(of, false);
     renderCoins(); renderActivity();
   }
@@ -597,6 +634,7 @@
       else a.appendChild(el('span', 'tag okk', c.confirmations >= 6 ? tr('6+ conf') : tr('{n} conf', { n: c.confirmations })));
       m.appendChild(a);
       m.appendChild(el('div', 'd', (c.address || tr('bare public key (no address)')) + ' · ' + c.path));
+      if (c.type === 'p2pk' && c.spendable) { const b = el('button', 'back', tr('Spend this P2PK coin')); b.type = 'button'; b.style.padding = '0'; b.addEventListener('click', () => { picked.clear(); picked.add(c.id); $('#a_send').click(); }); m.appendChild(b); }
       const d2 = el('div', 'd', `${c.height == null ? tr('not yet in a block') : tr('block {n}', { n: c.height })} · ${c.txid}:${c.vout} `);
       const link = el('a', null, tr('view ↗')); link.href = session.explorer + encodeURIComponent(c.txid); link.target = '_blank'; link.rel = 'noopener noreferrer';
       d2.appendChild(link); m.appendChild(d2);
@@ -618,13 +656,17 @@
     });
   }
 
-  // ---- networks: one recovery phrase, four wallets ----
+  // ---- networks: one recovery phrase, a real wallet and a practice one ----
   function renderNetworks() {
     const box = $('#netlist'); box.textContent = '';
-    const single = wallet.networks.length === 1;
-    $('#net_sub').textContent = single ? tr('This wallet is a single private key: it exists on Bitcoin mainnet only.') : tr('One recovery phrase, four networks.');
-    const SUB = { mainnet: tr('Real bitcoin · Olesia node'), testnet4: tr('Practice network'), signet: tr('Practice network · steady blocks'), testnet3: tr('Practice network · older') };
-    wallet.networks.forEach((n) => {
+    const nets = visibleNets(), single = wallet.networks.length === 1;
+    $('#net_sub').textContent = wallet.practiceOnly ? tr('A practice wallet: Testnet 4 only, nothing at stake.')
+      : single ? tr('This wallet is a single private key: it exists on Bitcoin mainnet only.')
+      : nets.length > 2 ? tr('One recovery phrase, {n} networks.', { n: nets.length }) : tr('One recovery phrase: real bitcoin, and a practice wallet on Testnet 4.');
+    show($('#net_warn'), !wallet.practiceOnly && !single);
+    show($('#net_hint'), !wallet.practiceOnly && !single);
+    const SUB = { mainnet: tr('Real bitcoin · Olesia node'), testnet4: tr('Practice network · free coins from the Faucet tab'), signet: tr('Practice network · steady blocks'), testnet3: tr('Practice network · older') };
+    nets.forEach((n) => {
       const inf = OM.netInfo[n];
       const row = el('button', 'netrow' + (n === net ? ' on' : '')); row.type = 'button'; row.dataset.net = n;
       row.appendChild(el('span', 'dot' + (inf.test ? '' : ' main')));
@@ -643,24 +685,26 @@
   // ---- faucet: free practice coins (the claim itself happens on the faucet's own page) ----
   let faucetNet = 'testnet4';
   function renderFaucet() {
-    const nets = wallet.networks.filter((n) => OM.netInfo[n].test);
+    const nets = visibleNets().filter((n) => OM.netInfo[n].test);
     show($('#f_body'), nets.length > 0); show($('#f_none'), nets.length === 0);
+    show($('#f_same'), nets.length > 0 && !wallet.practiceOnly);
     if (!nets.length) return;
-    if (OM.netInfo[net].test) faucetNet = net;
+    if (OM.netInfo[net].test && nets.includes(net)) faucetNet = net;
     if (!nets.includes(faucetNet)) faucetNet = nets[0];
-    const seg = $('#f_nets'); seg.textContent = '';
+    const seg = $('#f_nets'); seg.textContent = ''; show(seg, nets.length > 1);
     nets.forEach((n) => {
       const b = el('button', n === faucetNet ? 'on' : '', tr(OM.netInfo[n].label)); b.type = 'button'; b.dataset.net = n;
       b.addEventListener('click', () => { faucetNet = n; renderFaucet(); });
       seg.appendChild(b);
     });
-    const addr = wallet.session(faucetNet).receive('p2wpkh').address;   // derived locally; no lookup needed
+    const fs = wallet.session(faucetNet), addr = fs.receive(fs.info.scriptType === 'p2pkh' ? 'p2wpkh' : fs.info.scriptType).address;   // derived locally; no lookup needed (the faucet pays bech32 addresses)
     $('#f_netname').textContent = tr(OM.netInfo[faucetNet].long);
     $('#f_addr').textContent = addr;
     $('#f_go').href = OM.faucetUrl + '?network=' + encodeURIComponent(faucetNet) + '&address=' + encodeURIComponent(addr);
     $('#f_open').textContent = tr('Open my {network} wallet', { network: tr(OM.netInfo[faucetNet].label) });
   }
   $('#f_open').addEventListener('click', () => setNetwork(faucetNet));
+  $('#set_morenets').addEventListener('change', (e) => { try { localStorage.setItem(MORE_NETS_KEY, e.target.checked ? 'on' : 'off'); } catch { /* fine */ } if (!visibleNets().includes(net)) setNetwork(wallet.home); renderNetworks(); renderFaucet(); });
 
   // the encrypted file can be downloaded again at any time — it is only ciphertext
   $('#a_savefile').addEventListener('click', () => { if (lastFile) { download(lastFile.name, lastFile.text); toast(tr('Wallet file downloaded again.'), 'ok'); } });
@@ -686,20 +730,35 @@
   // =====================================================================================
   $('#a_recv').addEventListener('click', () => {
     const sel = $('#r_type'); sel.textContent = '';
-    const NAMES = info().test ? { p2wpkh: tr('SegWit (tb1…) — recommended'), p2pkh: tr('Legacy (m… / n…)') } : { p2wpkh: tr('SegWit (bc1…) — recommended'), p2pkh: tr('Legacy (1…)') };
-    session.receiveTypes().forEach((t) => { const o = el('option', null, NAMES[t] || t); o.value = t; sel.appendChild(o); });
+    const NAMES = info().test ? { p2wpkh: tr('SegWit (tb1q…) — recommended'), p2tr: tr('Taproot (tb1p…)'), p2pkh: tr('Legacy (m… / n…)'), p2pk: tr('P2PK — bare public key (2009 style, no address)') }
+                             : { p2wpkh: tr('SegWit (bc1q…) — recommended'), p2tr: tr('Taproot (bc1p…)'), p2pkh: tr('Legacy (1…)'), p2pk: tr('P2PK — bare public key (2009 style, no address)') };
+    [...session.receiveTypes(), 'p2pk'].forEach((t) => { const o = el('option', null, NAMES[t] || t); o.value = t; sel.appendChild(o); });
     sel.value = session.info.scriptType;
     show($('#r_typebox'), sel.options.length > 1);
     pane('receive'); renderReceive(session.receive(sel.value));
   });
-  // the chosen type is remembered and also receives this wallet's change
-  $('#r_type').addEventListener('change', () => { session.setPref($('#r_type').value); renderReceive(session.receive($('#r_type').value)); });
+  // the chosen type is remembered and also receives this wallet's change; P2PK is a destination only this wallet can pay
+  $('#r_type').addEventListener('change', () => { const t = $('#r_type').value; if (t === 'p2pk') return renderP2pk(); session.setPref(t); renderReceive(session.receive(t)); });
   async function renderReceive(r) {
+    show($('#r_addrbox')); show($('#r_pkbox'), false);
     $('#r_addr').textContent = r.address;
-    $('#r_path').textContent = r.single ? tr('This private key has one address of each type; it is reused for every payment.') : tr('{path} · address #{n}', { path: r.path, n: r.index });
+    $('#r_path').textContent = (r.single ? tr('This private key has one address of each type; it is reused for every payment.') : tr('{path} · address #{n}', { path: r.path, n: r.index })) + (r.type === 'p2tr' ? ' · ' + tr('Taproot: Schnorr signatures, BIP-86') : '');
     show($('#r_next'), !r.single);
     try { $('#r_qr').src = await OM.qr(r.address); } catch { $('#r_qr').removeAttribute('src'); }
   }
+  // P2PK: the output is the public key itself. Nobody else can pay it (there is no address);
+  // "Move coins in" pays it from this wallet's own coins — a museum piece you can own.
+  let p2pkFund = null;   // { script, pubkey, index } the Send screen is paying, instead of an address
+  function renderP2pk() {
+    const t = session.p2pkTarget();
+    show($('#r_addrbox'), false); show($('#r_pkbox'));
+    $('#r_pk').textContent = t.pubkey;
+    $('#r_pkpath').textContent = t.single ? tr('This private key\'s public key, as a bare P2PK output.') : tr('{path} · P2PK #{n} — a fresh key each time one is used', { path: t.path, n: t.index });
+    const have = session.scanned && session.coinList().some((c) => c.spendable && c.group === 'std');
+    $('#r_pkgo').disabled = !have;
+    $('#r_pkmsg').textContent = have ? '' : tr('This wallet needs an ordinary coin first — P2PK can only be funded from the wallet\'s own coins.');
+  }
+  $('#r_pkgo').addEventListener('click', () => { p2pkFund = session.p2pkTarget(); $('#a_send').click(); });
   $('#r_next').addEventListener('click', () => renderReceive(session.nextReceive($('#r_type').value)));
   $('#r_copy').addEventListener('click', () => {
     navigator.clipboard.writeText($('#r_addr').textContent).then(() => toast(tr('Address copied'), 'ok')).catch(() => toast(tr('Could not copy — select the address and copy it manually'), 'bad'));
@@ -713,6 +772,9 @@
     if (!session.scanned) return toast(tr('Your coins are still loading — please wait for the lookup to finish.'), 'bad');
     ['#t_to', '#t_amt', '#t_fee', '#t_note'].forEach((s) => { $(s).value = ''; }); $('#t_all').checked = false; $('#t_amt').disabled = false;
     $('#t_msg').textContent = ''; show($('#t_result'), false); noteRender();
+    // paying this wallet's own P2PK output instead of an address: the destination is fixed, no sweep
+    show($('#t_tobox'), !p2pkFund); show($('#t_pkbox'), !!p2pkFund); show($('#t_allrow'), !p2pkFund); show($('#t_self'), !p2pkFund);
+    if (p2pkFund) { $('#t_pkkey').textContent = p2pkFund.pubkey; picked.clear(); }
     const list = session.coinList().filter((c) => c.spendable);
     const use = picked.size ? list.filter((c) => picked.has(c.id)) : (list.some((c) => c.group === 'std') ? list.filter((c) => c.group === 'std') : list);
     $('#t_avail').textContent = (picked.size ? (use.length === 1 ? tr('Spending only the 1 ticked coin') : tr('Spending only the {n} ticked coins', { n: use.length })) : tr('Available')) + `: ${btc(use.reduce((a, c) => a + c.value, 0))} ${info().unit}`;
@@ -771,7 +833,7 @@
     const add = (k, v, sub) => { const r = el('div', 'crow'); r.appendChild(el('span', 'k', k)); const vv = el('span', 'v', v); if (sub) vv.appendChild(el('small', null, sub)); r.appendChild(vv); rows.appendChild(r); };
     const unit = info().unit;
     add(tr('Network'), tr(info().long), info().test ? tr('practice coins · no value') : tr('real bitcoin'));
-    add(tr('To'), b.to, `${btc(b.sent)} ${unit} · ` + tr('{n} sats', { n: b.sent.toLocaleString('en-US') }));
+    add(tr('To'), b.to || tr('this wallet\'s own P2PK output (bare public key)'), `${btc(b.sent)} ${unit} · ` + tr('{n} sats', { n: b.sent.toLocaleString('en-US') }) + (b.toScript ? ' · ' + b.toScript.slice(2, 68) : ''));
     if (b.change) add(tr('Change back to you'), b.changeAddress, `${btc(b.change)} ${unit}${b.changePath ? ' · ' + b.changePath : ''}`);
     if (b.message != null) add(tr('Message (OP_RETURN)'), '“' + b.message + '”', tr('{n} bytes · public and permanent', { n: b.messageBytes }));
     add(tr('Network fee'), tr('{n} sats', { n: b.fee.toLocaleString('en-US') }), `${b.effectiveFeeRate.toFixed(1)} sat/vB · ${b.vsize} vB`);
@@ -790,10 +852,10 @@
     const msg = $('#t_msg'); msg.className = 'hint'; show($('#t_result'), false);
     const btn = $('#t_review');
     try {
-      const to = $('#t_to').value.trim();
-      if (!to) throw new Error(tr('enter the address to send to'));
-      if (!OM.checkAddress(to, net)) throw new Error(tr('that is not a valid {network} address', { network: tr(info().long) }));
-      const sweep = $('#t_all').checked;
+      const to = p2pkFund ? '' : $('#t_to').value.trim();
+      if (!p2pkFund && !to) throw new Error(tr('enter the address to send to'));
+      if (!p2pkFund && !OM.checkAddress(to, net)) throw new Error(tr('that is not a valid {network} address', { network: tr(info().long) }));
+      const sweep = !p2pkFund && $('#t_all').checked;
       const amount = sweep ? null : parseAmount($('#t_amt').value, $('#t_unit').value);
       const feeRate = currentFeeRate();
       const message = $('#t_note').value.trim() || null;
@@ -802,7 +864,7 @@
       // The wallet is held encrypted: the password decrypts it for THIS signature only.
       // SECURITY INVARIANT: build + sign ONCE, show what the signed bytes say, then broadcast
       // those exact bytes. Nothing is re-fetched, re-selected or re-signed after confirmation.
-      const args = { to, amount, sweep, feeRate, coinIds: picked.size ? [...picked] : null, message };
+      const args = { to, toScript: p2pkFund ? p2pkFund.script : null, amount, sweep, feeRate, coinIds: picked.size ? [...picked] : null, message };
       const sendNet = net, sendSession = session;   // a payment belongs to the network it was started on
       const r = await withPassword(tr('Enter your wallet password'), tr('Needed to sign this payment. You will see every detail before anything is sent.'), (pw, prog) => wallet.prepare(sendNet, args, pw, prog));
       if (!r.ok) { if (r.error) throw r.error; msg.textContent = tr('Cancelled — nothing was sent.'); return; }
@@ -819,6 +881,7 @@
       const link = el('a', null, tr('View on a block explorer ↗')); link.href = res.explorer; link.target = '_blank'; link.rel = 'noopener noreferrer'; box.appendChild(link);
       box.appendChild(el('p', 'hint', tr('It will confirm in the next blocks. Your change returns to this wallet once it confirms.')));
       show(box); ['#t_to', '#t_amt', '#t_note'].forEach((s) => { $(s).value = ''; }); noteRender(); $('#t_all').checked = false; $('#t_amt').disabled = false;
+      if (p2pkFund) { p2pkFund = null; show($('#t_tobox')); show($('#t_pkbox'), false); show($('#t_allrow')); show($('#t_self')); box.appendChild(el('p', 'hint', tr('Once it confirms, the coin appears in your list as P2PK — a bare public key, exactly as the first bitcoins were held.'))); }
       renderWallet();
     } catch (e) {
       let m = tr(e.message);
@@ -1052,7 +1115,7 @@
   $('#v_paper').addEventListener('click', () => {
     if (!vanityResult) return;
     const r = vanityResult; vanityForget();
-    paperShow({ wif: r.wif, address: r.address, type: r.address.startsWith('bc1q') ? 'p2wpkh' : 'p2pkh', source: 'vanity' });
+    paperShow({ wif: r.wif, address: r.address, type: r.address.startsWith('bc1q') ? 'p2wpkh' : r.address.startsWith('bc1p') ? 'p2tr' : 'p2pkh', source: 'vanity' });
   });
   // Discard needs two clicks within a few seconds: one click must not throw away an hour of work.
   $('#v_discard').addEventListener('click', () => {
@@ -1166,7 +1229,7 @@
   async function paperShow({ wif, address, type, source }) {
     paperLeave();
     paperKey = { wif, address, type };
-    $('#pp_sheet_type').textContent = (type === 'p2wpkh' ? tr('SegWit (bc1q)') : tr('Legacy (1…)')) + (source === 'vanity' ? ' · ' + tr('vanity') : '');
+    $('#pp_sheet_type').textContent = (type === 'p2wpkh' ? tr('SegWit (bc1q)') : type === 'p2tr' ? tr('Taproot (bc1p)') : tr('Legacy (1…)')) + (source === 'vanity' ? ' · ' + tr('vanity') : '');
     $('#pp_sheet_addr').textContent = address; $('#pp_sheet_wif').textContent = wif;
     $('#pp_sheet_date').textContent = new Date().toISOString().slice(0, 10);
     $('#pp_sheet_legend').textContent = tr(OM.paper.lookalikes); $('#pp_legend2').textContent = tr(OM.paper.lookalikes);
@@ -1469,50 +1532,72 @@
   I18N.set(I18N.initial(), { save: false });   // the saved or the browser's language; English until a dictionary arrives
 
   // ================= THE STREET =================
-  // A band along the bottom of the wallet page (after txstreet): the Olesia node watching the next
-  // block being loaded. An old Land Rover Defender waits on the road; every transaction that
-  // reaches the node's mempool is a figure who walks up and climbs in the back — dressed for the
-  // kind of coin it spends (hoodie = bc1q, long coat and hat = 1…, suit = 3…, visor = bc1p
-  // Taproot, gold = P2PK or a Satoshi-era coin); the Defender carries the next block's number on
-  // its roof board and the count and value of what is loaded on its bonnet; the panel on the left
-  // says the same in words with the fiat value and the mempool queue. When the block is mined the
-  // Defender drives off with the block's exact numbers and the next one pulls in. On a phone the
-  // band is a one-line ticker (tap to see the scene). Data: GET /street on the node API every 6 s —
-  // public chain data, nothing about this wallet. Off switch on Welcome and in Settings; reduced
-  // motion gets a still picture; nothing is drawn or fetched while the tab is hidden or the
-  // opening is showing.
-  const STREET_KEY = 'olesia:mainnet:street';
-  const street = $('#street');
+  // The Olesia node watching the next block being loaded (after txstreet). An old Land Rover
+  // Defender waits on the road; every transaction that reaches the node's mempool is a figure who
+  // walks up and climbs in the back — dressed for the kind of coin it spends (hoodie = bc1q, coat
+  // and hat = 1…, suit = 3…, visor = bc1p Taproot, gold = P2PK or a Satoshi-era coin); the faster
+  // walkers paid the higher fee rate. The Defender carries the next block's number across its
+  // side; when the block is mined it drives off with the block's numbers and the next one pulls
+  // in. One WORLD (positions in units of the Defender's length, 0 = its parked front bumper) is
+  // drawn in two VIEWS: the band along the bottom of every page (full, or a one-line ticker —
+  // its own ▾ ▴ × controls; a phone always starts as the ticker) and the Street page, a bigger
+  // scene with sky, skyline, the last blocks driving away, a tooltip per figure, the figures'
+  // legend and live numbers. Data: GET /street on the node API every 6 s — public chain data,
+  // nothing about this wallet. Reduced motion gets still pictures; nothing is drawn or fetched
+  // while the tab is hidden or the opening is showing, or when neither view is open.
+  const STREET_KEY = 'olesia:mainnet:street', BAND_KEY = 'olesia:mainnet:street:band';
+  const street = $('#street'), stCanvas = $('#st_canvas');
   const streetWanted = () => { try { return localStorage.getItem(STREET_KEY) !== 'off'; } catch { return true; } };
-  let streetOn = streetWanted(), streetFull = false, streetRaf = 0, streetLast = 0, streetTimer = 0, streetData = null, streetErr = null, streetSeenT = 0, streetHeight = 0;
+  const bandSaved = () => { try { return localStorage.getItem(BAND_KEY); } catch { return null; } };
+  let streetOn = streetWanted(), pageOn = false, streetRaf = 0, streetLast = 0, streetTimer = 0, streetData = null, streetErr = null, streetSeenT = 0, streetHeight = 0;
+  let bandFull = null;   // the band's mode on this device: true = scene, false = ticker, null = not chosen (full on Welcome, ticker once a wallet is open; a phone starts as the ticker)
   const SAND = '#c7b88c', ROOF = '#e9e4d3', GLASS = '#182026', TYRE = '#101010', RIM = '#6d6d6d', ROAD = '#1c1c1c';
-  const car = { x: 0, mode: 'parked', t: 0, dist: 0, bump: 9, label: null, fill: 0 };   // one vehicle: where it is, what it says, what it is doing
-  let punks = [];   // the figures walking up: { x, h, v, s (style), ph, st ('walk' | 'wait' | 'board'), bt, sats, more, tag }
+  const DOOR = 1.06, SPAWN = 4.6;   // the back door, and where new figures appear (off every view's right edge)
+  const car = { x: 0, mode: 'parked', t: 0, dist: 0, bump: 9, label: null, fill: 0 };   // one vehicle: where it is (world units), what it says, what it is doing
+  let punks = [];   // the figures walking up: { x, h, v (world units), ph, st ('walk' | 'wait' | 'board'), bt, sats, more, tag, a (the arrival) }
   const fmtBtc = (sats) => { const b = (sats || 0) / 1e8; const d = b >= 100 ? 1 : b >= 1 ? 2 : 4; return b.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); };
   const fmtN = (x) => Number(x || 0).toLocaleString('en-US');
+  const fmtAmt = (sats) => (sats === null || sats === undefined ? '' : sats < 100000 ? tr('{n} sats', { n: fmtN(sats) }) : fmtBtc(sats) + ' ₿');   // small ones in sats, so dust reads as dust rather than 0.0000
   const fiatShort = (sats) => { const q = quotes && quotes[cur]; if (!q) return ''; const v = (sats || 0) / 1e8 * q.price, c = CUR[cur]; return v >= 1e9 ? c + (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? c + (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? c + Math.round(v / 1e3) + 'k' : c + v.toLocaleString('en-US', { maximumFractionDigits: 0 }); };
   const isPhone = () => window.innerWidth < 700;
+  const bandIsFull = () => (isPhone() ? bandFull === true : bandFull === null ? !session : bandFull);
+  const ago = (sec) => (sec < 60 ? tr('{n} s ago', { n: Math.max(0, Math.round(sec)) }) : sec < 3600 ? tr('{n} min ago', { n: Math.round(sec / 60) }) : tr('{h} h {m} min ago', { h: Math.floor(sec / 3600), m: Math.round(sec % 3600 / 60) }));
+  const dur = (sec) => (sec < 60 ? tr('{n} s', { n: Math.round(sec) }) : tr('{n} min', { n: Math.round(sec / 60) }));
+  const active = () => streetOn || pageOn;
 
-  function streetLayout() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1), W = street.clientWidth, H = street.clientHeight;
-    if (street.width !== Math.round(W * dpr) || street.height !== Math.round(H * dpr)) { street.width = Math.round(W * dpr); street.height = Math.round(H * dpr); }
-    const g = street.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const bar = $('#tabbar'), tab = bar.classList.contains('hide') ? 0 : bar.offsetHeight, ticker = isPhone() && !streetFull;
-    const phone = isPhone(), top = phone && !ticker ? 30 : 0;                                   // a phone's open scene keeps the ticker line above it
+  // ---- the two views: each sizes its canvas and says where the world sits on it ----
+  function sizeCanvas(c) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1), W = c.clientWidth, H = c.clientHeight;
+    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { g, W, H };
+  }
+  function bandLayout() {
+    const { g, W, H } = sizeCanvas(street);
+    const bar = $('#tabbar'), tab = bar.classList.contains('hide') ? 0 : bar.offsetHeight, phone = isPhone(), ticker = !bandIsFull();
+    const top = phone && !ticker ? 30 : 0;                                                   // a phone's open scene keeps the ticker line above it
     const base = (ticker ? 30 : phone ? 30 + 150 : Math.max(170, Math.min(250, window.innerHeight * 0.26))) + tab;   // the tab bar, when shown, must not eat the road
-    if (Math.abs(H - base) > 1) { street.style.height = base + 'px'; document.body.style.setProperty('--street-h', base + 'px'); return streetLayout(); }   // the page scrolls above the band, never over it
-    const Y = H - tab - 8, L = Math.max(120, Math.min(230, W * 0.17, (Y - top - 10) / 0.97));   // the ground, and the Defender's length (it must fit the band)
-    return { g, W, H, Y, L, tab, ticker, top, phone, park: phone ? W * 0.5 - L / 2 : Math.max(340, W * 0.42) };
+    if (Math.abs(H - base) > 1) { street.style.height = base + 'px'; document.body.style.setProperty('--street-h', base + 'px'); if (street.clientHeight) return bandLayout(); }   // the page scrolls above the band, never over it (a hidden band measures 0: use the numbers as they are)
+    const Hh = street.clientHeight ? H : base, Y = Hh - tab - 8, L = Math.max(120, Math.min(230, W * 0.17, (Y - top - 10) / 0.97));   // the ground, and the Defender's length (it must fit the band)
+    return { g, W, H: Hh, Y, L, tab, ticker, top, phone, park: phone ? W * 0.5 - L / 2 : Math.max(340, W * 0.42), kind: 'band' };
+  }
+  function pageLayout() {
+    const { g, W, H } = sizeCanvas(stCanvas);
+    const L = Math.max(90, Math.min(330, W / 5.2, H / 1.9)), Y = H - Math.max(26, H * 0.14);
+    return { g, W, H, Y, L, park: W * 0.4, kind: 'page', phone: isPhone(), ticker: false, tab: 0, top: 0 };
   }
   function streetSet(on) {
     streetOn = on; try { localStorage.setItem(STREET_KEY, on ? 'on' : 'off'); } catch { /* fine */ }
-    show(street, on); document.body.classList.toggle('street', on); $('#set_street').checked = on; $('#w_street').textContent = on ? 'Hide the street' : 'Show the street';
-    if (on) { streetPoll(); streetTick(); } else { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); document.body.style.removeProperty('--street-h'); }
+    show(street, on); document.body.classList.toggle('street', on); $('#set_street').checked = on; $('#st_band').checked = on; $('#w_street').textContent = on ? tr('Hide the street') : tr('Show the street');
+    if (on) { streetPoll(); streetTick(); } else { document.body.style.removeProperty('--street-h'); if (!pageOn) { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); } }
   }
+  function bandMode(full) { bandFull = full; try { localStorage.setItem(BAND_KEY, full ? 'full' : 'ticker'); } catch { /* fine */ } streetLast = 0; }
+  function streetPaneOpen() { pageOn = true; legendRender(); streetStats(); streetPoll(); streetTick(); }
+  function streetPaneClose() { if (!pageOn) return; pageOn = false; $('#st_tip').classList.add('hide'); if (!streetOn) { clearTimeout(streetTimer); cancelAnimationFrame(streetRaf); } }
   // ---- data ----
   async function streetPoll() {
     clearTimeout(streetTimer);
-    if (!streetOn) return;
+    if (!active()) return;
     if (document.hidden || introOn) { streetTimer = setTimeout(streetPoll, 2000); return; }
     let wait = 6000;
     try {
@@ -1525,7 +1610,7 @@
         streetHeight = d.tip.height; car.label = { height: d.tip.height, txs: d.tip.txs, sats: d.tip.sats, mined: true }; car.fill = 1; car.mode = 'leaving'; car.t = 0;
       } else if (car.mode === 'parked') { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; }
       // figures already walking learn their value once the node has read it
-      for (const p of punks) if (p.sats === null || p.sats === undefined) { const a = (d.arrivals || []).find((x) => x.txid === p.txid); if (a && a.sats !== null && a.sats !== undefined) p.sats = a.sats; }
+      for (const p of punks) if (p.sats === null || p.sats === undefined) { const a = (d.arrivals || []).find((x) => x.txid === p.txid); if (a && a.sats !== null && a.sats !== undefined) { p.sats = a.sats; p.a = a; } }
       // the newest arrivals become figures (at most 8 per poll; the last one carries the overflow)
       const fresh = (d.arrivals || []).filter((a) => a.t > streetSeenT).sort((a, b) => a.t - b.t);
       if (fresh.length) streetSeenT = fresh[fresh.length - 1].t;
@@ -1533,39 +1618,44 @@
         const room = Math.max(0, 14 - punks.length), take = fresh.slice(0, Math.min(8, room));
         take.forEach((a, i) => punks.push(newPunk(a, i, i === take.length - 1 ? fresh.length - take.length : 0)));
       }
-    } catch (e) { streetErr = e.message; wait = 30000; }
+      if (pageOn) streetStats();
+    } catch (e) { streetErr = e.message; wait = 30000; if (pageOn) streetStats(); }
     streetTimer = setTimeout(streetPoll, wait);
   }
   const nextLabel = (d) => ({ height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats, mined: false });
-  // ---- the figures: seven families, one per kind of coin spent, each with its own wardrobe ----
+  // ---- the figures: families, one per kind of coin spent, each with its own wardrobe ----
   const FAMILIES = {
-    p2wpkh: { tag: 'bc1q', tops: ['#262626', '#1f2a22', '#241f33', '#1d2630', '#2a2420'], hats: ['hood', 'hood', 'beanie', 'cap'], items: ['laptop', 'laptop', 'phone', 'backpack', 'none'] },
-    p2wsh: { tag: 'bc1q script', tops: ['#1b3a3a', '#19332c', '#223'], hats: ['headphones', 'beanie', 'none'], items: ['backpack', 'laptop'] },
-    p2sh: { tag: '3…', tops: ['#1c2233', '#222', '#2b2b33', '#1a1a1a'], hats: ['none', 'slick'], items: ['briefcase', 'briefcase', 'phone', 'none'], suit: true },
-    'p2sh-p2wpkh': { tag: '3… wrapped', tops: ['#1c2233', '#2b2b33'], hats: ['none', 'slick'], items: ['laptop', 'briefcase'], suit: true },
-    'p2sh-p2wsh': { tag: '3… wrapped', tops: ['#1c2233', '#222'], hats: ['none'], items: ['briefcase'], suit: true },
-    p2pkh: { tag: '1… legacy', tops: ['#4a3728', '#3b3a2f', '#2f2a26', '#44382c'], hats: ['fedora', 'fedora', 'flatcap'], items: ['none', 'briefcase', 'cane'], coat: true, beard: 0.7 },
-    p2tr: { tag: 'bc1p taproot', tops: ['#2a1f44', '#1f3344', '#3a1f3f'], hats: ['visor', 'visor', 'mohawk'], items: ['phone', 'none', 'skate'], neon: ['#b388ff', '#4fd1c5', '#ff6a00'] },
-    p2pk: { tag: 'P2PK · Satoshi', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
-    satoshi: { tag: 'Satoshi era', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },   // tags are translated when a figure is made
-    other: { tag: '', tops: ['#333', '#3a3a3a'], hats: ['cap', 'none'], items: ['none', 'phone'] },
+    p2wpkh: { tag: 'bc1q', name: 'Native SegWit', about: 'The everyday coin since 2017: a bc1q… address (pay-to-witness-public-key-hash). Small and cheap. Hoodies, laptops, phones — the working crowd of the network.', tops: ['#262626', '#1f2a22', '#241f33', '#1d2630', '#2a2420'], hats: ['hood', 'hood', 'beanie', 'cap'], items: ['laptop', 'laptop', 'phone', 'backpack', 'none'] },
+    p2wsh: { tag: 'bc1q script', name: 'SegWit script', about: 'A bc1q… address that hides a script rather than one key — multisig vaults, Lightning channels, exchanges. Headphones and backpacks: the builders.', tops: ['#1b3a3a', '#19332c', '#223'], hats: ['headphones', 'beanie', 'none'], items: ['backpack', 'laptop'] },
+    p2sh: { tag: '3…', name: 'Script (P2SH)', about: 'A 3… address: pay-to-script-hash, the 2012 way to lock coins to a script (often multisig). Suits and briefcases — the institutional look.', tops: ['#1c2233', '#222', '#2b2b33', '#1a1a1a'], hats: ['none', 'slick'], items: ['briefcase', 'briefcase', 'phone', 'none'], suit: true },
+    'p2sh-p2wpkh': { tag: '3… wrapped', name: 'Wrapped SegWit', about: 'A 3… address with SegWit inside: the compatibility format of 2017–2020, still common in older wallets and exchanges. A suit carrying a laptop.', tops: ['#1c2233', '#2b2b33'], hats: ['none', 'slick'], items: ['laptop', 'briefcase'], suit: true },
+    'p2sh-p2wsh': { tag: '3… wrapped', name: 'Wrapped SegWit script', about: 'A 3… address wrapping a SegWit script — multisig for wallets that never learned bech32.', tops: ['#1c2233', '#222'], hats: ['none'], items: ['briefcase'], suit: true },
+    p2pkh: { tag: '1… legacy', name: 'Legacy', about: 'The original 1… address (pay-to-public-key-hash), 2009–2017: bigger transactions, higher fees. Long coats, fedoras and canes — the old guard.', tops: ['#4a3728', '#3b3a2f', '#2f2a26', '#44382c'], hats: ['fedora', 'fedora', 'flatcap'], items: ['none', 'briefcase', 'cane'], coat: true, beard: 0.7 },
+    p2tr: { tag: 'bc1p taproot', name: 'Taproot', about: 'A bc1p… address (2021): Schnorr signatures, one key or a whole tree of scripts behind the same-looking output. Neon visors, mohawks, skateboards — the new wave.', tops: ['#2a1f44', '#1f3344', '#3a1f3f'], hats: ['visor', 'visor', 'mohawk'], items: ['phone', 'none', 'skate'], neon: ['#b388ff', '#4fd1c5', '#ff6a00'] },
+    p2pk: { tag: 'P2PK · Satoshi', name: 'Bare public key (P2PK)', about: 'No address at all: the coin is locked to the public key itself, as in the genesis block and the first years of mining. Gold, after the Satoshi statue in Budapest. This wallet can make one: Receive → P2PK.', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },
+    satoshi: { tag: 'Satoshi era', name: 'Satoshi-era coin', about: 'A coin created before block 100,000 (2009–2010) is moving. Rare: most of them have never moved. Gold, like the statue.', tops: ['#c9961a'], hats: ['hood'], items: ['none'], gold: true },   // tags are translated when a figure is made
+    other: { tag: '', name: 'Other', about: 'Something unusual: a non-standard or multi-type spend.', tops: ['#333', '#3a3a3a'], hats: ['cap', 'none'], items: ['none', 'phone'] },
   };
   const FAM_ORDER = ['satoshi', 'p2pk', 'p2tr', 'p2wsh', 'p2sh-p2wsh', 'p2sh-p2wpkh', 'p2sh', 'p2pkh', 'p2wpkh', 'other'];
+  const LEGEND = ['p2wpkh', 'p2tr', 'p2pkh', 'p2sh', 'p2sh-p2wpkh', 'p2wsh', 'p2pk', 'satoshi'];
   function familyOf(a) {
     if (a.era !== null && a.era !== undefined && a.era < 100000) return 'satoshi';   // a coin created in 2009–2010
     const kinds = a.kinds || [];
     for (const f of FAM_ORDER) if (kinds.includes(f)) return f;
     return kinds.length ? 'other' : 'p2wpkh';
   }
-  function newPunk(a, i, more) {
-    const { W, L } = streetLayout();
-    let seed = ((a.t | 0) ^ (a.vsize * 2654435761)) >>> 0; const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, pick = (arr) => arr[Math.floor(r() * arr.length)];
-    const famName = familyOf(a), f = FAMILIES[famName];
-    const s = { fam: famName, top: pick(f.tops), bottom: pick(['#1a1a1a', '#23262b', '#2a2622']), hat: pick(f.hats), item: pick(f.items), hair: pick(['#111', '#2b1d12', '#5a4632', '#777']),
+  function wardrobe(famName, seed) {
+    const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, pick = (arr) => arr[Math.floor(r() * arr.length)];
+    const f = FAMILIES[famName];
+    return { fam: famName, top: pick(f.tops), bottom: pick(['#1a1a1a', '#23262b', '#2a2622']), hat: pick(f.hats), item: pick(f.items), hair: pick(['#111', '#2b1d12', '#5a4632', '#777']),
       glasses: f.gold ? 'none' : r() < 0.4 ? 'shades' : r() < 0.3 ? 'round' : 'none', mask: !f.gold && !f.suit && !f.coat && r() < 0.3, beard: r() < (f.beard || 0.15), tie: f.suit ? pick(['#ff6a00', '#8a2b2b', '#777', '#2f5d8a']) : null,
-      coat: !!f.coat, suit: !!f.suit, gold: !!f.gold, neon: f.neon ? pick(f.neon) : null };
-    const tag = famName === 'satoshi' ? tr('block {n} coin', { n: fmtN(a.era) }) : tr(f.tag);
-    return { x: W + 30 + i * L * 0.42, h: L * (0.46 + r() * 0.06), v: L * (0.52 + r() * 0.06), ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag, txid: a.txid };
+      coat: !!f.coat, suit: !!f.suit, gold: !!f.gold, neon: f.neon ? pick(f.neon) : null, r };
+  }
+  function newPunk(a, i, more) {
+    const famName = familyOf(a), s = wardrobe(famName, ((a.t | 0) ^ (a.vsize * 2654435761)) >>> 0), r = s.r;
+    const tag = famName === 'satoshi' ? tr('block {n} coin', { n: fmtN(a.era) }) : tr(FAMILIES[famName].tag);
+    const v = 0.42 + 0.3 * Math.min(1, Math.log10(1 + (a.rate || 1)) / 2);   // the fee rate sets the pace: a higher rate walks faster
+    return { x: SPAWN + i * 0.42, h: 0.46 + r() * 0.06, v: v + r() * 0.03, ph: r() * 6, st: 'walk', bt: 0, sats: a.sats, more, s, tag, txid: a.txid, a };
   }
   // one figure, facing left, in local units (1 = its height), (0, 0) between its feet
   function punk(g, x, y, h, ph, s, walking, alpha = 1) {
@@ -1620,7 +1710,7 @@
     g.restore();
   }
   // ---- the Defender, in local units (1 = its length), facing left, (0, 0) on the ground under the front bumper ----
-  function defender(g, x, y, L, { fill, label, wheel, alpha = 1, scale = 1 }) {
+  function defender(g, x, y, L, { fill, label, wheel, alpha = 1, scale = 1, lights = false }) {
     g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(L * scale, L * scale);
     g.lineJoin = 'round';
     for (const wx of [0.19, 0.8]) {                                                                   // wheels behind the body
@@ -1651,6 +1741,7 @@
     g.fillStyle = SAND; g.fillRect(0.01, -0.5, 0.05, 0.2); g.fillStyle = '#1a1a1a'; g.fillRect(0.0, -0.46, 0.04, 0.14);
     g.fillStyle = '#9a9a9a'; g.fillRect(-0.03, -0.22, 0.3, 0.035); g.fillRect(0.92, -0.22, 0.1, 0.035);
     g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(0.055, -0.4, 0.028, 0, Math.PI * 2); g.fill();
+    if (lights) { const hl = g.createLinearGradient(0.05, -0.4, -0.5, -0.3); hl.addColorStop(0, 'rgba(255,233,168,.45)'); hl.addColorStop(1, 'rgba(255,233,168,0)'); g.fillStyle = hl; g.beginPath(); g.moveTo(0.05, -0.43); g.lineTo(-0.55, -0.6); g.lineTo(-0.55, -0.1); g.lineTo(0.05, -0.37); g.closePath(); g.fill(); g.fillStyle = '#ff3b3b'; g.fillRect(0.975, -0.46, 0.02, 0.05); }   // headlight beam and tail light at night
     g.fillStyle = TYRE; g.beginPath(); g.ellipse(1.0, -0.56, 0.028, 0.1, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = RIM; g.beginPath(); g.ellipse(1.0, -0.56, 0.011, 0.045, 0, 0, Math.PI * 2); g.fill();
     // roof rack with the load — one crate per seventh of a block
@@ -1666,63 +1757,65 @@
     }
     g.restore();
   }
-  function streetFrame(now) {
-    if (!streetOn) return;
-    streetRaf = requestAnimationFrame(streetFrame);
-    const still = reducedMotion();                                                  // reduced motion: a still picture, redrawn once a second as the data changes
-    if (now - streetLast < (still ? 1000 : 31)) return;                             // ~30 frames a second is plenty for a background
-    const dt = still ? 0 : Math.min(0.1, (now - streetLast) / 1000 || 0); streetLast = now;
-    if (document.hidden || introOn) return;
-    const { g, W, H, Y, L, tab, ticker, top, phone, park } = streetLayout();
+  // ---- the world moves once per frame; each open view draws it ----
+  function streetStep(dt, still) {
+    if (still) { car.x = 0; return; }
+    car.t += dt; car.bump += dt;
+    const d = streetData;
+    if (car.mode === 'parked') car.x = 0;
+    else if (car.mode === 'leaving') { const q = Math.min(1, car.t / 3.4), e = q * q; const nx = -e * 4.4; car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'arriving'; car.t = 0; if (d) { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; } } }
+    else if (car.mode === 'arriving') { const q = Math.min(1, car.t / 2.2), e = 1 - Math.pow(1 - q, 3); const nx = SPAWN - e * SPAWN; car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'parked'; car.bump = 0; } }
+    // the figures: walk to the back door, wait if the Defender is away, climb in
+    for (const p of punks) {
+      p.ph += dt * 9 * (p.st === 'walk' ? 1 : 0);
+      if (p.st === 'walk') { if (car.mode !== 'parked' && p.x <= DOOR + 0.03) { p.st = 'wait'; continue; } p.x -= p.v * dt; if (p.x <= DOOR) { p.x = DOOR; p.st = 'board'; p.bt = 0; car.bump = 0; } }
+      else if (p.st === 'wait') { if (car.mode === 'parked') p.st = 'walk'; }
+      else { p.bt += dt; }
+    }
+    punks = punks.filter((p) => p.st !== 'board' || p.bt < 0.55);
+    punks.sort((a, b) => a.x - b.x);
+  }
+  // the road, the figures and the Defender, into one view (text in screen pixels)
+  function drawWorld(v, { labels = true, night = false }) {
+    const { g, W, Y, L, park } = v, sx = (wx) => park + wx * L;
+    const bounce = Math.sin(car.bump * 16) * Math.exp(-car.bump * 6) * L * 0.025;
+    const leaving = car.mode === 'leaving' ? Math.min(1, car.t / 3.4) : 0;
+    let lastLabel = -1e9;
+    for (const p of punks) {
+      const px = sx(p.x), h = p.h * L;
+      if (p.st === 'board') { const q = p.bt / 0.55; punk(g, px - q * L * 0.1, Y - q * h * 0.25, h * (1 - 0.4 * q), p.ph, p.s, false, 1 - q); continue; }
+      if (px < -h || px > W + h) continue;
+      punk(g, px, Y, h, p.ph, p.s, p.st === 'walk');
+      if (labels && px - lastLabel > 80) {   // one label per figure, unless they bunch up
+        lastLabel = px;
+        g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+        g.fillStyle = p.s.gold ? '#e2b84a' : night ? '#a8a8a8' : '#8f8f8f'; g.fillText(p.tag + (p.more ? ` +${p.more}` : ''), px, Y - h - 6);
+        const amount = fmtAmt(p.sats); if (amount) { g.fillStyle = '#b3b3b3'; g.fillText(amount, px, Y - h - 18); }
+      }
+    }
+    defender(g, sx(car.x), Y + bounce, L, { fill: car.fill, label: car.label, wheel: -car.dist / 0.12, alpha: 1 - 0.9 * Math.pow(leaving, 2.5), scale: 1 - 0.2 * leaving, lights: night });
+  }
+  // ---- the band ----
+  function drawBand(still) {
+    const v = bandLayout(), { g, W, H, Y, L, tab, ticker, phone } = v;
     g.fillStyle = '#171717'; g.fillRect(0, 0, W, H); g.fillStyle = '#2a2a2a'; g.fillRect(0, 0, W, 1);   // an opaque band; the page scrolls above it
     const d = streetData, mined = car.mode === 'leaving' && car.label, fx = (sats) => { const f = fiatShort(sats); return f ? ' ≈ ' + f : ''; };
-    if (phone) {   // a phone: one line (the scene, when opened, sits under it)
+    if (ticker || phone) {   // the one-line form (a phone's open scene sits under its line)
       g.font = `10.5px ${MONO}`; g.textBaseline = 'middle'; g.textAlign = 'left';
       let a, b;
       if (streetErr) { a = tr('the street'); b = tr('waiting for the node…'); } else if (!d) { a = tr('the street'); b = tr('loading…'); }
       else if (mined) { a = tr('block {n} mined', { n: fmtN(car.label.height) }); b = `${fmtN(car.label.txs)} tx · ${fmtBtc(car.label.sats)} ₿${fx(car.label.sats)}`; }
-      else { a = `#${fmtN(d.tip.height + 1)}`; b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿${fx(d.next.sats)} · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); if (g.measureText(a + '  ' + b).width > W - 44) b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿ · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); }
+      else { a = `#${fmtN(d.tip.height + 1)}`; b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿${fx(d.next.sats)} · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); if (g.measureText(a + '  ' + b).width > W - 64) b = `${fmtN(d.next.txs)} tx · ${fmtBtc(d.next.sats)} ₿ · ` + tr('{n} waiting', { n: fmtN(d.mempool.txs) }); }
       const yy = ticker ? (H - tab) / 2 : 15;
       g.fillStyle = '#ff8a33'; g.fillText(a, 14, yy); g.fillStyle = '#b3b3b3'; g.fillText(b, 14 + g.measureText(a).width + 9, yy);
-      g.fillStyle = '#6f6f6f'; g.textAlign = 'right'; g.fillText(ticker ? '▲' : '▼', W - 12, yy);
+      g.fillStyle = '#6f6f6f'; g.textAlign = 'right'; g.font = `12px ${SANS}`; g.fillText('×', W - 12, yy); g.fillText(ticker ? '▴' : '▾', W - 32, yy);
       if (ticker) return;
+    } else {   // the controls of the full band: collapse, hide
+      g.fillStyle = '#6f6f6f'; g.textAlign = 'right'; g.textBaseline = 'middle'; g.font = `12px ${SANS}`; g.fillText('×', W - 12, 15); g.fillText('▾', W - 32, 15);
     }
     g.fillStyle = ROAD; g.fillRect(0, Y - L * 0.06, W, L * 0.06 + 8);                                   // the road
     g.strokeStyle = '#2e2e2e'; g.lineWidth = 1; g.setLineDash([L * 0.12, L * 0.1]); g.beginPath(); g.moveTo(0, Y - L * 0.03); g.lineTo(W, Y - L * 0.03); g.stroke(); g.setLineDash([]);
-    // the vehicle
-    const door = () => car.x + L * 1.06;
-    if (!still) {
-      car.t += dt; car.bump += dt;
-      if (car.mode === 'parked') car.x = park;
-      else if (car.mode === 'leaving') { const q = Math.min(1, car.t / 3.4), e = q * q; const nx = park - e * (park + L * 1.3); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'arriving'; car.t = 0; if (d) { car.label = nextLabel(d); car.fill = d.next.weight / 4e6; } } }
-      else if (car.mode === 'arriving') { const q = Math.min(1, car.t / 2.2), e = 1 - Math.pow(1 - q, 3); const nx = W + 20 - e * (W + 20 - park); car.dist += car.x - nx; car.x = nx; if (q >= 1) { car.mode = 'parked'; car.bump = 0; } }
-    } else car.x = park;
-    const bounce = Math.sin(car.bump * 16) * Math.exp(-car.bump * 6) * L * 0.025;
-    const leaving = car.mode === 'leaving' ? Math.min(1, car.t / 3.4) : 0;
-    // the figures: walk to the back door, wait if the Defender is away, climb in
-    if (!still) {
-      for (const p of punks) {
-        p.ph += dt * 9 * (p.st === 'walk' ? 1 : 0);
-        if (p.st === 'walk') { const tx = door(); if (car.mode !== 'parked' && p.x <= park + L * 1.06 + 4) { p.st = 'wait'; continue; } p.x -= p.v * dt; if (p.x <= tx) { p.x = tx; p.st = 'board'; p.bt = 0; car.bump = 0; } }
-        else if (p.st === 'wait') { if (car.mode === 'parked') p.st = 'walk'; }
-        else { p.bt += dt; }
-      }
-      punks = punks.filter((p) => p.st !== 'board' || p.bt < 0.55);
-      punks.sort((a, b) => a.x - b.x);
-    }
-    let lastLabel = -1e9;
-    for (const p of punks) {
-      if (p.st === 'board') { const q = p.bt / 0.55; punk(g, p.x - q * L * 0.1, Y - q * p.h * 0.25, p.h * (1 - 0.4 * q), p.ph, p.s, false, 1 - q); continue; }
-      punk(g, p.x, Y, p.h, p.ph, p.s, p.st === 'walk');
-      if (p.x - lastLabel > 80) {   // one label per figure, unless they bunch up
-        lastLabel = p.x;
-        g.font = `10px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
-        const amount = p.sats === null || p.sats === undefined ? '' : p.sats < 100000 ? tr('{n} sats', { n: fmtN(p.sats) }) : fmtBtc(p.sats) + ' ₿';   // small ones in sats, so dust reads as dust rather than 0.0000
-        g.fillStyle = p.s.gold ? '#e2b84a' : '#8f8f8f'; g.fillText(p.tag + (p.more ? ` +${p.more}` : ''), p.x, Y - p.h - 6);
-        if (amount) { g.fillStyle = '#b3b3b3'; g.fillText(amount, p.x, Y - p.h - 18); }
-      }
-    }
-    defender(g, car.x, Y + bounce, L, { fill: car.fill, label: car.label, wheel: -car.dist / (L * 0.12), alpha: 1 - 0.9 * Math.pow(leaving, 2.5), scale: 1 - 0.2 * leaving });
+    drawWorld(v, { labels: true });
     if (phone) return;
     // the panel on the left: block, transactions, value, the queue
     g.textAlign = 'left'; g.textBaseline = 'top';
@@ -1737,8 +1830,8 @@
       const f = fiatShort(L1.sats); if (f) { g.font = `500 14px ${MONO}`; g.fillStyle = '#8f8f8f'; g.fillText(`≈ ${f}`, 18 + w1 + 10, 65); }
       line(mined ? tr('block {n} loading next', { n: fmtN(d.tip.height + 1) }) : tr('{n} waiting in the mempool', { n: fmtN(d.mempool.txs) }) + (d.next.valued < d.next.txs ? ' · ' + tr('value so far') : ''), 92, `11px ${MONO}`, '#8f8f8f');
       if (H - tab >= 200) {   // the legend, wrapped into as many lines as the room left of the vehicle needs
-        g.font = `10px ${MONO}`; const maxW = Math.max(160, park - 34), lines = [];
-        for (const seg of (tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era') + ' · ' + tr('click a figure or the Defender to open it on mempool.space')).split(' · ')) {
+        g.font = `10px ${MONO}`; const maxW = Math.max(160, v.park - 34), lines = [];
+        for (const seg of (tr('hoodie bc1q · coat 1… · suit 3… · visor bc1p · gold P2PK / Satoshi era') + ' · ' + tr('click a figure or the Defender to open it on mempool.space') + ' · ' + tr('the Street tab has the whole scene')).split(' · ')) {
           const cand = lines.length ? lines[lines.length - 1] + ' · ' + seg : seg;
           if (lines.length && g.measureText(cand).width <= maxW) lines[lines.length - 1] = cand; else lines.push(seg);
         }
@@ -1746,26 +1839,176 @@
       }
     }
   }
-  function streetTick() { cancelAnimationFrame(streetRaf); if (streetOn) streetRaf = requestAnimationFrame(streetFrame); }
-  $('#set_street').addEventListener('change', (e) => streetSet(e.target.checked));
-  $('#w_street').addEventListener('click', () => streetSet(!streetOn));
-  // what is under the pointer: a figure (its transaction) or the Defender (its block) — both open on mempool.space
-  function streetHit(ev) {
-    const r = street.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
-    const { Y, L, ticker } = streetLayout();
-    if (ticker) return null;
-    for (const p of punks) if (p.st !== 'board' && Math.abs(x - p.x) < p.h * 0.22 && y > Y - p.h * 1.1 && y < Y && /^[0-9a-f]{64}$/.test(p.txid || '')) return { url: 'https://mempool.space/tx/' + p.txid, what: 'tx' };
-    if (x > car.x && x < car.x + L && y > Y - L && y < Y && car.label) return { url: car.label.mined && streetData && /^[0-9a-f]{64}$/.test(streetData.tip.hash || '') ? 'https://mempool.space/block/' + streetData.tip.hash : 'https://mempool.space/mempool-block/0', what: 'block' };
+  // ---- the Street page: sky, skyline, lamps, the last blocks driving away, and the world ----
+  const skyline = [];   // buildings, made once: [x (world units from 0 at the left), w, h, windows seed]
+  (function makeSkyline() { let seed = 7; const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296; let x = -1; while (x < 30) { const w = 0.3 + r() * 0.6; skyline.push([x, w, 0.4 + r() * r() * 1.6, Math.floor(r() * 1e6)]); x += w + 0.04 + r() * 0.2; } })();
+  const clouds = [[0.1, 0.18, 0.9], [0.45, 0.1, 1.2], [0.75, 0.22, 0.8], [1.1, 0.14, 1.0]];   // x (of W), y (of H), size
+  let cloudT = 0;
+  function dayPhase() {   // 0 = night, 1 = day, between = dawn/dusk, from the local clock
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    if (h < 5 || h >= 21) return 0;
+    if (h < 7) return (h - 5) / 2;
+    if (h < 19) return 1;
+    return 1 - (h - 19) / 2;
+  }
+  const mix = (a, b, t) => a.map((c, i) => Math.round(c + (b[i] - c) * t));
+  const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+  function drawPage(now, still) {
+    const v = pageLayout(), { g, W, H, Y, L, park } = v, d = streetData, dp = dayPhase(), night = dp < 0.5;
+    // sky: night → dawn → day, with an orange band at dusk
+    const topC = mix(mix([8, 12, 24], [255, 140, 60], Math.min(1, dp * 2) * (dp < 1 ? 0.6 : 0)), [86, 142, 214], Math.max(0, dp * 2 - 1));
+    const botC = mix(mix([18, 22, 36], [255, 190, 90], Math.min(1, dp * 2) * (dp < 1 ? 0.8 : 0)), [190, 214, 236], Math.max(0, dp * 2 - 1));
+    const sky = g.createLinearGradient(0, 0, 0, Y); sky.addColorStop(0, rgb(topC)); sky.addColorStop(1, rgb(botC)); g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    if (night) { g.fillStyle = `rgba(255,255,255,${0.7 * (1 - dp * 2)})`; let seed = 3; const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296; for (let i = 0; i < 70; i++) { const x = r() * W, y = r() * Y * 0.6, tw = 0.5 + 0.5 * Math.sin(now / 700 + i); g.fillRect(x, y, 1.5 * tw, 1.5 * tw); } }
+    else { const sun = dp < 1 ? [W * 0.85, Y - L * 0.6] : [W * 0.8, L * 0.5]; const sg = g.createRadialGradient(sun[0], sun[1], 0, sun[0], sun[1], L * 0.9); sg.addColorStop(0, 'rgba(255,240,200,.95)'); sg.addColorStop(0.25, 'rgba(255,220,150,.5)'); sg.addColorStop(1, 'rgba(255,220,150,0)'); g.fillStyle = sg; g.fillRect(0, 0, W, Y); }
+    if (!still) cloudT += (now - streetLast) / 1000;
+    g.fillStyle = night ? 'rgba(40,46,66,.8)' : 'rgba(255,255,255,.75)';
+    for (const [cx, cy, cs] of clouds) { const x = ((cx * W + cloudT * 6) % (W + L * 2)) - L, y = cy * Y, s = cs * L * 0.22; g.beginPath(); g.ellipse(x, y, s * 1.6, s * 0.55, 0, 0, Math.PI * 2); g.ellipse(x - s * 0.8, y + s * 0.15, s, s * 0.45, 0, 0, Math.PI * 2); g.ellipse(x + s * 0.9, y + s * 0.1, s * 1.1, s * 0.5, 0, 0, Math.PI * 2); g.fill(); }
+    // the skyline, far behind the road
+    const base = Y - L * 1.0, bs = L * 0.62;
+    for (const [bx, bw, bh, ws] of skyline) {
+      const x = bx * bs, w = bw * bs, h = bh * bs; if (x > W) break;
+      g.fillStyle = night ? '#10141d' : '#6a7891'; g.fillRect(x, base - h, w, h + 2);
+      let seed = ws; const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+      const cols = Math.max(1, Math.floor(w / (bs * 0.1))), rows = Math.max(1, Math.floor(h / (bs * 0.12)));
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) { const on = r() < (night ? 0.22 : 0.18); if (!on) continue; g.fillStyle = night ? (r() < 0.12 ? 'rgba(255,138,51,.8)' : r() < 0.25 ? 'rgba(159,216,255,.7)' : 'rgba(255,233,168,.75)') : 'rgba(255,255,255,.45)'; g.fillRect(x + bs * 0.03 + i * bs * 0.1, base - h + bs * 0.04 + j * bs * 0.12, bs * 0.035, bs * 0.05); }
+    }
+    // the far lane: the last blocks, driving away (newest nearest the right), each with its number
+    const blocks = d ? d.blocks || [] : [];
+    const farY = Y - L * 1.05;
+    g.fillStyle = night ? '#171c24' : '#3c4452'; g.fillRect(0, farY - L * 0.02, W, L * 0.05);
+    blocks.slice(0, 6).forEach((b, i) => {
+      const age = Math.max(0, (Date.now() - b.seen) / 1000), x = W * 0.92 - L * (1.25 * i) - Math.min(L * 0.6, age / 600 * L * 0.6), sc = 0.36;
+      if (x < -L) return;
+      defender(g, x, farY, L, { fill: 1, label: { height: b.height, mined: true }, wheel: -age / 0.12, alpha: Math.max(0.35, 1 - i * 0.12), scale: sc, lights: night });
+      if (L < 130) return;   // a phone: the small vehicles alone, no room for labels
+      g.font = `9.5px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillStyle = night ? '#9a9a9a' : '#2b2518';
+      g.fillText(`${fmtN(b.txs)} tx · ${fmtBtc(b.sats)} ₿`, x + L * sc * 0.5, farY - L * sc * 0.98);
+    });
+    // the ground, the kerb, the road, the lamp posts
+    g.fillStyle = night ? '#1d2129' : '#5e6b5a'; g.fillRect(0, Y - L * 0.26, W, L * 0.2);
+    g.fillStyle = night ? '#2a2f38' : '#9aa0a8'; g.fillRect(0, Y - L * 0.08, W, L * 0.03);
+    g.fillStyle = ROAD; g.fillRect(0, Y - L * 0.06, W, H - Y + L * 0.06);
+    g.strokeStyle = '#3a3a3a'; g.lineWidth = Math.max(1, L * 0.012); g.setLineDash([L * 0.12, L * 0.1]); g.beginPath(); g.moveTo(0, Y + (H - Y) * 0.5); g.lineTo(W, Y + (H - Y) * 0.5); g.stroke(); g.setLineDash([]);
+    for (let x = park - L * 1.6; x < W + L; x += L * 2.3) {
+      g.fillStyle = '#2b2b2b'; g.fillRect(x - L * 0.012, Y - L * 1.15, L * 0.024, L * 1.1); g.fillRect(x - L * 0.012, Y - L * 1.15, L * 0.14, L * 0.02);
+      g.fillStyle = night ? '#ffe9a8' : '#555'; g.fillRect(x + L * 0.09, Y - L * 1.15, L * 0.06, L * 0.03);
+      if (night) { const lg = g.createRadialGradient(x + L * 0.12, Y - L * 1.13, 0, x + L * 0.12, Y - L * 1.13, L * 0.7); lg.addColorStop(0, 'rgba(255,233,168,.28)'); lg.addColorStop(1, 'rgba(255,233,168,0)'); g.fillStyle = lg; g.fillRect(x - L * 0.6, Y - L * 1.2, L * 1.4, L * 1.2); }
+    }
+    // the sign by the bay: BLOCK n · LOADING, the count, the value; and the queue sign on the right
+    const mined = car.mode === 'leaving' && car.label, bw = Math.max(L * 1.3, 190), sx = Math.max(bw / 2 + 6, park - L * 0.62);   // the sign by the bay, left of the Defender's bonnet
+    const fs = (k, min) => `${Math.max(min, Math.round(L * k))}px`;
+    g.fillStyle = '#2b2b2b'; g.fillRect(sx - L * 0.01, Y - L * 0.64, L * 0.02, L * 0.58);
+    g.fillStyle = night ? '#1b1b1b' : '#f4f4f4'; g.strokeStyle = '#ff6a00'; g.lineWidth = 2; g.beginPath(); g.roundRect(sx - bw / 2, Y - L * 0.96, bw, L * 0.34, 4); g.fill(); g.stroke();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    const ink = night ? '#f4f4f4' : '#171717', sub = night ? '#b3b3b3' : '#444';
+    const fit = (str, maxW) => { while (g.measureText(str).width > maxW && str.length > 4) str = str.slice(0, -2) + '…'; return str; };
+    if (!d) { g.fillStyle = '#ff8a33'; g.font = `600 ${fs(0.07, 11)} ${MONO}`; g.fillText(fit(streetErr ? tr('waiting for the Olesia node…') : tr('loading…'), bw - 12), sx, Y - L * 0.79); }
+    else {
+      const L1 = mined ? car.label : { height: d.tip.height + 1, txs: d.next.txs, sats: d.next.sats };
+      g.fillStyle = '#ff8a33'; g.font = `600 ${fs(0.065, 10)} ${MONO}`; g.fillText(fit(mined ? tr('BLOCK {n} · MINED', { n: fmtN(L1.height) }) : tr('BLOCK {n} · LOADING', { n: fmtN(L1.height) }), bw - 12), sx, Y - L * 0.885);
+      g.fillStyle = ink; g.font = `600 ${fs(0.085, 14)} ${SANS}`; g.fillText(fit(`${fmtN(L1.txs)} tx · ${fmtBtc(L1.sats)} ₿`, bw - 12), sx, Y - L * 0.79);
+      const f = fiatShort(L1.sats); g.fillStyle = sub; g.font = `${fs(0.058, 9)} ${MONO}`; g.fillText(fit((f ? `≈ ${f} · ` : '') + tr('fee floor {n} sat/vB', { n: (d.next.minRate || 0).toFixed(1) }), bw - 12), sx, Y - L * 0.7);
+      // the queue: who is waiting beyond the right edge (top right, in the sky)
+      g.textAlign = 'right'; g.fillStyle = night ? '#f4f4f4' : '#171717'; g.font = `600 ${fs(0.075, 12)} ${MONO}`; g.fillText('→ ' + tr('{n} waiting', { n: fmtN(d.mempool.txs) }), W - 14, Math.max(16, L * 0.16));
+      g.fillStyle = night ? '#b3b3b3' : '#333'; g.font = `${fs(0.058, 9)} ${MONO}`; g.fillText(fit(tr('≈ {n} blocks of transactions in the mempool', { n: (d.mempool.vbytes / 1e6).toFixed(1) }), W * 0.6), W - 14, Math.max(32, L * 0.27));
+    }
+    drawWorld(v, { labels: true, night });
+    // a hint along the bottom
+    if (W >= 560) { g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillStyle = '#6f6f6f'; g.font = `10px ${MONO}`; g.fillText(tr('click a figure or the Defender to open it on mempool.space'), 12, H - 6); }
+  }
+  function streetFrame(now) {
+    if (!active()) return;
+    streetRaf = requestAnimationFrame(streetFrame);
+    const still = reducedMotion();                                                  // reduced motion: still pictures, redrawn once a second as the data changes
+    if (now - streetLast < (still ? 1000 : 31)) return;                             // ~30 frames a second is plenty
+    const dt = still ? 0 : Math.min(0.1, (now - streetLast) / 1000 || 0);
+    if (document.hidden || introOn) { streetLast = now; return; }
+    streetStep(dt, still);
+    if (streetOn && !pageOn) drawBand(still);   // the band is hidden under the Street page (the scene is right there)
+    if (pageOn) drawPage(now, still);
+    streetLast = now;
+  }
+  function streetTick() { cancelAnimationFrame(streetRaf); if (active()) streetRaf = requestAnimationFrame(streetFrame); }
+  // ---- the Street page's words: live numbers, the last blocks, the legend ----
+  function streetStats() {
+    const d = streetData, box = $('#st_stats'), bl = $('#st_blocks'); box.textContent = ''; bl.textContent = '';
+    const card = (k, v, s, parent = box) => { const c = el('div', 'st'); c.append(el('div', 'k', k), el('div', 'v', v), el('div', 's', s || '')); parent.appendChild(c); return c; };
+    if (!d) { card(tr('The street'), '—', streetErr ? tr('waiting for the Olesia node…') : tr('loading…')); return; }
+    const now = Date.now() / 1000, since = Math.max(0, now - d.tip.time);
+    card(tr('Last block'), fmtN(d.tip.height), tr('mined {ago} · {n} tx', { ago: ago(since), n: fmtN(d.tip.txs) }));
+    card(tr('Loading now'), tr('{n} tx', { n: fmtN(d.next.txs) }), `${fmtBtc(d.next.sats)} ₿` + (fiatShort(d.next.sats) ? ` ≈ ${fiatShort(d.next.sats)}` : '') + ' · ' + tr('fee floor {n} sat/vB', { n: (d.next.minRate || 0).toFixed(1) }));
+    card(tr('Waiting'), fmtN(d.mempool.txs), tr('≈ {n} blocks of transactions in the mempool', { n: (d.mempool.vbytes / 1e6).toFixed(1) }));
+    card(tr('Last reward'), `${fmtBtc((d.tip.subsidy || 0) + (d.tip.fees || 0))} ₿`, tr('{subsidy} ₿ new coins + {fees} ₿ in fees', { subsidy: fmtBtc(d.tip.subsidy || 0), fees: fmtBtc(d.tip.fees || 0) }));
+    (d.blocks || []).slice(0, 6).forEach((b, i, arr) => {
+      const prev = arr[i + 1], took = prev ? b.time - prev.time : null;
+      const c = card(tr('Block {n}', { n: fmtN(b.height) }), `${fmtN(b.txs)} tx`, `${fmtBtc(b.sats)} ₿ · ` + (took != null ? tr('took {t}', { t: dur(took) }) : ago(Math.max(0, now - b.time))), bl);
+      c.classList.add('blk'); const cv = el('canvas'); cv.width = 300; cv.height = 92; c.prepend(cv);
+      const g = cv.getContext('2d'); defender(g, 100, 88, 100, { fill: 1, label: { height: b.height, mined: true }, wheel: i });
+      c.title = tr('Open block {n} on mempool.space', { n: fmtN(b.height) });
+      c.addEventListener('click', () => { if (/^[0-9a-f]{64}$/.test(b.hash || '')) window.open('https://mempool.space/block/' + b.hash, '_blank', 'noopener,noreferrer'); });
+    });
+  }
+  function legendRender() {
+    const box = $('#st_legend'); box.textContent = '';
+    LEGEND.forEach((fam, i) => {
+      const f = FAMILIES[fam], c = el('div', 'fam'), cv = el('canvas'); cv.width = 168; cv.height = 192; c.appendChild(cv);
+      const g = cv.getContext('2d');
+      [0.5, 1.2].forEach((ox, k) => punk(g, 44 + k * 78, 180, 150, 0, wardrobe(fam, 1000 + i * 17 + k * 101), false));   // two of each, so the variety shows
+      const m = el('div'); m.append(el('b', null, tr(f.name)), el('span', 'tg', tr(f.tag)), el('p', null, tr(f.about))); c.appendChild(m);
+      box.appendChild(c);
+    });
+  }
+  function streetReword() { $('#w_street').textContent = streetOn ? tr('Hide the street') : tr('Show the street'); if (pageOn) { legendRender(); streetStats(); } }
+  // ---- pointer: a figure (its transaction) or the Defender (its block) — both open on mempool.space ----
+  function hitIn(v, x, y) {
+    const { Y, L, park } = v, sx = (wx) => park + wx * L;
+    for (const p of punks) { const px = sx(p.x), h = p.h * L; if (p.st !== 'board' && Math.abs(x - px) < h * 0.22 && y > Y - h * 1.1 && y < Y) return { p, url: /^[0-9a-f]{64}$/.test(p.txid || '') ? 'https://mempool.space/tx/' + p.txid : null, what: 'tx' }; }
+    const cx = sx(car.x);
+    if (x > cx && x < cx + L && y > Y - L && y < Y && car.label) return { url: car.label.mined && streetData && /^[0-9a-f]{64}$/.test(streetData.tip.hash || '') ? 'https://mempool.space/block/' + streetData.tip.hash : 'https://mempool.space/mempool-block/0', what: 'block' };
     return null;
   }
+  function bandHit(ev) {
+    const r = street.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, v = bandLayout();
+    if (y < 30 && x > v.W - 24) return { what: 'hide' };
+    if (y < 30 && x > v.W - 44) return { what: 'mode' };
+    if (v.ticker) return null;
+    return hitIn(v, x, y);
+  }
   street.addEventListener('click', (ev) => {
-    const hit = streetHit(ev);
-    if (hit) { window.open(hit.url, '_blank', 'noopener,noreferrer'); return; }
-    if (isPhone()) { streetFull = !streetFull; streetLast = 0; }   // a phone: the ticker opens into the scene and back
+    const hit = bandHit(ev);
+    if (!hit) { if (isPhone()) bandMode(!bandIsFull()); return; }   // a phone: tapping the line opens the scene and back
+    if (hit.what === 'hide') return streetSet(false);
+    if (hit.what === 'mode') return bandMode(!bandIsFull());
+    if (hit.url) window.open(hit.url, '_blank', 'noopener,noreferrer');
   });
-  street.addEventListener('mousemove', (ev) => { street.style.cursor = streetHit(ev) ? 'pointer' : isPhone() ? 'pointer' : 'default'; });
-  window.addEventListener('resize', () => { if (!isPhone()) streetFull = false; });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && streetOn) { streetLast = performance.now(); streetPoll(); } });
-  show(street, streetOn); document.body.classList.toggle('street', streetOn); $('#set_street').checked = streetOn; $('#w_street').textContent = streetOn ? 'Hide the street' : 'Show the street';
+  street.addEventListener('mousemove', (ev) => { const h = bandHit(ev); street.style.cursor = h && (h.url || h.what === 'hide' || h.what === 'mode') ? 'pointer' : isPhone() ? 'pointer' : 'default'; });
+  const tip = $('#st_tip');
+  stCanvas.addEventListener('mousemove', (ev) => {
+    const r = stCanvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, h = hitIn(pageLayout(), x, y);
+    stCanvas.style.cursor = h && h.url ? 'pointer' : 'default';
+    if (!h || !h.p) { tip.classList.add('hide'); return; }
+    const p = h.p, a = p.a || {}; tip.textContent = '';
+    tip.append(el('b', null, (p.s.fam === 'satoshi' ? tr('Satoshi-era coin') : tr(FAMILIES[p.s.fam].name)) + ' · ' + p.tag));
+    const rows = [];
+    if (p.sats !== null && p.sats !== undefined) rows.push(tr('{amount} moving', { amount: fmtAmt(p.sats) }) + (fiatShort(p.sats) ? ` ≈ ${fiatShort(p.sats)}` : ''));
+    if (a.rate) rows.push(tr('{n} sat/vB · {v} vB', { n: Number(a.rate).toFixed(1), v: fmtN(a.vsize) }));
+    if (a.era !== null && a.era !== undefined) rows.push(tr('spends a coin from block {n}', { n: fmtN(a.era) }));
+    if (p.more) rows.push(tr('+{n} more arrived with it', { n: p.more }));
+    rows.forEach((t) => tip.appendChild(el('div', null, t)));
+    if (p.txid) tip.appendChild(el('div', 'mono', p.txid.slice(0, 16) + '… · ' + tr('click to open')));
+    tip.classList.remove('hide');
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.max(4, Math.min(r.width - tw - 4, x + 14)) + 'px'; tip.style.top = Math.max(4, y - th - 12) + 'px';
+  });
+  stCanvas.addEventListener('mouseleave', () => tip.classList.add('hide'));
+  stCanvas.addEventListener('click', (ev) => { const r = stCanvas.getBoundingClientRect(), h = hitIn(pageLayout(), ev.clientX - r.left, ev.clientY - r.top); if (h && h.url) window.open(h.url, '_blank', 'noopener,noreferrer'); });
+  $('#set_street').addEventListener('change', (e) => streetSet(e.target.checked));
+  $('#st_band').addEventListener('change', (e) => streetSet(e.target.checked));
+  $('#w_street').addEventListener('click', () => streetSet(!streetOn));
+  window.addEventListener('resize', () => { streetLast = 0; });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && active()) { streetLast = performance.now(); streetPoll(); } });
+  { const m = bandSaved(); if (m === 'full' || m === 'ticker') bandFull = m === 'full'; }
+  show(street, streetOn); document.body.classList.toggle('street', streetOn); $('#set_street').checked = streetOn; $('#st_band').checked = streetOn; $('#w_street').textContent = streetOn ? tr('Hide the street') : tr('Show the street');
   if (streetOn) { streetPoll(); streetTick(); }
 })();

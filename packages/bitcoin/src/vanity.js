@@ -33,6 +33,7 @@ export const MAX_PATTERN = 12;   // longer than this is years of work on any har
 export const hash160 = (b) => ripemd160(sha256(b));
 export function addressOf(pubkey, type, network = 'mainnet') {
   const n = net(network).btc;
+  if (type === 'p2tr') return btc.p2tr(pubkey.slice(1), undefined, n).address;   // BIP-86 key path (paper wallets; not a vanity type)
   return type === 'p2wpkh' ? btc.p2wpkh(pubkey, n).address : btc.p2pkh(pubkey, n).address;
 }
 /** Address for a hash160 directly (used by the sampling tests). */

@@ -36,6 +36,7 @@ for (const m of ui.matchAll(/\btr\((?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g
 for (const m of ui.matchAll(/\btag: '((?:[^'\\]|\\.)*)'/g)) script.add(unq(m[1]));
 for (const m of ui.matchAll(/\b[kt]: '((?:[^'\\]|\\.)*)'/g)) script.add(unq(m[1]));              // the opening's chapter keys and titles
 for (const m of ui.matchAll(/\bp: '((?:[^'\\]|\\.)*)'/g)) script.add(unq(m[1]));                 // and their paragraphs
+for (const m of ui.matchAll(/\b(?:name|about): '((?:[^'\\]|\\.)*)'/g)) script.add(unq(m[1]));    // the street's families (legend names and explanations)
 
 // 3. the engine's messages: static Error strings and prose literals in the wallet sources
 const engine = new Set();

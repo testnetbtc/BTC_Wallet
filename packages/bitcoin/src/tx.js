@@ -176,6 +176,52 @@ export function buildSweepTxMulti({ keyedUtxos, toAddress, feeRate = 2, networkN
   return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: paidFee != null ? Number(paidFee) : (sel.fee != null ? Number(sel.fee) : undefined), vsize: tx.vsize, swept: Number(total - (paidFee ?? sel.fee ?? 0n)) };
 }
 
+// Pay a RAW scriptPubKey (the wallet's own bare P2PK) from keyed UTXOs. @scure/btc-signer's coin
+// selector refuses a bare `pk` output, so selection is done here: largest coins first until the
+// amount and the fee are covered; change to `changeAddress`; the fee is settled by rebuilding once
+// with the real size. Same inputs, signing and RBF as the other builders.
+const INPUT_VB = { p2wpkh: 68, p2tr: 58, 'p2sh-p2wpkh': 91, p2pkh: 148, p2pk: 114 };
+export function buildRawScriptTx({ keyedUtxos, script, amount, changeAddress, feeRate = 2, networkName, message = null }) {
+  const n = net(networkName);
+  feeRate = assertFeeRate(feeRate);
+  amount = assertRecipientAmount(amount);
+  if (!keyedUtxos?.length) throw new Error('no UTXOs to spend');
+  if (!(script instanceof Uint8Array) || !script.length) throw new Error('a destination script is required');
+  assertAddressNetwork(changeAddress, networkName);
+  const changeVb = 9 + btc.OutScript.encode(btc.Address(n.btc).decode(changeAddress)).length;
+  const sorted = [...keyedUtxos].sort((a, b) => b.value - a.value);
+  const build = (count, fee) => {
+    const tx = new btc.Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });   // the library refuses a bare-pk output by default; the final bytes are audited anyway
+    const chosen = sorted.slice(0, count);
+    for (const u of chosen) tx.addInput(buildInput(u, u.key));
+    tx.addOutput({ script, amount: BigInt(amount) });
+    if (message != null && String(message).length) tx.addOutput({ script: opReturnScript(message), amount: 0n });
+    const inSum = chosen.reduce((a, u) => a + BigInt(u.value), 0n);
+    const change = inSum - BigInt(amount) - BigInt(fee);
+    if (change < 0n) return null;
+    if (change >= MIN_OUTPUT_SAT) tx.addOutputAddress(changeAddress, change, n.btc);
+    const seen = new Set();
+    for (const u of chosen) { const h = bytesToHex(u.key.privKey); if (seen.has(h)) continue; seen.add(h); tx.sign(u.key.privKey); }
+    tx.finalize();
+    return tx;
+  };
+  for (let count = 1; count <= sorted.length; count++) {
+    const est = 11 + sorted.slice(0, count).reduce((a, u) => a + (INPUT_VB[u.key.type] || 148), 0) + 9 + script.length + (message ? 9 + utf8ToBytes(String(message)).length : 0) + changeVb;
+    let fee = Math.ceil(est * feeRate), tx = build(count, fee);
+    if (!tx) continue;
+    for (let i = 0; i < 2 && tx; i++) {   // settle on the real size (a dropped change output changes it)
+      const want = Math.ceil(tx.vsize * feeRate);
+      const paid = Number(actualFee(tx));
+      if (paid >= want && paid - want <= Number(MIN_OUTPUT_SAT) + feeRate * 2) break;
+      fee = want; tx = build(count, fee);
+    }
+    if (!tx) continue;
+    const paidFee = actualFee(tx);
+    return { txHex: bytesToHex(tx.extract()), txid: tx.id, fee: Number(paidFee), vsize: tx.vsize, inputsUsed: count };
+  }
+  throw new Error('coin selection failed — insufficient funds for outputs + fee?');
+}
+
 // { utxos:[{txid,vout,value}], key (from deriveKey), recipients:[{address,amount}],
 //   message?, changeAddress?, feeRate (sat/vB), networkName } -> { txHex, txid, fee, vsize }
 export function buildSignedTx({ utxos, key, recipients = [], message = null,

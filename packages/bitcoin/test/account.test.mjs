@@ -36,7 +36,11 @@ for (const type of HD_TYPES) for (const chain of [0, 1]) for (const index of [0,
   if (a.address !== b.address || a.script !== b.scriptHex || bytesToHex(a.key.privKey) !== bytesToHex(b.privKey) || a.path !== b.path) agree = false;
 }
 ok('fast derivation == scripts.js deriveScript (address, script, key, path)', agree);
-ok('entries(100) = 4 types × 2 chains × 100 = 800 unique scripts', new Set(acct.entries(100).map((e) => e.script)).size === 800);
+ok('entries(100) = 4 address types × 2 chains × 100 + 100 bare P2PK = 900 unique scripts', new Set(acct.entries(100).map((e) => e.script)).size === 900);
+ok('entries(100, 100, 5): the bare-public-key window is separate (805)', new Set(acct.entries(100, 100, 5).map((e) => e.script)).size === 805);
+{ const pk = acct.entry('p2pk', 0, 3), d = deriveScript(SEED, 'mainnet', 'p2pk', 3);
+  ok('P2PK entry = the previous wallet\'s P2PK lab script at the same index (raw group, no address, BIP-44 key)', pk.group === 'raw' && pk.rawKind === 'p2pk' && pk.address === null && pk.script === d.scriptHex && pk.path === d.path && bytesToHex(pk.key.privKey) === bytesToHex(d.privKey));
+  ok('no P2PK entry is ever planned on the change chain', !acct.entries(10).some((e) => e.type === 'p2pk' && e.chain === 1)); }
 ok('change always lands on the BIP-84 change chain', acct.changeEntry(5).path === "m/84'/0'/0'/1/5");
 
 // --- passphrase (25th word) gives a different wallet + fingerprint ---
@@ -73,7 +77,7 @@ ok('passphrase is NFKD-normalised: "é" (U+00E9) == "e" + U+0301', openSeedAccou
 // --- watch-only account (public keys only) + short-lived signer ---
 const pub = describeSeed({ mnemonic: SEED });
 const watch = openWatchAccount(pub);
-ok('public description carries no secret (4 account xpubs, ids, counts)', Object.keys(pub.xpubs).length === 4 && Object.values(pub.xpubs).every((x) => x.startsWith('xpub')) && !JSON.stringify(pub).includes('abandon') && !JSON.stringify(pub).includes('xprv'));
+ok('public description carries no secret (5 account xpubs — the P2PK one is the BIP-44 account, ids, counts)', Object.keys(pub.xpubs).length === 5 && pub.xpubs.p2pk === pub.xpubs.p2pkh && Object.values(pub.xpubs).every((x) => x.startsWith('xpub')) && !JSON.stringify(pub).includes('abandon') && !JSON.stringify(pub).includes('xprv'));
 ok('watch account has the same id + fingerprint as the full account', pub.id === acct.id && pub.fingerprint === acct.fingerprint && watch.watchOnly === true);
 let watchAgree = true;
 for (const type of HD_TYPES) for (const chain of [0, 1]) for (const index of [0, 1, 7, 99, 250]) {
@@ -81,7 +85,8 @@ for (const type of HD_TYPES) for (const chain of [0, 1]) for (const index of [0,
   if (a.address !== b.address || a.script !== b.script || a.path !== b.path || b.key !== undefined) watchAgree = false;
 }
 ok('watch-only derivation == private derivation for every type/chain (and exposes no key)', watchAgree);
-ok('watch entries(200, 100) = 2×2×200 + 2×2×100 = 1200 scripts', watch.entries(200, 100).length === 1200 && new Set(watch.entries(200, 100).map((e) => e.script)).size === 1200);
+ok('watch entries(200, 100) = 3×2×200 + 1×2×100 + 100 P2PK = 1500 scripts', watch.entries(200, 100).length === 1500 && new Set(watch.entries(200, 100).map((e) => e.script)).size === 1500);
+ok('watch entries(200, 100, 20): 1420, and the watch-only P2PK entry has the public key, no key', watch.entries(200, 100, 20).length === 1420 && watch.entry('p2pk', 0, 2).pubkey && !watch.entry('p2pk', 0, 2).key && watch.entry('p2pk', 0, 2).script === acct.entry('p2pk', 0, 2).script);
 ok('entriesAsync gives the same list', (await watch.entriesAsync(50, 20)).map((e) => e.script).join() === watch.entries(50, 20).map((e) => e.script).join());
 const signer = makeSigner({ kind: 'seed', mnemonic: SEED, passphrase: '' }, pub);
 ok('signer returns the private key for a watch entry', bytesToHex(signer.keyFor(watch.entry('p2tr', 1, 5)).privKey) === bytesToHex(acct.entry('p2tr', 1, 5).key.privKey));

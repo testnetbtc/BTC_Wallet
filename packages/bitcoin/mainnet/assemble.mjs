@@ -27,6 +27,8 @@ const IC = {
   pen: svg('<path d="M4 20l4-1 10-10-3-3L5 16l-1 4z"/><path d="M13 7l3 3"/>'),
   eye: svg('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   print: svg('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
+  road: svg('<path d="M4 20L9 4h6l5 16"/><path d="M12 6v3M12 12v3M12 18v2"/>'),
+  school: svg('<path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M7 11v5c0 1.5 2.5 3 5 3s5-1.5 5-3v-5"/><path d="M21 9v6"/>'),
 };
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -55,6 +57,24 @@ body{font:15px/1.5 var(--sans);color:var(--text);background:var(--bg);-webkit-fo
 #shell{max-width:600px;margin:0 auto;padding:0 16px 110px}
 body.street #shell{padding-bottom:calc(var(--street-h,200px) + 20px)}
 #street{position:fixed;left:0;right:0;bottom:0;width:100%;height:clamp(150px,22vh,230px);z-index:2;display:block}
+body.wide #shell{max-width:1100px}
+#st_wrap{position:relative;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#0d1117;margin:6px 0 12px}
+#st_canvas{display:block;width:100%;height:clamp(260px,46vw,520px)}
+#st_tip{position:absolute;pointer-events:none;background:rgba(17,17,17,.94);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.45;max-width:260px;z-index:3;color:var(--text)}
+#st_tip b{color:var(--accent-text)}#st_tip .mono{font-size:11px;color:var(--muted)}
+.strow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:0 0 12px}
+.strow .st{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.strow .st .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.strow .st .v{font-family:var(--mono);font-size:19px;margin-top:2px;color:var(--text)}
+.strow .st .s{font-size:12px;color:var(--muted)}
+.strow .st.blk{cursor:pointer}.strow .st.blk:hover{border-color:var(--accent-text)}
+.strow .st.blk canvas{display:block;width:100%;height:46px;margin-bottom:6px}
+.strow .st.blk .v{font-size:15px}
+body.wide #street{display:none}body.wide.street #shell{padding-bottom:110px}
+#st_legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.fam{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.fam canvas{width:84px;height:96px;flex:0 0 auto;background:#141a22;border-radius:6px}
+.fam b{display:block;font-size:14px;margin-bottom:2px}.fam .tg{font-family:var(--mono);font-size:11px;color:var(--accent-text)}.fam p{margin:4px 0 0;font-size:12.5px;color:var(--muted)}
 header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 0 12px;flex-wrap:wrap}
 .logo{font-weight:700;font-size:22px;letter-spacing:-.01em}
 .ldot{color:var(--accent)}
@@ -251,25 +271,31 @@ footer a{color:var(--muted)}
   <button class="choice primary" id="w_create" type="button"><span class="ic">${IC.plus}</span><span><b>Create a new wallet</b><span>12 or 24 words · your own randomness mixed in</span></span></button>
   <button class="choice" id="w_open" type="button"><span class="ic">${IC.file}</span><span><b>Open a wallet file</b><span>Load your encrypted <code>.dat</code> file and enter its password</span></span></button>
   <button class="choice" id="w_import" type="button"><span class="ic">${IC.imp}</span><span><b>Import a wallet</b><span>Recovery phrase (12 or 24 words) or a private key (WIF)</span></span></button>
+  <button class="choice" id="w_practice" type="button"><span class="ic">${IC.school}</span><span><b>Create a practice wallet</b><span>Testnet 4 only · free coins from the faucet · nothing at stake</span></span></button>
+  <button class="choice" id="w_streetpage" type="button"><span class="ic">${IC.road}</span><span><b>Watch the street</b><span>The next Bitcoin block being loaded, live from the Olesia node — who is who, and why</span></span></button>
   <button class="choice" id="w_vanity" type="button"><span class="ic">${IC.star}</span><span><b>Create a vanity address</b><span>An address that starts with characters you choose · <code>bc1qjon…</code></span></span></button>
   <button class="choice" id="w_paper" type="button"><span class="ic">${IC.print}</span><span><b>Make a paper wallet</b><span>One key, printed on paper — the classic cold storage, done carefully</span></span></button>
   <button class="choice" id="w_verify" type="button"><span class="ic">${IC.pen}</span><span><b>Verify a signed message</b><span>Check that a message really was signed by the owner of an address</span></span></button>
   <div class="warn"><b>This is a hot wallet for real bitcoin.</b> Keep here only an amount you could afford to lose. Olesia cannot recover a lost password or recovery phrase — nobody can. No independent security firm has audited this software.</div>
+  <div class="note"><b>New to this? Practise first.</b> Every wallet made from a recovery phrase also has a Testnet 4 side (Networks tab) with free coins from the Faucet tab — the <b>same words</b> guard both, so treat them as real from day one. Or make a separate practice wallet above and keep real and practice apart.</div>
   <p class="hint" style="text-align:center;margin-top:14px"><button class="back" id="w_intro" type="button">Watch the opening again</button> · <button class="back" id="w_street" type="button">Hide the street</button></p>
 </section>
 
 <!-- ===================== CREATE 1: entropy ===================== -->
 <section class="pane" id="pane-create1">
   <button class="back" data-go="welcome" type="button">‹ Back</button>
-  <h2>Create a wallet</h2>
+  <h2 id="c_title">Create a wallet</h2>
   <p class="sub">A wallet is a very large secret number. It is made here, on your device, from randomness.</p>
   <div class="card">
+    <label>Network</label>
+    <div class="seg" id="c_net"><button type="button" data-net="mainnet" class="on">Bitcoin · real</button><button type="button" data-net="testnet4">Testnet 4 · practice</button></div>
+    <p class="hint" id="c_nethint"></p>
     <label>Recovery phrase length</label>
     <div class="seg" id="c_len"><button type="button" data-words="24" class="on">24 words · 256-bit</button><button type="button" data-words="12">12 words · 128-bit</button></div>
     <p class="hint">Both are considered safe. 24 words is the stronger choice and the default.</p>
     <label>Address type</label>
-    <div class="seg" id="c_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
-    <p class="hint">SegWit is the modern standard with lower fees. Choose Legacy only if you must receive from very old software. You can switch later.</p>
+    <div class="seg" id="c_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1q…</button><button type="button" data-type="p2tr">Taproot · bc1p…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
+    <p class="hint">SegWit is the modern standard with lower fees. Taproot is the newest (Schnorr signatures, better privacy). Choose Legacy only if you must receive from very old software. You can switch later — every type is always searched.</p>
   </div>
   <div class="card">
     <label>1 · System randomness <span class="ok" style="font-weight:500">— automatic</span></label>
@@ -376,11 +402,14 @@ footer a{color:var(--muted)}
   <h2>Import a wallet</h2>
   <div class="seg" id="i_mode"><button type="button" data-mode="seed" class="on">Recovery phrase</button><button type="button" data-mode="wif">Private key (WIF)</button></div>
   <div class="card" id="i_seedbox">
+    <label>Open it as</label>
+    <div class="seg" id="i_net"><button type="button" data-net="mainnet" class="on">Bitcoin · real</button><button type="button" data-net="testnet4">Testnet 4 · practice only</button></div>
+    <p class="hint">"Practice only" opens these words on Testnet 4 and nowhere else — for a phrase you made just to learn. A real wallet gets its Testnet 4 side too, from the same words.</p>
     <label>Recovery phrase</label>
     <textarea id="i_phrase" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="12, 15, 18, 21 or 24 words"></textarea>
     <label>BIP-39 passphrase <span style="color:var(--muted);font-weight:500">— only if this wallet has one</span></label>
     <input id="i_pass" type="password" autocomplete="off" spellcheck="false" placeholder="leave blank if unsure">
-    <p class="hint">New addresses will be SegWit (bc1…) or Legacy (1…). Coins this phrase already holds on other standard address types are still found and can be spent.</p>
+    <p class="hint">New addresses can be SegWit (bc1q…), Taproot (bc1p…) or Legacy (1…). Coins this phrase already holds on any standard address type — and bare P2PK outputs made by the earlier Olesia wallet — are found and can be spent.</p>
   </div>
   <div class="card hide" id="i_wifbox">
     <label>Private key (WIF)</label>
@@ -414,22 +443,24 @@ footer a{color:var(--muted)}
 <!-- ===================== NETWORKS ===================== -->
 <section class="pane" id="pane-networks">
   <h2>Your wallets</h2>
-  <p class="sub" id="net_sub">One recovery phrase, four networks.</p>
+  <p class="sub" id="net_sub">One recovery phrase: real bitcoin, and a practice wallet on Testnet 4.</p>
   <div id="netlist"></div>
-  <p class="hint">Practice wallets come from the same words on a separate path, so trying things out never touches your real coins. Practice coins have no value. Their balances are looked up through a public data service relayed by the Olesia server — not through the Olesia Bitcoin node, which is mainnet only.</p>
+  <div class="warn" id="net_warn"><b>One secret, two networks.</b> Your Testnet 4 wallet is made from the <b>same recovery phrase</b> as your real one (on a separate path, so the keys differ). Anyone who gets your words while you practise gets your real bitcoin. Never type them into a test site, a "testnet" app or a chat — if you want to experiment freely, make a separate practice wallet from the welcome screen.</div>
+  <p class="hint" id="net_hint">Practice coins have no value. Their balances are looked up through a public data service relayed by the Olesia server — not through the Olesia Bitcoin node, which is mainnet only. Signet and Testnet 3 can be switched on in Settings.</p>
 </section>
 
 <!-- ===================== FAUCET ===================== -->
 <section class="pane" id="pane-faucet">
   <h2>Faucet</h2>
   <p class="sub">Free practice coins, so you can try sending and receiving with nothing at stake.</p>
+  <div class="warn hide" id="f_same"><b>Same words as your real wallet.</b> This practice address comes from your real recovery phrase. Practise all you like — but the words stay as secret as ever.</div>
   <div id="f_body">
     <div class="seg" id="f_nets"></div>
     <div class="card">
       <label>Your <span id="f_netname">Testnet 4</span> address</label>
       <div class="mono" id="f_addr" style="font-size:14px;margin-bottom:12px"></div>
       <a class="btn" id="f_go" href="#" target="_blank" rel="noopener noreferrer">${IC.drop}<span>Get test coins</span></a>
-      <p class="hint" style="margin-top:10px">This opens the Olesia faucet in a new tab with your address filled in. It runs a quick human check, then sends the coins.</p>
+      <p class="hint" style="margin-top:10px">This opens the Olesia faucet in a new tab with your address filled in. It runs a quick human check, then sends 0.001 practice coins.</p>
     </div>
     <div class="steps">
       <div class="step"><i>1</i><div><b>Claim</b>The faucet sends coins to the address above.</div></div>
@@ -438,7 +469,7 @@ footer a{color:var(--muted)}
     </div>
     <button class="sec wide" id="f_open" type="button">Open this practice wallet</button>
   </div>
-  <div class="note hide" id="f_none">Practice wallets and the faucet need a wallet made from a recovery phrase. This wallet is a single private key, which only exists on Bitcoin mainnet.</div>
+  <div class="note hide" id="f_none">Practice wallets and the faucet need a wallet made from a recovery phrase. This wallet is a single private key, which only exists on Bitcoin mainnet. To practise, lock this wallet and create a practice wallet from the welcome screen.</div>
 </section>
 
 <!-- ===================== SETTINGS ===================== -->
@@ -453,6 +484,10 @@ footer a{color:var(--muted)}
     <div id="reveal_box" class="hide"><div class="seedgrid" id="reveal_words"></div><p class="mono hide" id="reveal_wif"></p><p class="hint" id="reveal_note"></p></div>
     <p class="hint" style="margin-top:10px">This wallet is held <b style="color:var(--text)">encrypted</b> while it is open. Your password is asked for each time a payment is signed or the secret is shown.</p>
   </div>
+  <h3>Networks</h3>
+  <div class="card" id="morenets_row">
+    <label class="inline" style="margin:0"><input type="checkbox" id="set_morenets"> <span>Also show Signet and Testnet 3 — two more practice networks from the same words. Testnet 4 is enough for most people.</span></label>
+  </div>
   <h3>Address search</h3>
   <div class="card" id="deeper_row">
     <p class="hint" id="depth" style="margin-top:0"></p>
@@ -465,7 +500,7 @@ footer a{color:var(--muted)}
   <button class="sec wide" id="set_vanity" type="button" style="margin-bottom:10px">Create a vanity address</button>
   <button class="sec wide" id="set_paper" type="button" style="margin-bottom:10px">Make a paper wallet</button>
   <button class="sec wide" id="set_intro" type="button" style="margin-bottom:10px">Watch the opening again</button>
-  <label class="inline" style="margin:4px 0 14px"><input type="checkbox" id="set_street" checked> <span>Show the street — the Land Rover at the bottom of the page loading the next block from the Olesia node, driving off when the block is mined.</span></label>
+  <label class="inline" style="margin:4px 0 14px"><input type="checkbox" id="set_street" checked> <span>Show the street along the bottom of the page — the Land Rover loading the next block from the Olesia node. The full scene, with the legend, is the Street tab.</span></label>
   <button class="sec wide" id="set_lock" type="button">Lock wallet</button>
 </section>
 
@@ -652,7 +687,7 @@ footer a{color:var(--muted)}
       </div>
       <div class="danger"><b>Anyone who sees the private key can take everything.</b> Not a photo, not a scan, not a screenshot. The screen copy is wiped when you leave this page; the paper is the only copy.</div>
       <label>Address type</label>
-      <div class="seg" id="pp_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1q…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
+      <div class="seg" id="pp_type"><button type="button" data-type="p2wpkh" class="on">SegWit · bc1q…</button><button type="button" data-type="p2tr">Taproot · bc1p…</button><button type="button" data-type="p2pkh">Legacy · 1…</button></div>
       <p class="hint">SegWit has lower fees when you eventually spend. Legacy is what the old paper wallets used; every wallet can sweep both.</p>
       <label class="inline"><input type="checkbox" id="pp_offline"><span>I have disconnected from the internet (airplane mode / Wi-Fi off). Recommended, not enforced — the page works either way.</span></label>
       <button class="wide" id="pp_make" type="button">Make a paper wallet</button>
@@ -698,10 +733,20 @@ footer a{color:var(--muted)}
   <h2>Receive</h2>
   <div class="card" style="text-align:center">
     <div id="r_typebox"><select id="r_type"></select></div>
-    <div class="qrbox"><img id="r_qr" alt="address QR code"></div>
-    <div class="mono" id="r_addr" style="font-size:14px"></div>
-    <p class="hint" id="r_path"></p>
-    <div class="row"><button id="r_copy" type="button">Copy address</button><button class="sec" id="r_next" type="button">New address</button></div>
+    <div id="r_addrbox">
+      <div class="qrbox"><img id="r_qr" alt="address QR code"></div>
+      <div class="mono" id="r_addr" style="font-size:14px"></div>
+      <p class="hint" id="r_path"></p>
+      <div class="row"><button id="r_copy" type="button">Copy address</button><button class="sec" id="r_next" type="button">New address</button></div>
+    </div>
+    <div id="r_pkbox" class="hide" style="text-align:left">
+      <label>Public key</label>
+      <div class="mono" id="r_pk" style="font-size:13px"></div>
+      <p class="hint" id="r_pkpath"></p>
+      <div class="note"><b>Satoshi's original form.</b> Pay-to-Public-Key locks coins to the public key itself: <code>&lt;pubkey&gt; OP_CHECKSIG</code>. The genesis coins and the first years of mining were held this way. It has <b>no address</b>, so nobody can pay you here — the only way in is to move some of this wallet's own coins. A P2PK coin shows in your list with a P2PK tag and is spent like any other, with the same 2009-style signature.</div>
+      <button class="wide" id="r_pkgo" type="button">Move coins into this P2PK output</button>
+      <p class="hint bad" id="r_pkmsg"></p>
+    </div>
   </div>
   <p class="hint">Use a new address for each payment where you can. Every address shown here belongs to this wallet and is restored by your recovery phrase.</p>
 </section>
@@ -711,11 +756,18 @@ footer a{color:var(--muted)}
   <button class="back" data-go="wallet" type="button">‹ Wallet</button>
   <h2>Send</h2>
   <div class="card">
-    <label>To address</label>
-    <input id="t_to" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="bc1…, 3… or 1…">
+    <div id="t_tobox">
+      <label>To address</label>
+      <input id="t_to" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="bc1…, 3… or 1…">
+    </div>
+    <div id="t_pkbox" class="hide">
+      <label>To this wallet's own P2PK output</label>
+      <div class="mono" id="t_pkkey" style="font-size:13px;margin-bottom:6px"></div>
+      <p class="hint">A bare public key, no address. The coins stay yours; only their form changes.</p>
+    </div>
     <label>Amount</label>
     <div class="row"><input id="t_amt" inputmode="decimal" autocomplete="off" placeholder="0.00000000" style="flex:2"><select id="t_unit" style="flex:1"><option value="btc" id="t_unit_coin">BTC</option><option value="sat">sats</option></select></div>
-    <label class="inline"><input type="checkbox" id="t_all"><span>Send everything (the fee is taken from the amount)</span></label>
+    <label class="inline" id="t_allrow"><input type="checkbox" id="t_all"><span>Send everything (the fee is taken from the amount)</span></label>
     <p class="hint" id="t_avail"></p>
     <label>Network fee</label>
     <div class="seg" id="t_fees"></div>
@@ -733,10 +785,33 @@ footer a{color:var(--muted)}
   <div class="card hide" id="t_result"></div>
 </section>
 
+<!-- ===================== THE STREET (full scene) ===================== -->
+<section class="pane" id="pane-street">
+  <button class="back hide" id="st_back" type="button">‹ Back</button>
+  <h2>The street</h2>
+  <p class="sub">Live from the Olesia node. Every figure is a real transaction that just reached the mempool, dressed for the kind of coin it spends, walking up to board the next block. When the block is mined, the Land Rover drives off with it.</p>
+  <div id="st_wrap"><canvas id="st_canvas" aria-label="The street: the next block being loaded"></canvas><div id="st_tip" class="hide"></div></div>
+  <div class="strow" id="st_stats"></div>
+  <div class="strow" id="st_blocks"></div>
+  <h3>Who is who</h3>
+  <p class="hint">Each kind of coin has its own family of figures, so you can read a block at a glance. Click any figure in the scene to open its transaction on mempool.space; click the Land Rover for its block.</p>
+  <div id="st_legend"></div>
+  <h3>How to read it</h3>
+  <div class="card" id="st_howto">
+    <p class="hint"><b>The mempool</b> is the waiting room: transactions that have been broadcast but not yet mined. The number on the left is how many are waiting at the Olesia node right now.</p>
+    <p class="hint"><b>The next block</b> is whatever fits in 4 million weight units — roughly the highest-fee transactions waiting. The crates on the roof show how full it is; the windows light up as it fills.</p>
+    <p class="hint"><b>Fees</b> buy priority. The figures who walk fastest paid the highest fee rate (sat/vB). The fee floor shown is what the cheapest transaction in the next block paid.</p>
+    <p class="hint"><b>Blocks</b> arrive about every ten minutes, but randomly: two minutes or forty are both normal. The row above shows the last six and how long each took.</p>
+    <p class="hint"><b>Script types</b> are the different ways a coin can be locked. Older types put more on the chain (bigger, dearer); SegWit and Taproot are cheaper and the modern choice. A gold figure is a coin from 2009–2010 or a bare public key — the way the very first bitcoins were held.</p>
+  </div>
+  <label class="inline" style="margin:14px 0"><input type="checkbox" id="st_band"> <span>Also show the street as a band along the bottom of every page.</span></label>
+</section>
+
 <nav id="tabbar" class="hide" aria-label="Sections"><div class="in">
   <button type="button" data-tab="wallet">${IC.wallet}<span>Wallet</span></button>
   <button type="button" data-tab="networks">${IC.layers}<span>Networks</span></button>
   <button type="button" data-tab="faucet">${IC.drop}<span>Faucet</span></button>
+  <button type="button" data-tab="street">${IC.road}<span>Street</span></button>
   <button type="button" data-tab="settings">${IC.gear}<span>Settings</span></button>
 </div></nav>
 <div id="confirm"><div class="sheet">

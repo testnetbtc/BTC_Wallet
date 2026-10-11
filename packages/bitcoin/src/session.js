@@ -5,22 +5,24 @@
 // pair of non-secret counters (next receive / change index) so addresses are not reused.
 import { coinsFromScan, buildSpend, outpointOf, DEFAULT_RANGE, HD_TYPES, RECEIVE_TYPES, TYPE_LABEL } from './account.js';
 import { privacyReport, parseTx } from './privacy.js';
+import { bytesToHex } from '@noble/hashes/utils';
 
 // Address window per chain: the types this wallet creates addresses on are scanned deeper
 // than the two that are only scanned for an imported wallet's existing coins. The window
 // grows automatically when a coin sits near its end, and can be grown by hand (scanDeeper).
 const SPENT_GRACE_MS = 120_000;
 // mainnet: one node scan covers any number of addresses, so the window is generous.
-export const MAINNET_WINDOW = Object.freeze({ range: 200, rangeOther: DEFAULT_RANGE, margin: 20, step: 100, max: 1000 });
+export const MAINNET_WINDOW = Object.freeze({ range: 200, rangeOther: DEFAULT_RANGE, rangeRaw: 20, margin: 20, step: 100, max: 1000 });
 // practice networks: every address is one request to a public API, so the window is small,
-// only the two address types this wallet issues are looked at, and it grows in small steps.
-export const TEST_WINDOW = Object.freeze({ range: 10, rangeOther: 0, margin: 4, step: 10, max: 200 });
+// only the address types this wallet issues (and a few bare-public-key outputs) are looked at,
+// and it grows in small steps.
+export const TEST_WINDOW = Object.freeze({ range: 10, rangeOther: 0, rangeRaw: 3, margin: 4, step: 10, max: 200 });
 const memoryStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); } }; };
 
 export class Session {
   constructor({ account, api, store = memoryStore(), explorer = 'https://mempool.space/tx/', scriptType = null, window: win = MAINNET_WINDOW }) {
     this.account = account; this.api = api; this.store = store || memoryStore(); this.explorer = explorer;
-    this.win = win; this.range = win.range; this.rangeOther = win.rangeOther; this.coins = []; this.height = null; this.scanned = false;
+    this.win = win; this.range = win.range; this.rangeOther = win.rangeOther; this.rangeRaw = win.rangeRaw ?? win.rangeOther; this.coins = []; this.height = null; this.scanned = false;
     this.sent = [];                       // this visit's broadcasts (memory only)
     // Coins THIS wallet just spent, with the time of the broadcast. For a short grace period
     // they are treated as spent whatever the node says, so a stale answer can never offer a
@@ -46,14 +48,14 @@ export class Session {
       const n = (v) => (Number.isInteger(v) && v >= 0 && v < this.win.max ? v : 0);
       const recv = {}, change = {};
       for (const t of RECEIVE_TYPES) { recv[t] = n(o.recv?.[t]); change[t] = n(o.change?.[t]); }
-      return { recv, change, pref: RECEIVE_TYPES.includes(o.pref) ? o.pref : null };
-    } catch { const z = () => Object.fromEntries(RECEIVE_TYPES.map((t) => [t, 0])); return { recv: z(), change: z(), pref: null }; }
+      return { recv, change, p2pk: n(o.p2pk), pref: RECEIVE_TYPES.includes(o.pref) ? o.pref : null };
+    } catch { const z = () => Object.fromEntries(RECEIVE_TYPES.map((t) => [t, 0])); return { recv: z(), change: z(), p2pk: 0, pref: null }; }
   }
   _saveMeta() { try { this.store.setItem(this._metaKey(), JSON.stringify(this.meta)); } catch { /* storage unavailable: counters stay in memory */ } }
 
   async _entries() {
     if (this.account.kind !== 'seed') return this.account.entries();
-    return this.account.entriesAsync ? this.account.entriesAsync(this.range, this.rangeOther) : this.account.entries(this.range, this.rangeOther);
+    return this.account.entriesAsync ? this.account.entriesAsync(this.range, this.rangeOther, this.rangeRaw) : this.account.entries(this.range, this.rangeOther, this.rangeRaw);
   }
   _hi(type, chain) { let hi = -1; for (const c of this.coins) if (c.entry.type === type && c.entry.chain === chain && c.entry.index > hi) hi = c.entry.index; return hi; }
 
@@ -71,13 +73,15 @@ export class Session {
       if (this.account.kind !== 'seed') break;
       const { margin, step, max } = this.win;
       const near = (types, range) => range > 0 && this.coins.some((c) => types.includes(c.entry.type) && c.entry.index >= range - margin);
-      const others = HD_TYPES.filter((t) => !RECEIVE_TYPES.includes(t));
+      const others = HD_TYPES.filter((t) => !RECEIVE_TYPES.includes(t) && t !== 'p2pk');
       const growRecv = this.range < max && (near(RECEIVE_TYPES, this.range)
         || Math.max(...RECEIVE_TYPES.map((t) => Math.max(this.meta.recv[t], this.meta.change[t]))) >= this.range - margin);
       const growOther = this.rangeOther < max && near(others, this.rangeOther);
-      if (!growRecv && !growOther) break;
+      const growRaw = this.rangeRaw < max && (near(['p2pk'], this.rangeRaw) || (this.meta.p2pk || 0) >= this.rangeRaw - 2);
+      if (!growRecv && !growOther && !growRaw) break;
       if (growRecv) this.range = Math.min(max, this.range + step);
       if (growOther) this.rangeOther = Math.min(max, this.rangeOther + step);
+      if (growRaw) this.rangeRaw = Math.min(max, this.rangeRaw + Math.max(5, this.win.rangeRaw ?? 5));
     }
     this._reconcileSent();
     return this.summary();
@@ -125,10 +129,10 @@ export class Session {
   receiveIndex(type) { return this.account.kind === 'seed' ? Math.max(this.meta.recv[type] || 0, this._hi(type, 0) + 1) : 0; }
   receive(type = this.pref, index = null) {
     if (!this.receiveTypes().includes(type)) throw new Error('unsupported address type');
-    if (this.account.kind !== 'seed') { const e = this.account.entry(type); return { address: e.address, path: e.path, type, index: 0, single: true }; }
+    if (this.account.kind !== 'seed') { const e = this.account.entry(type); return { address: e.address, path: e.path, type, index: 0, single: true, script: e.script, pubkey: e.pubkey || (e.key ? bytesToHex(e.key.pubkey) : null) }; }
     const i = index == null ? this.receiveIndex(type) : index;
     const e = this.account.entry(type, 0, i);
-    return { address: e.address, path: e.path, type, index: i, single: false };
+    return { address: e.address, path: e.path, type, index: i, single: false, script: e.script, pubkey: e.pubkey || (e.key ? bytesToHex(e.key.pubkey) : null) };
   }
   // move on to a fresh address (the user handed the current one out)
   nextReceive(type) {
@@ -138,6 +142,15 @@ export class Session {
     return this.receive(type);
   }
   changeIndex() { return this.account.kind === 'seed' ? Math.max(this.meta.change[this.pref] || 0, this._hi(this.pref, 1) + 1) : 0; }
+  // ---- bare public key (P2PK) ----
+  // The wallet's next unused P2PK output: a raw script, no address. Nobody else can pay it —
+  // only this wallet, by moving its own coins in (prepare with toScript). Like an address, a
+  // P2PK key that has held a coin is not used again.
+  p2pkIndex() { return this.account.kind === 'seed' ? Math.min(this.win.max - 1, Math.max(this.meta.p2pk || 0, this._hi('p2pk', 0) + 1)) : 0; }
+  p2pkTarget() {
+    const e = this.account.kind === 'seed' ? this.account.entry('p2pk', 0, this.p2pkIndex()) : this.account.entry('p2pk');
+    return { script: e.script, pubkey: e.pubkey || bytesToHex(e.key.pubkey), path: e.path, index: e.index, single: this.account.kind !== 'seed' };
+  }
   // Once an address has held a coin it is used for good: record that, so the receive and change
   // counters never fall back to it after the coin is spent (the node only reports UNSPENT coins,
   // so without this the wallet would forget the address was ever used and hand it out again).
@@ -149,6 +162,8 @@ export class Session {
       if (r > (this.meta.recv[t] || 0)) { this.meta.recv[t] = r; changed = true; }
       if (c > (this.meta.change[t] || 0)) { this.meta.change[t] = c; changed = true; }
     }
+    const pk = Math.min(this.win.max - 1, this._hi('p2pk', 0) + 1);
+    if (pk > (this.meta.p2pk || 0)) { this.meta.p2pk = pk; changed = true; }
     if (changed) this._saveMeta();
   }
 
@@ -207,16 +222,17 @@ export class Session {
   }
   // Build + sign + audit, WITHOUT broadcasting. The result is frozen: broadcast() sends
   // exactly these bytes.
-  async prepare({ to, amount = null, sweep = false, feeRate, coinIds = null, message = null, signer = null }) {
+  async prepare({ to, toScript = null, amount = null, sweep = false, feeRate, coinIds = null, message = null, signer = null }) {
     if (this.account.watchOnly && !signer) throw new Error('the wallet is locked — a password is needed to sign');
     if (!this.scanned) throw new Error('the wallet has not finished loading its coins yet');
     const coins = this._pick(coinIds);
     if (!coins.length) throw new Error('no confirmed coins available to spend');
     const changeType = this.pref, changeIndex = this.changeIndex();
     const changeEntry = this.account.changeEntry(changeIndex, changeType);
-    const built = await buildSpend({ account: this.account, coins, to: String(to || '').trim(), amount, sweep, feeRate, changeEntry, message, signer,
+    const built = await buildSpend({ account: this.account, coins, to: String(to || '').trim(), toScript, amount, sweep, feeRate, changeEntry, message, signer,
                                      fetchPrevTx: (txid, height) => this.api.prevTx(txid, height) });
-    return { ...built, changeIndex: built.change ? changeIndex : null, changeType, changePath: built.change ? changeEntry.path : null, inTotal: built.sent + built.change + built.fee };
+    const p2pkIndex = toScript != null && this.account.kind === 'seed' && this.p2pkTarget().script === built.toScript ? this.p2pkIndex() : null;   // the P2PK key just used moves on once this is sent
+    return { ...built, changeIndex: built.change ? changeIndex : null, changeType, changePath: built.change ? changeEntry.path : null, p2pkIndex, inTotal: built.sent + built.change + built.fee };
   }
   async broadcast(built) {
     const txid = await this.api.broadcast(built.txHex);
@@ -225,7 +241,8 @@ export class Session {
     for (const op of used) this.spentLocal.set(op, Date.now());
     for (const c of this.coins) if (used.has(outpointOf(c))) { c.spentInMempool = true; c.spendable = false; }
     if (built.change && this.account.kind === 'seed') { this.meta.change[built.changeType] = Math.min(this.win.max - 1, built.changeIndex + 1); this._saveMeta(); }
-    this.sent.unshift({ txid, to: built.to, sent: built.sent, fee: built.fee, change: built.change, inputs: built.inputs, message: built.message, status: 'pending', time: Date.now(), explorer: this.explorer + txid });
+    if (built.p2pkIndex != null && this.account.kind === 'seed') { this.meta.p2pk = Math.min(this.win.max - 1, built.p2pkIndex + 1); this._saveMeta(); }
+    this.sent.unshift({ txid, to: built.to || (built.toScript ? 'P2PK ' + built.toScript.slice(2, 14) + '…' : ''), sent: built.sent, fee: built.fee, change: built.change, inputs: built.inputs, message: built.message, status: 'pending', time: Date.now(), explorer: this.explorer + txid });
     return { txid, explorer: this.explorer + txid };
   }
   // After a refresh: a send whose inputs have left the UTXO set is confirmed; one whose
